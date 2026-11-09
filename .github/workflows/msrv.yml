@@ -1,0 +1,33 @@
+name: MSRV
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  MSRV: "1.98.0"
+  APT_PACKAGES: curl build-essential pkg-config libgtk-4-dev libglib2.0-dev libadwaita-1-dev libgtk4-layer-shell-dev
+
+jobs:
+  msrv:
+    name: Minimum supported Rust version
+    runs-on: ubuntu-26.04
+    steps:
+      - name: VCS Checkout
+        uses: actions/checkout@v7
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ env.APT_PACKAGES }}
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.MSRV }}
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Verify MSRV
+        run: cargo check --workspace --all-targets --all-features

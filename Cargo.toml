@@ -1,0 +1,38 @@
+[package]
+name = "floating-board"
+version = "0.1.0"
+description = "GTK4 widget with floating, rotatable and scalable cards (like an in-app window manager)"
+authors = ["Andreas Schaeffer <hanack@nooblounge.net>"]
+edition = "2024"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/smearor/floating-board-rs"
+homepage = "https://smearor.io/"
+rust-version = "1.98.0"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+
+[dependencies]
+fluent-bundle = "0.16"
+glib = "0.22"
+gtk4 = { version = "0.11", features = ["v4_20"] }
+serde = { version = "1.0", features = ["derive"], optional = true }
+smearor-wrot-rotation = { version = "0.2.1", default-features = false }
+thiserror = "2"
+tracing = "0.1"
+unic-langid = { version = "0.9", features = ["macros"] }
+
+[dev-dependencies]
+serde_json = "1.0"
+toml = "0.9"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = "symbols"
