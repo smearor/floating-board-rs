@@ -159,6 +159,14 @@ impl Card {
         }
     }
 
+    /// Resets position, rotation and scale to the card's configured initial
+    /// geometry (the `position` anchor, `Deg0`, scale `1.0`).
+    pub fn reset(&self) {
+        if let Some(board) = self.board() {
+            let _ = board.reset_card(&self.id());
+        }
+    }
+
     /// Toggles the folded state.
     pub fn fold(&self) {
         self.set_folded(!self.folded());

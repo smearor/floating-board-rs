@@ -46,6 +46,7 @@ mod l10n;
 
 pub use domain::BoardError;
 pub use domain::BoardLayout;
+pub use domain::BoundsMode;
 pub use domain::CardAnchor;
 pub use domain::CardGeometry;
 pub use domain::CardId;

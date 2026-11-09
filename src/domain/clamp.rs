@@ -24,6 +24,27 @@ fn clamp_axis(footprint_min: f64, footprint_size: f64, bounds_min: f64, bounds_s
     footprint_min.clamp(allowed_min, allowed_max) - footprint_min
 }
 
+/// Computes the minimal translation `(dx, dy)` needed so that `footprint`
+/// lies entirely inside `bounds` - the clamp for `BoundsMode::Contained`.
+///
+/// On axes where the footprint is larger than the bounds it is centered, so
+/// the card stays reachable instead of snapping to one edge.
+///
+/// Pure function - unit-testable without GTK.
+pub fn contain_offset(footprint: &Rect, bounds: &Rect) -> (f64, f64) {
+    (
+        contain_axis(footprint.x, footprint.width, bounds.x, bounds.width),
+        contain_axis(footprint.y, footprint.height, bounds.y, bounds.height),
+    )
+}
+
+fn contain_axis(footprint_min: f64, footprint_size: f64, bounds_min: f64, bounds_size: f64) -> f64 {
+    if footprint_size >= bounds_size {
+        return bounds_min + (bounds_size - footprint_size) / 2.0 - footprint_min;
+    }
+    footprint_min.clamp(bounds_min, bounds_min + bounds_size - footprint_size) - footprint_min
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -77,5 +98,29 @@ mod tests {
     fn oversized_centered_footprint_is_untouched() {
         let footprint = Rect::new(-500.0, 100.0, 2000.0, 100.0);
         assert_eq!(clamp_offset(&footprint, &BOUNDS, MIN_VISIBLE).0, 0.0);
+    }
+
+    #[test]
+    fn contained_inside_footprint_is_untouched() {
+        let footprint = Rect::new(100.0, 100.0, 200.0, 100.0);
+        assert_eq!(contain_offset(&footprint, &BOUNDS), (0.0, 0.0));
+    }
+
+    #[test]
+    fn contained_right_edge_is_pulled_fully_inside() {
+        let footprint = Rect::new(900.0, 100.0, 200.0, 100.0);
+        assert_eq!(contain_offset(&footprint, &BOUNDS), (-100.0, 0.0));
+    }
+
+    #[test]
+    fn contained_left_edge_is_pushed_fully_inside() {
+        let footprint = Rect::new(-50.0, 100.0, 200.0, 100.0);
+        assert_eq!(contain_offset(&footprint, &BOUNDS), (50.0, 0.0));
+    }
+
+    #[test]
+    fn contained_oversized_footprint_is_centered() {
+        let footprint = Rect::new(0.0, 100.0, 1200.0, 100.0);
+        assert_eq!(contain_offset(&footprint, &BOUNDS), (-100.0, 0.0));
     }
 }

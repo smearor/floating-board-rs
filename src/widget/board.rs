@@ -1,5 +1,7 @@
 use crate::domain::BoardError;
 use crate::domain::BoardLayout;
+use crate::domain::BoundsMode;
+use crate::domain::CardAnchor;
 use crate::domain::CardGeometry;
 use crate::domain::CardId;
 use crate::domain::CardPlacement;
@@ -7,6 +9,7 @@ use crate::domain::CardPosition;
 use crate::domain::Rect;
 use crate::domain::ScaleFactor;
 use crate::domain::clamp_offset;
+use crate::domain::contain_offset;
 use crate::domain::resolve_anchor;
 use crate::domain::rotate_vector;
 use crate::domain::rotated_bounds;
@@ -128,7 +131,7 @@ impl FloatingBoard {
 
         let sequence = self.imp().sequence.replace(self.imp().sequence.get() + 1);
         let (initial_position, pending_anchor) = match config.position {
-            crate::domain::CardAnchor::Explicit(position) => (position, None),
+            CardAnchor::Explicit(position) => (position, None),
             anchor => (CardPosition::default(), Some(anchor)),
         };
         let entry = CardEntry {
@@ -303,6 +306,50 @@ impl FloatingBoard {
         self.emit_geometry_changed();
     }
 
+    /// Resets a card to its configured initial geometry: the `position`
+    /// anchor re-resolved against the current bounds, `Deg0` rotation and
+    /// scale `1.0`.
+    ///
+    /// Rotation goes through the widget first (the `notify::rotation` handler
+    /// applies the interim state); the anchor then resolves against the
+    /// reset footprint.
+    pub fn reset_card(&self, id: &CardId) -> Result<(), BoardError> {
+        let (rotation_widget, scaling) = {
+            let cards = self.imp().cards.borrow();
+            let entry = cards.get(id).ok_or_else(|| BoardError::UnknownCard(id.clone()))?;
+            entry.scale.set(ScaleFactor::default());
+            (entry.rotation_widget.clone(), entry.scaling.clone())
+        };
+        rotation_widget.set_rotation(SmearorRotation::Deg0);
+        scaling.set_scale(1.0);
+        {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return Ok(());
+            };
+            match entry.config.position {
+                CardAnchor::Explicit(position) => {
+                    entry.pending_anchor.borrow_mut().take();
+                    entry.position.set(position);
+                }
+                anchor => {
+                    let bounds = self.board_bounds();
+                    if bounds.is_empty() {
+                        entry.pending_anchor.replace(Some(anchor));
+                    } else {
+                        entry.pending_anchor.borrow_mut().take();
+                        let (width, height) = self.predicted_size(entry);
+                        entry.position.set(resolve_anchor(&anchor, &bounds, width, height, entry.config.anchor_margin));
+                    }
+                }
+            }
+            self.apply_position(entry);
+            self.clamp_entry(entry);
+        }
+        self.emit_geometry_changed();
+        Ok(())
+    }
+
     /// Moves the card to the top of the card layer.
     pub(crate) fn raise_card(&self, id: &CardId) {
         let card = {
@@ -332,10 +379,31 @@ impl FloatingBoard {
         }
     }
 
-    /// Rotated footprint of a card in board coordinates (for safe-area unions).
-    pub(crate) fn card_footprint(&self, id: &CardId) -> Result<Region, BoardError> {
+    /// Rotated footprint of a card in card-layer (board) coordinates - for
+    /// safe-area unions and input regions.
+    pub fn card_footprint(&self, id: &CardId) -> Result<Region, BoardError> {
         let cards = self.imp().cards.borrow();
         let entry = cards.get(id).ok_or_else(|| BoardError::UnknownCard(id.clone()))?;
+        Ok(self.entry_footprint(entry))
+    }
+
+    /// Union of every card's rotated footprint in card-layer (board)
+    /// coordinates. Consumers restricting the surface input region to
+    /// interactive chrome - e.g. touch-passthrough overlays - union this
+    /// with their own regions after translating to surface coordinates.
+    pub fn cards_region(&self) -> Region {
+        let region = Region::create();
+        for entry in self.imp().cards.borrow().values() {
+            if let Err(error) = region.union(&self.entry_footprint(entry)) {
+                warn!(%error, "failed to union card footprint");
+            }
+        }
+        region
+    }
+
+    /// Rotated footprint rasterized from the card's natural size, scale and
+    /// rotation, centered on its board position.
+    fn entry_footprint(&self, entry: &CardEntry) -> Region {
         let (_, natural_width, _, _) = entry.card.measure(Orientation::Horizontal, -1);
         let (_, natural_height, _, _) = entry.card.measure(Orientation::Vertical, -1);
         let scale = entry.scale.get().value();
@@ -350,7 +418,22 @@ impl FloatingBoard {
                 warn!(%error, "failed to union footprint strip");
             }
         }
-        Ok(region)
+        region
+    }
+
+    /// Whether an external consumer manages the surface input region.
+    pub fn input_region_managed(&self) -> bool {
+        self.imp().input_region_managed.get()
+    }
+
+    /// Hands the surface input region to an external consumer: the board
+    /// stops resetting it on every allocation (its default defense against
+    /// `RotationWidget`'s own region narrowing). Consumers computing custom
+    /// input regions - e.g. restricting input to cards plus chrome in
+    /// touch-passthrough overlays - must set this so their region survives
+    /// the next layout pass.
+    pub fn set_input_region_managed(&self, managed: bool) {
+        self.imp().input_region_managed.set(managed);
     }
 
     /// Called from `WidgetImpl::size_allocate`: resolves pending anchors and
@@ -366,7 +449,7 @@ impl FloatingBoard {
             for entry in cards.values() {
                 if let Some(anchor) = entry.pending_anchor.borrow_mut().take() {
                     let (width, height) = self.predicted_size(entry);
-                    entry.position.set(resolve_anchor(&anchor, &bounds, width, height));
+                    entry.position.set(resolve_anchor(&anchor, &bounds, width, height, entry.config.anchor_margin));
                     resolved = true;
                 }
                 // Reconcile render state with position state on every
@@ -406,18 +489,46 @@ impl FloatingBoard {
     }
 
     /// Live pinch zoom: `scale = start * zoom`, clamped to `scale_limits`.
-    fn on_card_pinch_changed(&self, id: &CardId, zoom: f64) {
+    ///
+    /// The card grows around the pinch midpoint - the card point under the
+    /// fingers stays fixed - instead of around the card center, which would
+    /// visually drift the card away from the gesture.
+    fn on_card_pinch_changed(&self, id: &CardId, gesture: &gtk4::GestureZoom, zoom: f64) {
         {
             let cards = self.imp().cards.borrow();
             let Some(entry) = cards.get(id) else {
                 return;
             };
+            let previous = entry.scale.get().value();
             let scale = ScaleFactor::new(entry.pinch_start.get() * zoom).clamped(&entry.config.scale_limits);
+            if let Some((mid_x, mid_y)) = self.pinch_midpoint_in_layer(gesture, entry)
+                && scale.value() != previous
+            {
+                let position = entry.position.get();
+                let ratio = scale.value() / previous;
+                entry
+                    .position
+                    .set(CardPosition::new(mid_x - (mid_x - position.x()) * ratio, mid_y - (mid_y - position.y()) * ratio));
+            }
             entry.scale.set(scale);
             entry.scaling.set_scale(scale.value());
             self.apply_position(entry);
+            if entry.config.bounds_mode == BoundsMode::Contained {
+                self.clamp_entry(entry);
+            }
         }
         self.emit_geometry_changed();
+    }
+
+    /// Pinch midpoint in card-layer (board) coordinates. `gesture.point()`
+    /// reports in `scaling` widget coordinates, which are untransformed - the
+    /// scale transform applies to its child only - so adding the stack's
+    /// top-left layer offset yields board space.
+    fn pinch_midpoint_in_layer(&self, gesture: &gtk4::GestureZoom, entry: &CardEntry) -> Option<(f64, f64)> {
+        let (px, py) = gesture.point(None)?;
+        let layer = self.card_layer()?;
+        let (offset_x, offset_y) = layer.child_position(&entry.scaling);
+        Some((offset_x + px, offset_y + py))
     }
 
     fn on_card_pinch_end(&self, id: &CardId) {
@@ -462,6 +573,9 @@ impl FloatingBoard {
             let delta = self.drag_delta(gesture, offset_x, offset_y, entry);
             entry.position.set(entry.drag_start.get().translated(delta.0, delta.1));
             self.apply_position(entry);
+            if entry.config.bounds_mode == BoundsMode::Contained {
+                self.clamp_entry(entry);
+            }
         }
         self.emit_geometry_changed();
     }
@@ -545,9 +659,9 @@ impl FloatingBoard {
             });
             let board_weak = self.downgrade();
             let card_id = id.clone();
-            zoom.connect_scale_changed(move |_, zoom| {
+            zoom.connect_scale_changed(move |gesture, zoom| {
                 if let Some(board) = board_weak.upgrade() {
-                    board.on_card_pinch_changed(&card_id, zoom);
+                    board.on_card_pinch_changed(&card_id, gesture, zoom);
                 }
             });
             let board_weak = self.downgrade();
@@ -634,7 +748,9 @@ impl FloatingBoard {
         }
     }
 
-    /// Pushes the card back so `min_visible` of its footprint stays inside.
+    /// Pushes the card back inside the board bounds. `BoundsMode::Loose`
+    /// cards keep only `min_visible` pixels inside; `Contained` cards get
+    /// their whole footprint pulled back.
     fn clamp_entry(&self, entry: &CardEntry) {
         let bounds = self.board_bounds();
         if bounds.is_empty() {
@@ -642,7 +758,10 @@ impl FloatingBoard {
         }
         let (width, height) = self.displayed_size(entry);
         let footprint = Rect::centered(entry.position.get(), width, height);
-        let (dx, dy) = clamp_offset(&footprint, &bounds, entry.config.min_visible);
+        let (dx, dy) = match entry.config.bounds_mode {
+            BoundsMode::Loose => clamp_offset(&footprint, &bounds, entry.config.min_visible),
+            BoundsMode::Contained => contain_offset(&footprint, &bounds),
+        };
         if dx != 0.0 || dy != 0.0 {
             entry.position.set(entry.position.get().translated(dx, dy));
             self.apply_position(entry);

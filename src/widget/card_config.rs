@@ -1,3 +1,5 @@
+use crate::domain::ANCHOR_MARGIN;
+use crate::domain::BoundsMode;
 use crate::domain::CardAnchor;
 use crate::domain::DragHandle;
 use crate::domain::MinVisible;
@@ -30,10 +32,19 @@ pub struct CardConfig {
     pub headerless: bool,
     /// Which part of the card acts as the drag affordance.
     pub drag_handle: DragHandle,
+    /// Margin in pixels an edge or corner anchor keeps between the card's
+    /// footprint and the board edge; default `ANCHOR_MARGIN` (24 px).
+    /// Ignored for `Center` and `Explicit` placements.
+    #[cfg_attr(feature = "serde", serde(default = "default_anchor_margin"))]
+    pub anchor_margin: f64,
     /// Inclusive scale limits for the pinch gesture; default `0.5 - 2.0`.
     pub scale_limits: ScaleBounds,
     /// Minimum overlap in pixels a card must keep inside the board bounds.
     pub min_visible: MinVisible,
+    /// How strictly the card's footprint is kept inside the board bounds;
+    /// default `Loose` (only `min_visible` is enforced).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub bounds_mode: BoundsMode,
     /// Optional initial z-ordering; `None` appends the card on top.
     pub z_index: Option<i32>,
 }
@@ -50,9 +61,16 @@ impl Default for CardConfig {
             closable: false,
             headerless: false,
             drag_handle: DragHandle::Header,
+            anchor_margin: ANCHOR_MARGIN,
             scale_limits: ScaleBounds::default(),
             min_visible: MinVisible::default(),
+            bounds_mode: BoundsMode::default(),
             z_index: None,
         }
     }
+}
+
+#[cfg(feature = "serde")]
+fn default_anchor_margin() -> f64 {
+    ANCHOR_MARGIN
 }

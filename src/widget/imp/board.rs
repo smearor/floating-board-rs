@@ -72,6 +72,9 @@ pub struct FloatingBoardImpl {
     pub(crate) cards: RefCell<BTreeMap<CardId, CardEntry>>,
     /// Counter for auto-generated `card-N` ids and insertion order.
     pub sequence: Cell<u64>,
+    /// When `true`, an external consumer manages the surface input region
+    /// and `size_allocate` stops resetting it.
+    pub input_region_managed: Cell<bool>,
 }
 
 impl Default for FloatingBoardImpl {
@@ -81,6 +84,7 @@ impl Default for FloatingBoardImpl {
             card_layer: OnceCell::new(),
             cards: RefCell::new(BTreeMap::new()),
             sequence: Cell::new(0),
+            input_region_managed: Cell::new(false),
         }
     }
 }
@@ -131,7 +135,12 @@ impl WidgetImpl for FloatingBoardImpl {
         // narrows the surface input region to each card's footprint on every
         // allocation. Inside the board all card allocations run through this
         // vfunc, so restoring the full input region here wins per layout pass.
-        if let Some(surface) = self.obj().native().and_then(|native| native.surface()) {
+        // Skipped while a consumer manages the region itself
+        // (`set_input_region_managed`) - e.g. touch-passthrough overlays that
+        // restrict input to the cards.
+        if !self.input_region_managed.get()
+            && let Some(surface) = self.obj().native().and_then(|native| native.surface())
+        {
             surface.set_input_region(None);
         }
         self.obj().on_board_allocated();
