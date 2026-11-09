@@ -1,0 +1,2 @@
+createSrcSidebar('[["floating_board",["",[["domain",[],["anchor.rs","board_error.rs","board_layout.rs","card_anchor.rs","card_geometry.rs","card_id.rs","card_placement.rs","card_position.rs","clamp.rs","drag_handle.rs","geometry.rs","min_visible.rs","mod.rs","rect.rs","scale_bounds.rs","scale_factor.rs"]],["widget",[["imp",[],["board.rs","card.rs","card_layer.rs","mod.rs","scaling.rs"]]],["board.rs","card.rs","card_config.rs","card_layer.rs","css.rs","mod.rs","scaling.rs"]]],["l10n.rs","lib.rs"]]]]');
+//{"start":19,"fragment_lengths":[483]}
