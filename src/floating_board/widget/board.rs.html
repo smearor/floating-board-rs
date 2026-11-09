@@ -200,7 +200,7 @@
 <a href=#200 id=200 data-nosnippet>200</a>        BoardLayout::new(
 <a href=#201 id=201 data-nosnippet>201</a>            cards
 <a href=#202 id=202 data-nosnippet>202</a>                .iter()
-<a href=#203 id=203 data-nosnippet>203</a>                .map(|(id, entry)| CardPlacement::new(id.clone(), <span class="self">self</span>.entry_geometry(entry)))
+<a href=#203 id=203 data-nosnippet>203</a>                .map(|(id, entry)| CardPlacement::new(id.clone(), <span class="self">self</span>.entry_geometry(entry), entry.card.folded()))
 <a href=#204 id=204 data-nosnippet>204</a>                .collect(),
 <a href=#205 id=205 data-nosnippet>205</a>        )
 <a href=#206 id=206 data-nosnippet>206</a>    }
@@ -211,14 +211,14 @@
 <a href=#211 id=211 data-nosnippet>211</a>    /// clamped to the current board bounds so nothing restores off-screen.
 <a href=#212 id=212 data-nosnippet>212</a>    </span><span class="kw">pub fn </span>restore_layout(<span class="kw-2">&amp;</span><span class="self">self</span>, layout: <span class="kw-2">&amp;</span>BoardLayout) {
 <a href=#213 id=213 data-nosnippet>213</a>        <span class="kw">for </span>placement <span class="kw">in </span><span class="kw-2">&amp;</span>layout.cards {
-<a href=#214 id=214 data-nosnippet>214</a>            <span class="kw">let </span>(rotation_widget, scaling) = {
+<a href=#214 id=214 data-nosnippet>214</a>            <span class="kw">let </span>(card, rotation_widget, scaling) = {
 <a href=#215 id=215 data-nosnippet>215</a>                <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
 <a href=#216 id=216 data-nosnippet>216</a>                <span class="kw">match </span>cards.get(<span class="kw-2">&amp;</span>placement.id) {
 <a href=#217 id=217 data-nosnippet>217</a>                    <span class="prelude-val">Some</span>(entry) =&gt; {
 <a href=#218 id=218 data-nosnippet>218</a>                        entry.position.set(placement.geometry.position);
 <a href=#219 id=219 data-nosnippet>219</a>                        entry.scale.set(placement.geometry.scale.clamped(<span class="kw-2">&amp;</span>entry.config.scale_limits));
 <a href=#220 id=220 data-nosnippet>220</a>                        entry.pending_anchor.borrow_mut().take();
-<a href=#221 id=221 data-nosnippet>221</a>                        (entry.rotation_widget.clone(), entry.scaling.clone())
+<a href=#221 id=221 data-nosnippet>221</a>                        (entry.card.clone(), entry.rotation_widget.clone(), entry.scaling.clone())
 <a href=#222 id=222 data-nosnippet>222</a>                    }
 <a href=#223 id=223 data-nosnippet>223</a>                    <span class="prelude-val">None </span>=&gt; {
 <a href=#224 id=224 data-nosnippet>224</a>                        <span class="macro">warn!</span>(card = %placement.id, <span class="string">"skipping unknown card in layout restore"</span>);
@@ -230,580 +230,591 @@
 <a href=#230 id=230 data-nosnippet>230</a>            // outside of it.
 <a href=#231 id=231 data-nosnippet>231</a>            </span>rotation_widget.set_rotation(placement.geometry.rotation);
 <a href=#232 id=232 data-nosnippet>232</a>            scaling.set_scale(placement.geometry.scale.value());
-<a href=#233 id=233 data-nosnippet>233</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#234 id=234 data-nosnippet>234</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = cards.get(<span class="kw-2">&amp;</span>placement.id) {
-<a href=#235 id=235 data-nosnippet>235</a>                <span class="self">self</span>.apply_position(entry);
-<a href=#236 id=236 data-nosnippet>236</a>                <span class="self">self</span>.clamp_entry(entry);
-<a href=#237 id=237 data-nosnippet>237</a>            }
-<a href=#238 id=238 data-nosnippet>238</a>        }
-<a href=#239 id=239 data-nosnippet>239</a>        <span class="self">self</span>.emit_geometry_changed();
-<a href=#240 id=240 data-nosnippet>240</a>    }
-<a href=#241 id=241 data-nosnippet>241</a>
-<a href=#242 id=242 data-nosnippet>242</a>    <span class="doccomment">/// Current geometry of a card (rotation is read live from the widget).
-<a href=#243 id=243 data-nosnippet>243</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>card_geometry(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) -&gt; <span class="prelude-ty">Option</span>&lt;CardGeometry&gt; {
-<a href=#244 id=244 data-nosnippet>244</a>        <span class="self">self</span>.imp().cards.borrow().get(id).map(|entry| <span class="self">self</span>.entry_geometry(entry))
-<a href=#245 id=245 data-nosnippet>245</a>    }
-<a href=#246 id=246 data-nosnippet>246</a>
-<a href=#247 id=247 data-nosnippet>247</a>    <span class="doccomment">/// Applies a full geometry update, clamped to the board bounds.
-<a href=#248 id=248 data-nosnippet>248</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>set_card_geometry(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, geometry: <span class="kw-2">&amp;</span>CardGeometry) {
-<a href=#249 id=249 data-nosnippet>249</a>        <span class="kw">let </span>(rotation_widget, scaling, scale) = {
-<a href=#250 id=250 data-nosnippet>250</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#251 id=251 data-nosnippet>251</a>            <span class="kw">match </span>cards.get(id) {
-<a href=#252 id=252 data-nosnippet>252</a>                <span class="prelude-val">Some</span>(entry) =&gt; {
-<a href=#253 id=253 data-nosnippet>253</a>                    entry.position.set(geometry.position);
-<a href=#254 id=254 data-nosnippet>254</a>                    <span class="kw">let </span>scale = geometry.scale.clamped(<span class="kw-2">&amp;</span>entry.config.scale_limits);
-<a href=#255 id=255 data-nosnippet>255</a>                    entry.scale.set(scale);
-<a href=#256 id=256 data-nosnippet>256</a>                    entry.pending_anchor.borrow_mut().take();
-<a href=#257 id=257 data-nosnippet>257</a>                    (entry.rotation_widget.clone(), entry.scaling.clone(), scale)
-<a href=#258 id=258 data-nosnippet>258</a>                }
-<a href=#259 id=259 data-nosnippet>259</a>                <span class="prelude-val">None </span>=&gt; <span class="kw">return</span>,
-<a href=#260 id=260 data-nosnippet>260</a>            }
-<a href=#261 id=261 data-nosnippet>261</a>        };
-<a href=#262 id=262 data-nosnippet>262</a>        rotation_widget.set_rotation(geometry.rotation);
-<a href=#263 id=263 data-nosnippet>263</a>        scaling.set_scale(scale.value());
-<a href=#264 id=264 data-nosnippet>264</a>        <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#265 id=265 data-nosnippet>265</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) {
-<a href=#266 id=266 data-nosnippet>266</a>            <span class="self">self</span>.apply_position(entry);
-<a href=#267 id=267 data-nosnippet>267</a>            <span class="self">self</span>.clamp_entry(entry);
-<a href=#268 id=268 data-nosnippet>268</a>        }
-<a href=#269 id=269 data-nosnippet>269</a>        drop(cards);
-<a href=#270 id=270 data-nosnippet>270</a>        <span class="self">self</span>.emit_geometry_changed();
-<a href=#271 id=271 data-nosnippet>271</a>    }
-<a href=#272 id=272 data-nosnippet>272</a>
-<a href=#273 id=273 data-nosnippet>273</a>    <span class="doccomment">/// Sets the card rotation immediately (no animation).
-<a href=#274 id=274 data-nosnippet>274</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>set_card_rotation(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, rotation: SmearorRotation) {
-<a href=#275 id=275 data-nosnippet>275</a>        <span class="kw">let </span>rotation_widget = <span class="self">self</span>.imp().cards.borrow().get(id).map(|entry| entry.rotation_widget.clone());
-<a href=#276 id=276 data-nosnippet>276</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(rotation_widget) = rotation_widget {
-<a href=#277 id=277 data-nosnippet>277</a>            <span class="comment">// The notify::rotation handler performs re-centering, clamping and
-<a href=#278 id=278 data-nosnippet>278</a>            // signal emission.
-<a href=#279 id=279 data-nosnippet>279</a>            </span>rotation_widget.set_rotation(rotation);
-<a href=#280 id=280 data-nosnippet>280</a>        }
-<a href=#281 id=281 data-nosnippet>281</a>    }
-<a href=#282 id=282 data-nosnippet>282</a>
-<a href=#283 id=283 data-nosnippet>283</a>    <span class="doccomment">/// Sets the card rotation with the zoom-snap animation.
-<a href=#284 id=284 data-nosnippet>284</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>set_card_rotation_animated(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, rotation: SmearorRotation) {
-<a href=#285 id=285 data-nosnippet>285</a>        <span class="kw">let </span>rotation_widget = <span class="self">self</span>.imp().cards.borrow().get(id).map(|entry| entry.rotation_widget.clone());
-<a href=#286 id=286 data-nosnippet>286</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(rotation_widget) = rotation_widget {
-<a href=#287 id=287 data-nosnippet>287</a>            rotation_widget.set_rotation_with_animation(rotation.to_degrees() <span class="kw">as </span>f64);
-<a href=#288 id=288 data-nosnippet>288</a>        }
-<a href=#289 id=289 data-nosnippet>289</a>    }
-<a href=#290 id=290 data-nosnippet>290</a>
-<a href=#291 id=291 data-nosnippet>291</a>    <span class="doccomment">/// Sets the card scale, clamped to its `scale_limits`.
-<a href=#292 id=292 data-nosnippet>292</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>set_card_scale(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, scale: ScaleFactor) {
-<a href=#293 id=293 data-nosnippet>293</a>        <span class="kw">let </span>card = {
-<a href=#294 id=294 data-nosnippet>294</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#295 id=295 data-nosnippet>295</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
-<a href=#296 id=296 data-nosnippet>296</a>                <span class="kw">return</span>;
-<a href=#297 id=297 data-nosnippet>297</a>            };
-<a href=#298 id=298 data-nosnippet>298</a>            <span class="kw">let </span>scale = scale.clamped(<span class="kw-2">&amp;</span>entry.config.scale_limits);
-<a href=#299 id=299 data-nosnippet>299</a>            entry.scale.set(scale);
-<a href=#300 id=300 data-nosnippet>300</a>            entry.scaling.set_scale(scale.value());
-<a href=#301 id=301 data-nosnippet>301</a>            <span class="self">self</span>.apply_position(entry);
-<a href=#302 id=302 data-nosnippet>302</a>            <span class="self">self</span>.clamp_entry(entry);
-<a href=#303 id=303 data-nosnippet>303</a>            entry.card.clone()
-<a href=#304 id=304 data-nosnippet>304</a>        };
-<a href=#305 id=305 data-nosnippet>305</a>        card.emit_card_scaled();
-<a href=#306 id=306 data-nosnippet>306</a>        <span class="self">self</span>.emit_geometry_changed();
-<a href=#307 id=307 data-nosnippet>307</a>    }
-<a href=#308 id=308 data-nosnippet>308</a>
-<a href=#309 id=309 data-nosnippet>309</a>    <span class="doccomment">/// Resets a card to its configured initial geometry: the `position`
-<a href=#310 id=310 data-nosnippet>310</a>    /// anchor re-resolved against the current bounds, `Deg0` rotation and
-<a href=#311 id=311 data-nosnippet>311</a>    /// scale `1.0`.
-<a href=#312 id=312 data-nosnippet>312</a>    ///
-<a href=#313 id=313 data-nosnippet>313</a>    /// Rotation goes through the widget first (the `notify::rotation` handler
-<a href=#314 id=314 data-nosnippet>314</a>    /// applies the interim state); the anchor then resolves against the
-<a href=#315 id=315 data-nosnippet>315</a>    /// reset footprint.
-<a href=#316 id=316 data-nosnippet>316</a>    </span><span class="kw">pub fn </span>reset_card(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) -&gt; <span class="prelude-ty">Result</span>&lt;(), BoardError&gt; {
-<a href=#317 id=317 data-nosnippet>317</a>        <span class="kw">let </span>(rotation_widget, scaling) = {
-<a href=#318 id=318 data-nosnippet>318</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#319 id=319 data-nosnippet>319</a>            <span class="kw">let </span>entry = cards.get(id).ok_or_else(|| BoardError::UnknownCard(id.clone()))<span class="question-mark">?</span>;
-<a href=#320 id=320 data-nosnippet>320</a>            entry.scale.set(ScaleFactor::default());
-<a href=#321 id=321 data-nosnippet>321</a>            (entry.rotation_widget.clone(), entry.scaling.clone())
-<a href=#322 id=322 data-nosnippet>322</a>        };
-<a href=#323 id=323 data-nosnippet>323</a>        rotation_widget.set_rotation(SmearorRotation::Deg0);
-<a href=#324 id=324 data-nosnippet>324</a>        scaling.set_scale(<span class="number">1.0</span>);
-<a href=#325 id=325 data-nosnippet>325</a>        {
-<a href=#326 id=326 data-nosnippet>326</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#327 id=327 data-nosnippet>327</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
-<a href=#328 id=328 data-nosnippet>328</a>                <span class="kw">return </span><span class="prelude-val">Ok</span>(());
-<a href=#329 id=329 data-nosnippet>329</a>            };
-<a href=#330 id=330 data-nosnippet>330</a>            <span class="kw">match </span>entry.config.position {
-<a href=#331 id=331 data-nosnippet>331</a>                CardAnchor::Explicit(position) =&gt; {
-<a href=#332 id=332 data-nosnippet>332</a>                    entry.pending_anchor.borrow_mut().take();
-<a href=#333 id=333 data-nosnippet>333</a>                    entry.position.set(position);
-<a href=#334 id=334 data-nosnippet>334</a>                }
-<a href=#335 id=335 data-nosnippet>335</a>                anchor =&gt; {
-<a href=#336 id=336 data-nosnippet>336</a>                    <span class="kw">let </span>bounds = <span class="self">self</span>.board_bounds();
-<a href=#337 id=337 data-nosnippet>337</a>                    <span class="kw">if </span>bounds.is_empty() {
-<a href=#338 id=338 data-nosnippet>338</a>                        entry.pending_anchor.replace(<span class="prelude-val">Some</span>(anchor));
-<a href=#339 id=339 data-nosnippet>339</a>                    } <span class="kw">else </span>{
-<a href=#340 id=340 data-nosnippet>340</a>                        entry.pending_anchor.borrow_mut().take();
-<a href=#341 id=341 data-nosnippet>341</a>                        <span class="kw">let </span>(width, height) = <span class="self">self</span>.predicted_size(entry);
-<a href=#342 id=342 data-nosnippet>342</a>                        entry.position.set(resolve_anchor(<span class="kw-2">&amp;</span>anchor, <span class="kw-2">&amp;</span>bounds, width, height, entry.config.anchor_margin));
-<a href=#343 id=343 data-nosnippet>343</a>                    }
-<a href=#344 id=344 data-nosnippet>344</a>                }
-<a href=#345 id=345 data-nosnippet>345</a>            }
-<a href=#346 id=346 data-nosnippet>346</a>            <span class="self">self</span>.apply_position(entry);
-<a href=#347 id=347 data-nosnippet>347</a>            <span class="self">self</span>.clamp_entry(entry);
-<a href=#348 id=348 data-nosnippet>348</a>        }
-<a href=#349 id=349 data-nosnippet>349</a>        <span class="self">self</span>.emit_geometry_changed();
-<a href=#350 id=350 data-nosnippet>350</a>        <span class="prelude-val">Ok</span>(())
-<a href=#351 id=351 data-nosnippet>351</a>    }
-<a href=#352 id=352 data-nosnippet>352</a>
-<a href=#353 id=353 data-nosnippet>353</a>    <span class="doccomment">/// Moves the card to the top of the card layer.
-<a href=#354 id=354 data-nosnippet>354</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>raise_card(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) {
-<a href=#355 id=355 data-nosnippet>355</a>        <span class="kw">let </span>card = {
-<a href=#356 id=356 data-nosnippet>356</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#357 id=357 data-nosnippet>357</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(layer) = <span class="self">self</span>.card_layer() <span class="kw">else </span>{
-<a href=#358 id=358 data-nosnippet>358</a>                <span class="kw">return</span>;
-<a href=#359 id=359 data-nosnippet>359</a>            };
-<a href=#360 id=360 data-nosnippet>360</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
-<a href=#361 id=361 data-nosnippet>361</a>                <span class="kw">return</span>;
-<a href=#362 id=362 data-nosnippet>362</a>            };
-<a href=#363 id=363 data-nosnippet>363</a>            <span class="kw">let </span>(width, height) = <span class="self">self</span>.displayed_size(entry);
-<a href=#364 id=364 data-nosnippet>364</a>            <span class="kw">let </span>position = entry.position.get();
-<a href=#365 id=365 data-nosnippet>365</a>            layer.remove(<span class="kw-2">&amp;</span>entry.scaling);
-<a href=#366 id=366 data-nosnippet>366</a>            layer.put(<span class="kw-2">&amp;</span>entry.scaling, position.x() - width / <span class="number">2.0</span>, position.y() - height / <span class="number">2.0</span>);
-<a href=#367 id=367 data-nosnippet>367</a>            entry.card.clone()
-<a href=#368 id=368 data-nosnippet>368</a>        };
-<a href=#369 id=369 data-nosnippet>369</a>        card.emit_card_raised();
-<a href=#370 id=370 data-nosnippet>370</a>    }
-<a href=#371 id=371 data-nosnippet>371</a>
-<a href=#372 id=372 data-nosnippet>372</a>    <span class="doccomment">/// Re-centers the card on its stored position and re-clamps it (called
-<a href=#373 id=373 data-nosnippet>373</a>    /// after size changes like folding).
-<a href=#374 id=374 data-nosnippet>374</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>recenter_card(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) {
-<a href=#375 id=375 data-nosnippet>375</a>        <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#376 id=376 data-nosnippet>376</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) {
-<a href=#377 id=377 data-nosnippet>377</a>            <span class="self">self</span>.apply_position(entry);
-<a href=#378 id=378 data-nosnippet>378</a>            <span class="self">self</span>.clamp_entry(entry);
-<a href=#379 id=379 data-nosnippet>379</a>        }
-<a href=#380 id=380 data-nosnippet>380</a>    }
-<a href=#381 id=381 data-nosnippet>381</a>
-<a href=#382 id=382 data-nosnippet>382</a>    <span class="doccomment">/// Rotated footprint of a card in card-layer (board) coordinates - for
-<a href=#383 id=383 data-nosnippet>383</a>    /// safe-area unions and input regions.
-<a href=#384 id=384 data-nosnippet>384</a>    </span><span class="kw">pub fn </span>card_footprint(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) -&gt; <span class="prelude-ty">Result</span>&lt;Region, BoardError&gt; {
-<a href=#385 id=385 data-nosnippet>385</a>        <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#386 id=386 data-nosnippet>386</a>        <span class="kw">let </span>entry = cards.get(id).ok_or_else(|| BoardError::UnknownCard(id.clone()))<span class="question-mark">?</span>;
-<a href=#387 id=387 data-nosnippet>387</a>        <span class="prelude-val">Ok</span>(<span class="self">self</span>.entry_footprint(entry))
-<a href=#388 id=388 data-nosnippet>388</a>    }
-<a href=#389 id=389 data-nosnippet>389</a>
-<a href=#390 id=390 data-nosnippet>390</a>    <span class="doccomment">/// Union of every card's rotated footprint in card-layer (board)
-<a href=#391 id=391 data-nosnippet>391</a>    /// coordinates. Consumers restricting the surface input region to
-<a href=#392 id=392 data-nosnippet>392</a>    /// interactive chrome - e.g. touch-passthrough overlays - union this
-<a href=#393 id=393 data-nosnippet>393</a>    /// with their own regions after translating to surface coordinates.
-<a href=#394 id=394 data-nosnippet>394</a>    </span><span class="kw">pub fn </span>cards_region(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Region {
-<a href=#395 id=395 data-nosnippet>395</a>        <span class="kw">let </span>region = Region::create();
-<a href=#396 id=396 data-nosnippet>396</a>        <span class="kw">for </span>entry <span class="kw">in </span><span class="self">self</span>.imp().cards.borrow().values() {
-<a href=#397 id=397 data-nosnippet>397</a>            <span class="kw">if let </span><span class="prelude-val">Err</span>(error) = region.union(<span class="kw-2">&amp;</span><span class="self">self</span>.entry_footprint(entry)) {
-<a href=#398 id=398 data-nosnippet>398</a>                <span class="macro">warn!</span>(%error, <span class="string">"failed to union card footprint"</span>);
-<a href=#399 id=399 data-nosnippet>399</a>            }
-<a href=#400 id=400 data-nosnippet>400</a>        }
-<a href=#401 id=401 data-nosnippet>401</a>        region
-<a href=#402 id=402 data-nosnippet>402</a>    }
-<a href=#403 id=403 data-nosnippet>403</a>
-<a href=#404 id=404 data-nosnippet>404</a>    <span class="doccomment">/// Rotated footprint rasterized from the card's natural size, scale and
-<a href=#405 id=405 data-nosnippet>405</a>    /// rotation, centered on its board position.
-<a href=#406 id=406 data-nosnippet>406</a>    </span><span class="kw">fn </span>entry_footprint(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; Region {
-<a href=#407 id=407 data-nosnippet>407</a>        <span class="kw">let </span>(<span class="kw">_</span>, natural_width, <span class="kw">_</span>, <span class="kw">_</span>) = entry.card.measure(Orientation::Horizontal, -<span class="number">1</span>);
-<a href=#408 id=408 data-nosnippet>408</a>        <span class="kw">let </span>(<span class="kw">_</span>, natural_height, <span class="kw">_</span>, <span class="kw">_</span>) = entry.card.measure(Orientation::Vertical, -<span class="number">1</span>);
-<a href=#409 id=409 data-nosnippet>409</a>        <span class="kw">let </span>scale = entry.scale.get().value();
-<a href=#410 id=410 data-nosnippet>410</a>        <span class="kw">let </span>degrees = entry.rotation_widget.rotation() <span class="kw">as </span>f64;
-<a href=#411 id=411 data-nosnippet>411</a>        <span class="kw">let </span>position = entry.position.get();
-<a href=#412 id=412 data-nosnippet>412</a>        <span class="kw">let </span>center_x = position.x().round() <span class="kw">as </span>i32;
-<a href=#413 id=413 data-nosnippet>413</a>        <span class="kw">let </span>center_y = position.y().round() <span class="kw">as </span>i32;
-<a href=#414 id=414 data-nosnippet>414</a>        <span class="kw">let </span>region = Region::create();
-<a href=#415 id=415 data-nosnippet>415</a>        <span class="kw">for </span>(y, x_start, x_end) <span class="kw">in </span>rotated_region_scanlines(natural_width <span class="kw">as </span>f64 * scale, natural_height <span class="kw">as </span>f64 * scale, degrees) {
-<a href=#416 id=416 data-nosnippet>416</a>            <span class="kw">let </span>strip = RectangleInt::new(center_x + x_start, center_y + y, x_end - x_start, <span class="number">1</span>);
-<a href=#417 id=417 data-nosnippet>417</a>            <span class="kw">if let </span><span class="prelude-val">Err</span>(error) = region.union_rectangle(<span class="kw-2">&amp;</span>strip) {
-<a href=#418 id=418 data-nosnippet>418</a>                <span class="macro">warn!</span>(%error, <span class="string">"failed to union footprint strip"</span>);
-<a href=#419 id=419 data-nosnippet>419</a>            }
-<a href=#420 id=420 data-nosnippet>420</a>        }
-<a href=#421 id=421 data-nosnippet>421</a>        region
-<a href=#422 id=422 data-nosnippet>422</a>    }
-<a href=#423 id=423 data-nosnippet>423</a>
-<a href=#424 id=424 data-nosnippet>424</a>    <span class="doccomment">/// Whether an external consumer manages the surface input region.
-<a href=#425 id=425 data-nosnippet>425</a>    </span><span class="kw">pub fn </span>input_region_managed(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
-<a href=#426 id=426 data-nosnippet>426</a>        <span class="self">self</span>.imp().input_region_managed.get()
-<a href=#427 id=427 data-nosnippet>427</a>    }
-<a href=#428 id=428 data-nosnippet>428</a>
-<a href=#429 id=429 data-nosnippet>429</a>    <span class="doccomment">/// Hands the surface input region to an external consumer: the board
-<a href=#430 id=430 data-nosnippet>430</a>    /// stops resetting it on every allocation (its default defense against
-<a href=#431 id=431 data-nosnippet>431</a>    /// `RotationWidget`'s own region narrowing). Consumers computing custom
-<a href=#432 id=432 data-nosnippet>432</a>    /// input regions - e.g. restricting input to cards plus chrome in
-<a href=#433 id=433 data-nosnippet>433</a>    /// touch-passthrough overlays - must set this so their region survives
-<a href=#434 id=434 data-nosnippet>434</a>    /// the next layout pass.
-<a href=#435 id=435 data-nosnippet>435</a>    </span><span class="kw">pub fn </span>set_input_region_managed(<span class="kw-2">&amp;</span><span class="self">self</span>, managed: bool) {
-<a href=#436 id=436 data-nosnippet>436</a>        <span class="self">self</span>.imp().input_region_managed.set(managed);
-<a href=#437 id=437 data-nosnippet>437</a>    }
-<a href=#438 id=438 data-nosnippet>438</a>
-<a href=#439 id=439 data-nosnippet>439</a>    <span class="doccomment">/// Called from `WidgetImpl::size_allocate`: resolves pending anchors and
-<a href=#440 id=440 data-nosnippet>440</a>    /// re-clamps all cards against the new bounds.
-<a href=#441 id=441 data-nosnippet>441</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_board_allocated(<span class="kw-2">&amp;</span><span class="self">self</span>) {
-<a href=#442 id=442 data-nosnippet>442</a>        <span class="kw">let </span>bounds = <span class="self">self</span>.board_bounds();
-<a href=#443 id=443 data-nosnippet>443</a>        <span class="kw">if </span>bounds.is_empty() {
-<a href=#444 id=444 data-nosnippet>444</a>            <span class="kw">return</span>;
-<a href=#445 id=445 data-nosnippet>445</a>        }
-<a href=#446 id=446 data-nosnippet>446</a>        <span class="kw">let </span><span class="kw-2">mut </span>resolved = <span class="bool-val">false</span>;
-<a href=#447 id=447 data-nosnippet>447</a>        {
-<a href=#448 id=448 data-nosnippet>448</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#449 id=449 data-nosnippet>449</a>            <span class="kw">for </span>entry <span class="kw">in </span>cards.values() {
-<a href=#450 id=450 data-nosnippet>450</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(anchor) = entry.pending_anchor.borrow_mut().take() {
-<a href=#451 id=451 data-nosnippet>451</a>                    <span class="kw">let </span>(width, height) = <span class="self">self</span>.predicted_size(entry);
-<a href=#452 id=452 data-nosnippet>452</a>                    entry.position.set(resolve_anchor(<span class="kw-2">&amp;</span>anchor, <span class="kw-2">&amp;</span>bounds, width, height, entry.config.anchor_margin));
-<a href=#453 id=453 data-nosnippet>453</a>                    resolved = <span class="bool-val">true</span>;
-<a href=#454 id=454 data-nosnippet>454</a>                }
-<a href=#455 id=455 data-nosnippet>455</a>                <span class="comment">// Reconcile render state with position state on every
-<a href=#456 id=456 data-nosnippet>456</a>                // allocation: `gtk4::Fixed` positions are only ever moved via
-<a href=#457 id=457 data-nosnippet>457</a>                // apply_position, so cards added before the first allocation
-<a href=#458 id=458 data-nosnippet>458</a>                // would otherwise stay at (0,0).
-<a href=#459 id=459 data-nosnippet>459</a>                </span><span class="self">self</span>.apply_position(entry);
-<a href=#460 id=460 data-nosnippet>460</a>            }
-<a href=#461 id=461 data-nosnippet>461</a>        }
-<a href=#462 id=462 data-nosnippet>462</a>        <span class="self">self</span>.clamp_all();
-<a href=#463 id=463 data-nosnippet>463</a>        <span class="kw">if </span>resolved {
-<a href=#464 id=464 data-nosnippet>464</a>            <span class="self">self</span>.emit_geometry_changed();
-<a href=#465 id=465 data-nosnippet>465</a>        }
-<a href=#466 id=466 data-nosnippet>466</a>    }
-<a href=#467 id=467 data-nosnippet>467</a>
-<a href=#468 id=468 data-nosnippet>468</a>    <span class="doccomment">/// `notify::rotation` on the card's `RotatedLayout`: re-centers the card
-<a href=#469 id=469 data-nosnippet>469</a>    /// (the rotated bounding box changes size), clamps and emits signals.
-<a href=#470 id=470 data-nosnippet>470</a>    </span><span class="kw">fn </span>on_card_rotated(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) {
-<a href=#471 id=471 data-nosnippet>471</a>        <span class="kw">let </span>card = {
-<a href=#472 id=472 data-nosnippet>472</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#473 id=473 data-nosnippet>473</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
-<a href=#474 id=474 data-nosnippet>474</a>                <span class="kw">return</span>;
-<a href=#475 id=475 data-nosnippet>475</a>            };
-<a href=#476 id=476 data-nosnippet>476</a>            entry.scaling.queue_resize();
-<a href=#477 id=477 data-nosnippet>477</a>            <span class="self">self</span>.apply_position(entry);
-<a href=#478 id=478 data-nosnippet>478</a>            <span class="self">self</span>.clamp_entry(entry);
-<a href=#479 id=479 data-nosnippet>479</a>            entry.card.clone()
-<a href=#480 id=480 data-nosnippet>480</a>        };
-<a href=#481 id=481 data-nosnippet>481</a>        card.emit_card_rotated();
-<a href=#482 id=482 data-nosnippet>482</a>        <span class="self">self</span>.emit_geometry_changed();
-<a href=#483 id=483 data-nosnippet>483</a>    }
-<a href=#484 id=484 data-nosnippet>484</a>
-<a href=#485 id=485 data-nosnippet>485</a>    <span class="kw">fn </span>on_card_pinch_begin(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) {
-<a href=#486 id=486 data-nosnippet>486</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = <span class="self">self</span>.imp().cards.borrow().get(id) {
-<a href=#487 id=487 data-nosnippet>487</a>            entry.pinch_start.set(entry.scale.get().value());
-<a href=#488 id=488 data-nosnippet>488</a>        }
-<a href=#489 id=489 data-nosnippet>489</a>    }
-<a href=#490 id=490 data-nosnippet>490</a>
-<a href=#491 id=491 data-nosnippet>491</a>    <span class="doccomment">/// Live pinch zoom: `scale = start * zoom`, clamped to `scale_limits`.
-<a href=#492 id=492 data-nosnippet>492</a>    ///
-<a href=#493 id=493 data-nosnippet>493</a>    /// The card grows around the pinch midpoint - the card point under the
-<a href=#494 id=494 data-nosnippet>494</a>    /// fingers stays fixed - instead of around the card center, which would
-<a href=#495 id=495 data-nosnippet>495</a>    /// visually drift the card away from the gesture.
-<a href=#496 id=496 data-nosnippet>496</a>    </span><span class="kw">fn </span>on_card_pinch_changed(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, gesture: <span class="kw-2">&amp;</span>gtk4::GestureZoom, zoom: f64) {
-<a href=#497 id=497 data-nosnippet>497</a>        {
-<a href=#498 id=498 data-nosnippet>498</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#499 id=499 data-nosnippet>499</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
-<a href=#500 id=500 data-nosnippet>500</a>                <span class="kw">return</span>;
-<a href=#501 id=501 data-nosnippet>501</a>            };
-<a href=#502 id=502 data-nosnippet>502</a>            <span class="kw">let </span>previous = entry.scale.get().value();
-<a href=#503 id=503 data-nosnippet>503</a>            <span class="kw">let </span>scale = ScaleFactor::new(entry.pinch_start.get() * zoom).clamped(<span class="kw-2">&amp;</span>entry.config.scale_limits);
-<a href=#504 id=504 data-nosnippet>504</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>((mid_x, mid_y)) = <span class="self">self</span>.pinch_midpoint_in_layer(gesture, entry)
-<a href=#505 id=505 data-nosnippet>505</a>                &amp;&amp; scale.value() != previous
-<a href=#506 id=506 data-nosnippet>506</a>            {
-<a href=#507 id=507 data-nosnippet>507</a>                <span class="kw">let </span>position = entry.position.get();
-<a href=#508 id=508 data-nosnippet>508</a>                <span class="kw">let </span>ratio = scale.value() / previous;
-<a href=#509 id=509 data-nosnippet>509</a>                entry
-<a href=#510 id=510 data-nosnippet>510</a>                    .position
-<a href=#511 id=511 data-nosnippet>511</a>                    .set(CardPosition::new(mid_x - (mid_x - position.x()) * ratio, mid_y - (mid_y - position.y()) * ratio));
-<a href=#512 id=512 data-nosnippet>512</a>            }
-<a href=#513 id=513 data-nosnippet>513</a>            entry.scale.set(scale);
-<a href=#514 id=514 data-nosnippet>514</a>            entry.scaling.set_scale(scale.value());
-<a href=#515 id=515 data-nosnippet>515</a>            <span class="self">self</span>.apply_position(entry);
-<a href=#516 id=516 data-nosnippet>516</a>            <span class="kw">if </span>entry.config.bounds_mode == BoundsMode::Contained {
-<a href=#517 id=517 data-nosnippet>517</a>                <span class="self">self</span>.clamp_entry(entry);
-<a href=#518 id=518 data-nosnippet>518</a>            }
-<a href=#519 id=519 data-nosnippet>519</a>        }
-<a href=#520 id=520 data-nosnippet>520</a>        <span class="self">self</span>.emit_geometry_changed();
-<a href=#521 id=521 data-nosnippet>521</a>    }
-<a href=#522 id=522 data-nosnippet>522</a>
-<a href=#523 id=523 data-nosnippet>523</a>    <span class="doccomment">/// Pinch midpoint in card-layer (board) coordinates. `gesture.point()`
-<a href=#524 id=524 data-nosnippet>524</a>    /// reports in `scaling` widget coordinates, which are untransformed - the
-<a href=#525 id=525 data-nosnippet>525</a>    /// scale transform applies to its child only - so adding the stack's
-<a href=#526 id=526 data-nosnippet>526</a>    /// top-left layer offset yields board space.
-<a href=#527 id=527 data-nosnippet>527</a>    </span><span class="kw">fn </span>pinch_midpoint_in_layer(<span class="kw-2">&amp;</span><span class="self">self</span>, gesture: <span class="kw-2">&amp;</span>gtk4::GestureZoom, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; <span class="prelude-ty">Option</span>&lt;(f64, f64)&gt; {
-<a href=#528 id=528 data-nosnippet>528</a>        <span class="kw">let </span>(px, py) = gesture.point(<span class="prelude-val">None</span>)<span class="question-mark">?</span>;
-<a href=#529 id=529 data-nosnippet>529</a>        <span class="kw">let </span>layer = <span class="self">self</span>.card_layer()<span class="question-mark">?</span>;
-<a href=#530 id=530 data-nosnippet>530</a>        <span class="kw">let </span>(offset_x, offset_y) = layer.child_position(<span class="kw-2">&amp;</span>entry.scaling);
-<a href=#531 id=531 data-nosnippet>531</a>        <span class="prelude-val">Some</span>((offset_x + px, offset_y + py))
-<a href=#532 id=532 data-nosnippet>532</a>    }
-<a href=#533 id=533 data-nosnippet>533</a>
-<a href=#534 id=534 data-nosnippet>534</a>    <span class="kw">fn </span>on_card_pinch_end(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) {
-<a href=#535 id=535 data-nosnippet>535</a>        <span class="kw">let </span>card = {
-<a href=#536 id=536 data-nosnippet>536</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#537 id=537 data-nosnippet>537</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
-<a href=#538 id=538 data-nosnippet>538</a>                <span class="kw">return</span>;
-<a href=#539 id=539 data-nosnippet>539</a>            };
-<a href=#540 id=540 data-nosnippet>540</a>            <span class="self">self</span>.clamp_entry(entry);
-<a href=#541 id=541 data-nosnippet>541</a>            entry.card.clone()
-<a href=#542 id=542 data-nosnippet>542</a>        };
-<a href=#543 id=543 data-nosnippet>543</a>        card.emit_card_scaled();
-<a href=#544 id=544 data-nosnippet>544</a>        <span class="self">self</span>.emit_geometry_changed();
-<a href=#545 id=545 data-nosnippet>545</a>    }
-<a href=#546 id=546 data-nosnippet>546</a>
-<a href=#547 id=547 data-nosnippet>547</a>    <span class="doccomment">/// Records the card position and the pointer's board coordinates at drag
-<a href=#548 id=548 data-nosnippet>548</a>    /// begin; the update delta is measured between two board-space pointer
-<a href=#549 id=549 data-nosnippet>549</a>    /// samples, which stays stable while the card follows the pointer.
-<a href=#550 id=550 data-nosnippet>550</a>    </span><span class="kw">fn </span>on_card_drag_begin(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, gesture: <span class="kw-2">&amp;</span>gtk4::GestureDrag) {
-<a href=#551 id=551 data-nosnippet>551</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = <span class="self">self</span>.imp().cards.borrow().get(id) {
-<a href=#552 id=552 data-nosnippet>552</a>            entry.drag_start.set(entry.position.get());
-<a href=#553 id=553 data-nosnippet>553</a>            entry.drag_grab.set(<span class="self">self</span>.pointer_in_layer(gesture));
-<a href=#554 id=554 data-nosnippet>554</a>        }
-<a href=#555 id=555 data-nosnippet>555</a>    }
-<a href=#556 id=556 data-nosnippet>556</a>
-<a href=#557 id=557 data-nosnippet>557</a>    <span class="doccomment">/// Moves the card so it follows the pointer.
-<a href=#558 id=558 data-nosnippet>558</a>    ///
-<a href=#559 id=559 data-nosnippet>559</a>    /// `GestureDrag` reports offsets in the coordinate space of the drag
-<a href=#560 id=560 data-nosnippet>560</a>    /// source - which lives *inside* the rotating/scaling transform stack and
-<a href=#561 id=561 data-nosnippet>561</a>    /// *moves* with the card. Mapping that delta with `compute_point` under
-<a href=#562 id=562 data-nosnippet>562</a>    /// the current transform creates a feedback loop (the reference frame
-<a href=#563 id=563 data-nosnippet>563</a>    /// shifts as the card tracks the pointer) that shows up as jitter and
-<a href=#564 id=564 data-nosnippet>564</a>    /// roughly half pointer speed. Instead, the pointer's board position is
-<a href=#565 id=565 data-nosnippet>565</a>    /// taken straight from the event's surface coordinates, which are
-<a href=#566 id=566 data-nosnippet>566</a>    /// independent of the widget's own transform.
-<a href=#567 id=567 data-nosnippet>567</a>    </span><span class="kw">fn </span>on_card_drag_update(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, gesture: <span class="kw-2">&amp;</span>gtk4::GestureDrag, offset_x: f64, offset_y: f64) {
-<a href=#568 id=568 data-nosnippet>568</a>        {
-<a href=#569 id=569 data-nosnippet>569</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#570 id=570 data-nosnippet>570</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
-<a href=#571 id=571 data-nosnippet>571</a>                <span class="kw">return</span>;
-<a href=#572 id=572 data-nosnippet>572</a>            };
-<a href=#573 id=573 data-nosnippet>573</a>            <span class="kw">let </span>delta = <span class="self">self</span>.drag_delta(gesture, offset_x, offset_y, entry);
-<a href=#574 id=574 data-nosnippet>574</a>            entry.position.set(entry.drag_start.get().translated(delta.<span class="number">0</span>, delta.<span class="number">1</span>));
-<a href=#575 id=575 data-nosnippet>575</a>            <span class="self">self</span>.apply_position(entry);
-<a href=#576 id=576 data-nosnippet>576</a>            <span class="kw">if </span>entry.config.bounds_mode == BoundsMode::Contained {
-<a href=#577 id=577 data-nosnippet>577</a>                <span class="self">self</span>.clamp_entry(entry);
-<a href=#578 id=578 data-nosnippet>578</a>            }
-<a href=#579 id=579 data-nosnippet>579</a>        }
-<a href=#580 id=580 data-nosnippet>580</a>        <span class="self">self</span>.emit_geometry_changed();
-<a href=#581 id=581 data-nosnippet>581</a>    }
-<a href=#582 id=582 data-nosnippet>582</a>
-<a href=#583 id=583 data-nosnippet>583</a>    <span class="kw">fn </span>on_card_drag_end(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, gesture: <span class="kw-2">&amp;</span>gtk4::GestureDrag, offset_x: f64, offset_y: f64) {
-<a href=#584 id=584 data-nosnippet>584</a>        <span class="self">self</span>.on_card_drag_update(id, gesture, offset_x, offset_y);
-<a href=#585 id=585 data-nosnippet>585</a>        <span class="kw">let </span>card = {
-<a href=#586 id=586 data-nosnippet>586</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#587 id=587 data-nosnippet>587</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
-<a href=#588 id=588 data-nosnippet>588</a>                <span class="kw">return</span>;
-<a href=#589 id=589 data-nosnippet>589</a>            };
-<a href=#590 id=590 data-nosnippet>590</a>            <span class="self">self</span>.clamp_entry(entry);
-<a href=#591 id=591 data-nosnippet>591</a>            entry.card.clone()
-<a href=#592 id=592 data-nosnippet>592</a>        };
-<a href=#593 id=593 data-nosnippet>593</a>        card.emit_card_moved();
-<a href=#594 id=594 data-nosnippet>594</a>        <span class="self">self</span>.emit_geometry_changed();
-<a href=#595 id=595 data-nosnippet>595</a>    }
-<a href=#596 id=596 data-nosnippet>596</a>
-<a href=#597 id=597 data-nosnippet>597</a>    <span class="doccomment">/// Pointer position in card-layer (board) coordinates, taken from the
-<a href=#598 id=598 data-nosnippet>598</a>    /// event's surface coordinates - independent of the card's own transform.
-<a href=#599 id=599 data-nosnippet>599</a>    </span><span class="kw">fn </span>pointer_in_layer(<span class="kw-2">&amp;</span><span class="self">self</span>, gesture: <span class="kw-2">&amp;</span>gtk4::GestureDrag) -&gt; <span class="prelude-ty">Option</span>&lt;(f64, f64)&gt; {
-<a href=#600 id=600 data-nosnippet>600</a>        <span class="kw">let </span>event = gesture.current_event()<span class="question-mark">?</span>;
-<a href=#601 id=601 data-nosnippet>601</a>        <span class="kw">let </span>(x, y) = event.position()<span class="question-mark">?</span>;
-<a href=#602 id=602 data-nosnippet>602</a>        <span class="kw">let </span>layer = <span class="self">self</span>.card_layer()<span class="question-mark">?</span>;
-<a href=#603 id=603 data-nosnippet>603</a>        <span class="kw">let </span>native = layer.native()<span class="question-mark">?</span>;
-<a href=#604 id=604 data-nosnippet>604</a>        <span class="kw">let </span>point = native.compute_point(<span class="kw-2">&amp;</span>layer, <span class="kw-2">&amp;</span>Point::new(x <span class="kw">as </span>f32, y <span class="kw">as </span>f32))<span class="question-mark">?</span>;
-<a href=#605 id=605 data-nosnippet>605</a>        <span class="prelude-val">Some</span>((point.x() <span class="kw">as </span>f64, point.y() <span class="kw">as </span>f64))
-<a href=#606 id=606 data-nosnippet>606</a>    }
-<a href=#607 id=607 data-nosnippet>607</a>
-<a href=#608 id=608 data-nosnippet>608</a>    <span class="doccomment">/// Drag delta in board coordinates: current pointer position minus the
-<a href=#609 id=609 data-nosnippet>609</a>    /// pointer position captured at drag begin. Falls back to undoing the
-<a href=#610 id=610 data-nosnippet>610</a>    /// inverse `rotate . scale` on the widget-space offset before the first
-<a href=#611 id=611 data-nosnippet>611</a>    /// allocation, when no surface mapping is available yet.
-<a href=#612 id=612 data-nosnippet>612</a>    </span><span class="kw">fn </span>drag_delta(<span class="kw-2">&amp;</span><span class="self">self</span>, gesture: <span class="kw-2">&amp;</span>gtk4::GestureDrag, offset_x: f64, offset_y: f64, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; (f64, f64) {
-<a href=#613 id=613 data-nosnippet>613</a>        <span class="kw">if let </span>(<span class="prelude-val">Some</span>(now), <span class="prelude-val">Some</span>((grab_x, grab_y))) = (<span class="self">self</span>.pointer_in_layer(gesture), entry.drag_grab.get()) {
-<a href=#614 id=614 data-nosnippet>614</a>            <span class="kw">return </span>(now.<span class="number">0 </span>- grab_x, now.<span class="number">1 </span>- grab_y);
-<a href=#615 id=615 data-nosnippet>615</a>        }
-<a href=#616 id=616 data-nosnippet>616</a>        <span class="kw">let </span>degrees = entry.rotation_widget.rotation() <span class="kw">as </span>f64;
-<a href=#617 id=617 data-nosnippet>617</a>        <span class="kw">let </span>scale = entry.scale.get().value();
-<a href=#618 id=618 data-nosnippet>618</a>        <span class="kw">let </span>(dx, dy) = rotate_vector(offset_x, offset_y, degrees);
-<a href=#619 id=619 data-nosnippet>619</a>        (dx * scale, dy * scale)
-<a href=#620 id=620 data-nosnippet>620</a>    }
-<a href=#621 id=621 data-nosnippet>621</a>
-<a href=#622 id=622 data-nosnippet>622</a>    <span class="doccomment">/// Reorders the card layer by `z_index` (stable by insertion sequence).
-<a href=#623 id=623 data-nosnippet>623</a>    </span><span class="kw">fn </span>restack(<span class="kw-2">&amp;</span><span class="self">self</span>) {
-<a href=#624 id=624 data-nosnippet>624</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(layer) = <span class="self">self</span>.card_layer() <span class="kw">else </span>{
-<a href=#625 id=625 data-nosnippet>625</a>            <span class="kw">return</span>;
-<a href=#626 id=626 data-nosnippet>626</a>        };
-<a href=#627 id=627 data-nosnippet>627</a>        <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#628 id=628 data-nosnippet>628</a>        <span class="kw">let </span><span class="kw-2">mut </span>ordered: Vec&lt;<span class="kw-2">&amp;</span>CardEntry&gt; = cards.values().collect();
-<a href=#629 id=629 data-nosnippet>629</a>        ordered.sort_by_key(|entry| (entry.config.z_index.unwrap_or(i32::MAX), entry.sequence));
-<a href=#630 id=630 data-nosnippet>630</a>        <span class="kw">for </span>entry <span class="kw">in </span>ordered {
-<a href=#631 id=631 data-nosnippet>631</a>            <span class="kw">let </span>(width, height) = <span class="self">self</span>.displayed_size(entry);
-<a href=#632 id=632 data-nosnippet>632</a>            <span class="kw">let </span>position = entry.position.get();
-<a href=#633 id=633 data-nosnippet>633</a>            layer.remove(<span class="kw-2">&amp;</span>entry.scaling);
-<a href=#634 id=634 data-nosnippet>634</a>            layer.put(<span class="kw-2">&amp;</span>entry.scaling, position.x() - width / <span class="number">2.0</span>, position.y() - height / <span class="number">2.0</span>);
-<a href=#635 id=635 data-nosnippet>635</a>        }
-<a href=#636 id=636 data-nosnippet>636</a>    }
-<a href=#637 id=637 data-nosnippet>637</a>
-<a href=#638 id=638 data-nosnippet>638</a>    <span class="kw">fn </span>wire_gestures(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, card: <span class="kw-2">&amp;</span>Card, scaling: <span class="kw-2">&amp;</span>ScalingWidget, rotation_widget: <span class="kw-2">&amp;</span>RotationWidget, config: <span class="kw-2">&amp;</span>CardConfig) {
-<a href=#639 id=639 data-nosnippet>639</a>        <span class="comment">// Rotation tracking: RotatedLayout exposes `rotation` as a notify-able
-<a href=#640 id=640 data-nosnippet>640</a>        // property, covering both gesture and programmatic changes.
-<a href=#641 id=641 data-nosnippet>641</a>        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(manager) = rotation_widget.layout_manager() {
-<a href=#642 id=642 data-nosnippet>642</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
-<a href=#643 id=643 data-nosnippet>643</a>            <span class="kw">let </span>card_id = id.clone();
-<a href=#644 id=644 data-nosnippet>644</a>            manager.connect_notify_local(<span class="prelude-val">Some</span>(<span class="string">"rotation"</span>), <span class="kw">move </span>|<span class="kw">_</span>, <span class="kw">_</span>| {
-<a href=#645 id=645 data-nosnippet>645</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
-<a href=#646 id=646 data-nosnippet>646</a>                    board.on_card_rotated(<span class="kw-2">&amp;</span>card_id);
-<a href=#647 id=647 data-nosnippet>647</a>                }
-<a href=#648 id=648 data-nosnippet>648</a>            });
-<a href=#649 id=649 data-nosnippet>649</a>        }
-<a href=#650 id=650 data-nosnippet>650</a>
-<a href=#651 id=651 data-nosnippet>651</a>        <span class="kw">if </span>config.scalable {
-<a href=#652 id=652 data-nosnippet>652</a>            <span class="kw">let </span>zoom = gtk4::GestureZoom::new();
+<a href=#233 id=233 data-nosnippet>233</a>            card.set_folded(placement.folded);
+<a href=#234 id=234 data-nosnippet>234</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#235 id=235 data-nosnippet>235</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = cards.get(<span class="kw-2">&amp;</span>placement.id) {
+<a href=#236 id=236 data-nosnippet>236</a>                <span class="self">self</span>.apply_position(entry);
+<a href=#237 id=237 data-nosnippet>237</a>                <span class="self">self</span>.clamp_entry(entry);
+<a href=#238 id=238 data-nosnippet>238</a>            }
+<a href=#239 id=239 data-nosnippet>239</a>        }
+<a href=#240 id=240 data-nosnippet>240</a>        <span class="self">self</span>.emit_geometry_changed();
+<a href=#241 id=241 data-nosnippet>241</a>    }
+<a href=#242 id=242 data-nosnippet>242</a>
+<a href=#243 id=243 data-nosnippet>243</a>    <span class="doccomment">/// Current geometry of a card (rotation is read live from the widget).
+<a href=#244 id=244 data-nosnippet>244</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>card_geometry(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) -&gt; <span class="prelude-ty">Option</span>&lt;CardGeometry&gt; {
+<a href=#245 id=245 data-nosnippet>245</a>        <span class="self">self</span>.imp().cards.borrow().get(id).map(|entry| <span class="self">self</span>.entry_geometry(entry))
+<a href=#246 id=246 data-nosnippet>246</a>    }
+<a href=#247 id=247 data-nosnippet>247</a>
+<a href=#248 id=248 data-nosnippet>248</a>    <span class="doccomment">/// Applies a full geometry update, clamped to the board bounds.
+<a href=#249 id=249 data-nosnippet>249</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>set_card_geometry(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, geometry: <span class="kw-2">&amp;</span>CardGeometry) {
+<a href=#250 id=250 data-nosnippet>250</a>        <span class="kw">let </span>(rotation_widget, scaling, scale) = {
+<a href=#251 id=251 data-nosnippet>251</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#252 id=252 data-nosnippet>252</a>            <span class="kw">match </span>cards.get(id) {
+<a href=#253 id=253 data-nosnippet>253</a>                <span class="prelude-val">Some</span>(entry) =&gt; {
+<a href=#254 id=254 data-nosnippet>254</a>                    entry.position.set(geometry.position);
+<a href=#255 id=255 data-nosnippet>255</a>                    <span class="kw">let </span>scale = geometry.scale.clamped(<span class="kw-2">&amp;</span>entry.config.scale_limits);
+<a href=#256 id=256 data-nosnippet>256</a>                    entry.scale.set(scale);
+<a href=#257 id=257 data-nosnippet>257</a>                    entry.pending_anchor.borrow_mut().take();
+<a href=#258 id=258 data-nosnippet>258</a>                    (entry.rotation_widget.clone(), entry.scaling.clone(), scale)
+<a href=#259 id=259 data-nosnippet>259</a>                }
+<a href=#260 id=260 data-nosnippet>260</a>                <span class="prelude-val">None </span>=&gt; <span class="kw">return</span>,
+<a href=#261 id=261 data-nosnippet>261</a>            }
+<a href=#262 id=262 data-nosnippet>262</a>        };
+<a href=#263 id=263 data-nosnippet>263</a>        rotation_widget.set_rotation(geometry.rotation);
+<a href=#264 id=264 data-nosnippet>264</a>        scaling.set_scale(scale.value());
+<a href=#265 id=265 data-nosnippet>265</a>        <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#266 id=266 data-nosnippet>266</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) {
+<a href=#267 id=267 data-nosnippet>267</a>            <span class="self">self</span>.apply_position(entry);
+<a href=#268 id=268 data-nosnippet>268</a>            <span class="self">self</span>.clamp_entry(entry);
+<a href=#269 id=269 data-nosnippet>269</a>        }
+<a href=#270 id=270 data-nosnippet>270</a>        drop(cards);
+<a href=#271 id=271 data-nosnippet>271</a>        <span class="self">self</span>.emit_geometry_changed();
+<a href=#272 id=272 data-nosnippet>272</a>    }
+<a href=#273 id=273 data-nosnippet>273</a>
+<a href=#274 id=274 data-nosnippet>274</a>    <span class="doccomment">/// Sets the card rotation immediately (no animation).
+<a href=#275 id=275 data-nosnippet>275</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>set_card_rotation(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, rotation: SmearorRotation) {
+<a href=#276 id=276 data-nosnippet>276</a>        <span class="kw">let </span>rotation_widget = <span class="self">self</span>.imp().cards.borrow().get(id).map(|entry| entry.rotation_widget.clone());
+<a href=#277 id=277 data-nosnippet>277</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(rotation_widget) = rotation_widget {
+<a href=#278 id=278 data-nosnippet>278</a>            <span class="comment">// The notify::rotation handler performs re-centering, clamping and
+<a href=#279 id=279 data-nosnippet>279</a>            // signal emission.
+<a href=#280 id=280 data-nosnippet>280</a>            </span>rotation_widget.set_rotation(rotation);
+<a href=#281 id=281 data-nosnippet>281</a>        }
+<a href=#282 id=282 data-nosnippet>282</a>    }
+<a href=#283 id=283 data-nosnippet>283</a>
+<a href=#284 id=284 data-nosnippet>284</a>    <span class="doccomment">/// Sets the card rotation with the zoom-snap animation.
+<a href=#285 id=285 data-nosnippet>285</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>set_card_rotation_animated(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, rotation: SmearorRotation) {
+<a href=#286 id=286 data-nosnippet>286</a>        <span class="kw">let </span>rotation_widget = <span class="self">self</span>.imp().cards.borrow().get(id).map(|entry| entry.rotation_widget.clone());
+<a href=#287 id=287 data-nosnippet>287</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(rotation_widget) = rotation_widget {
+<a href=#288 id=288 data-nosnippet>288</a>            rotation_widget.set_rotation_with_animation(rotation.to_degrees() <span class="kw">as </span>f64);
+<a href=#289 id=289 data-nosnippet>289</a>        }
+<a href=#290 id=290 data-nosnippet>290</a>    }
+<a href=#291 id=291 data-nosnippet>291</a>
+<a href=#292 id=292 data-nosnippet>292</a>    <span class="doccomment">/// Sets the card scale, clamped to its `scale_limits`.
+<a href=#293 id=293 data-nosnippet>293</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>set_card_scale(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, scale: ScaleFactor) {
+<a href=#294 id=294 data-nosnippet>294</a>        <span class="kw">let </span>card = {
+<a href=#295 id=295 data-nosnippet>295</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#296 id=296 data-nosnippet>296</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
+<a href=#297 id=297 data-nosnippet>297</a>                <span class="kw">return</span>;
+<a href=#298 id=298 data-nosnippet>298</a>            };
+<a href=#299 id=299 data-nosnippet>299</a>            <span class="kw">let </span>scale = scale.clamped(<span class="kw-2">&amp;</span>entry.config.scale_limits);
+<a href=#300 id=300 data-nosnippet>300</a>            entry.scale.set(scale);
+<a href=#301 id=301 data-nosnippet>301</a>            entry.scaling.set_scale(scale.value());
+<a href=#302 id=302 data-nosnippet>302</a>            <span class="self">self</span>.apply_position(entry);
+<a href=#303 id=303 data-nosnippet>303</a>            <span class="self">self</span>.clamp_entry(entry);
+<a href=#304 id=304 data-nosnippet>304</a>            entry.card.clone()
+<a href=#305 id=305 data-nosnippet>305</a>        };
+<a href=#306 id=306 data-nosnippet>306</a>        card.emit_card_scaled();
+<a href=#307 id=307 data-nosnippet>307</a>        <span class="self">self</span>.emit_geometry_changed();
+<a href=#308 id=308 data-nosnippet>308</a>    }
+<a href=#309 id=309 data-nosnippet>309</a>
+<a href=#310 id=310 data-nosnippet>310</a>    <span class="doccomment">/// Resets a card to its configured initial geometry: the `position`
+<a href=#311 id=311 data-nosnippet>311</a>    /// anchor re-resolved against the current bounds, `Deg0` rotation and
+<a href=#312 id=312 data-nosnippet>312</a>    /// scale `1.0`.
+<a href=#313 id=313 data-nosnippet>313</a>    ///
+<a href=#314 id=314 data-nosnippet>314</a>    /// Rotation goes through the widget first (the `notify::rotation` handler
+<a href=#315 id=315 data-nosnippet>315</a>    /// applies the interim state); the anchor then resolves against the
+<a href=#316 id=316 data-nosnippet>316</a>    /// reset footprint.
+<a href=#317 id=317 data-nosnippet>317</a>    </span><span class="kw">pub fn </span>reset_card(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) -&gt; <span class="prelude-ty">Result</span>&lt;(), BoardError&gt; {
+<a href=#318 id=318 data-nosnippet>318</a>        <span class="kw">let </span>(rotation_widget, scaling) = {
+<a href=#319 id=319 data-nosnippet>319</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#320 id=320 data-nosnippet>320</a>            <span class="kw">let </span>entry = cards.get(id).ok_or_else(|| BoardError::UnknownCard(id.clone()))<span class="question-mark">?</span>;
+<a href=#321 id=321 data-nosnippet>321</a>            entry.scale.set(ScaleFactor::default());
+<a href=#322 id=322 data-nosnippet>322</a>            (entry.rotation_widget.clone(), entry.scaling.clone())
+<a href=#323 id=323 data-nosnippet>323</a>        };
+<a href=#324 id=324 data-nosnippet>324</a>        rotation_widget.set_rotation(SmearorRotation::Deg0);
+<a href=#325 id=325 data-nosnippet>325</a>        scaling.set_scale(<span class="number">1.0</span>);
+<a href=#326 id=326 data-nosnippet>326</a>        {
+<a href=#327 id=327 data-nosnippet>327</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#328 id=328 data-nosnippet>328</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
+<a href=#329 id=329 data-nosnippet>329</a>                <span class="kw">return </span><span class="prelude-val">Ok</span>(());
+<a href=#330 id=330 data-nosnippet>330</a>            };
+<a href=#331 id=331 data-nosnippet>331</a>            <span class="kw">match </span>entry.config.position {
+<a href=#332 id=332 data-nosnippet>332</a>                CardAnchor::Explicit(position) =&gt; {
+<a href=#333 id=333 data-nosnippet>333</a>                    entry.pending_anchor.borrow_mut().take();
+<a href=#334 id=334 data-nosnippet>334</a>                    entry.position.set(position);
+<a href=#335 id=335 data-nosnippet>335</a>                }
+<a href=#336 id=336 data-nosnippet>336</a>                anchor =&gt; {
+<a href=#337 id=337 data-nosnippet>337</a>                    <span class="kw">let </span>bounds = <span class="self">self</span>.board_bounds();
+<a href=#338 id=338 data-nosnippet>338</a>                    <span class="kw">if </span>bounds.is_empty() {
+<a href=#339 id=339 data-nosnippet>339</a>                        entry.pending_anchor.replace(<span class="prelude-val">Some</span>(anchor));
+<a href=#340 id=340 data-nosnippet>340</a>                    } <span class="kw">else </span>{
+<a href=#341 id=341 data-nosnippet>341</a>                        entry.pending_anchor.borrow_mut().take();
+<a href=#342 id=342 data-nosnippet>342</a>                        <span class="kw">let </span>(width, height) = <span class="self">self</span>.predicted_size(entry);
+<a href=#343 id=343 data-nosnippet>343</a>                        entry.position.set(resolve_anchor(<span class="kw-2">&amp;</span>anchor, <span class="kw-2">&amp;</span>bounds, width, height, entry.config.anchor_margin));
+<a href=#344 id=344 data-nosnippet>344</a>                    }
+<a href=#345 id=345 data-nosnippet>345</a>                }
+<a href=#346 id=346 data-nosnippet>346</a>            }
+<a href=#347 id=347 data-nosnippet>347</a>            <span class="self">self</span>.apply_position(entry);
+<a href=#348 id=348 data-nosnippet>348</a>            <span class="self">self</span>.clamp_entry(entry);
+<a href=#349 id=349 data-nosnippet>349</a>        }
+<a href=#350 id=350 data-nosnippet>350</a>        <span class="self">self</span>.emit_geometry_changed();
+<a href=#351 id=351 data-nosnippet>351</a>        <span class="prelude-val">Ok</span>(())
+<a href=#352 id=352 data-nosnippet>352</a>    }
+<a href=#353 id=353 data-nosnippet>353</a>
+<a href=#354 id=354 data-nosnippet>354</a>    <span class="doccomment">/// Moves the card to the top of the card layer.
+<a href=#355 id=355 data-nosnippet>355</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>raise_card(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) {
+<a href=#356 id=356 data-nosnippet>356</a>        <span class="kw">let </span>card = {
+<a href=#357 id=357 data-nosnippet>357</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#358 id=358 data-nosnippet>358</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(layer) = <span class="self">self</span>.card_layer() <span class="kw">else </span>{
+<a href=#359 id=359 data-nosnippet>359</a>                <span class="kw">return</span>;
+<a href=#360 id=360 data-nosnippet>360</a>            };
+<a href=#361 id=361 data-nosnippet>361</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
+<a href=#362 id=362 data-nosnippet>362</a>                <span class="kw">return</span>;
+<a href=#363 id=363 data-nosnippet>363</a>            };
+<a href=#364 id=364 data-nosnippet>364</a>            <span class="kw">let </span>(width, height) = <span class="self">self</span>.displayed_size(entry);
+<a href=#365 id=365 data-nosnippet>365</a>            <span class="kw">let </span>position = entry.position.get();
+<a href=#366 id=366 data-nosnippet>366</a>            layer.remove(<span class="kw-2">&amp;</span>entry.scaling);
+<a href=#367 id=367 data-nosnippet>367</a>            layer.put(<span class="kw-2">&amp;</span>entry.scaling, position.x() - width / <span class="number">2.0</span>, position.y() - height / <span class="number">2.0</span>);
+<a href=#368 id=368 data-nosnippet>368</a>            entry.card.clone()
+<a href=#369 id=369 data-nosnippet>369</a>        };
+<a href=#370 id=370 data-nosnippet>370</a>        card.emit_card_raised();
+<a href=#371 id=371 data-nosnippet>371</a>    }
+<a href=#372 id=372 data-nosnippet>372</a>
+<a href=#373 id=373 data-nosnippet>373</a>    <span class="doccomment">/// Re-centers the card on its stored position and re-clamps it (called
+<a href=#374 id=374 data-nosnippet>374</a>    /// after size changes like folding).
+<a href=#375 id=375 data-nosnippet>375</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>recenter_card(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) {
+<a href=#376 id=376 data-nosnippet>376</a>        <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#377 id=377 data-nosnippet>377</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) {
+<a href=#378 id=378 data-nosnippet>378</a>            <span class="self">self</span>.apply_position(entry);
+<a href=#379 id=379 data-nosnippet>379</a>            <span class="self">self</span>.clamp_entry(entry);
+<a href=#380 id=380 data-nosnippet>380</a>        }
+<a href=#381 id=381 data-nosnippet>381</a>    }
+<a href=#382 id=382 data-nosnippet>382</a>
+<a href=#383 id=383 data-nosnippet>383</a>    <span class="doccomment">/// Rotated footprint of a card in card-layer (board) coordinates - for
+<a href=#384 id=384 data-nosnippet>384</a>    /// safe-area unions and input regions.
+<a href=#385 id=385 data-nosnippet>385</a>    </span><span class="kw">pub fn </span>card_footprint(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) -&gt; <span class="prelude-ty">Result</span>&lt;Region, BoardError&gt; {
+<a href=#386 id=386 data-nosnippet>386</a>        <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#387 id=387 data-nosnippet>387</a>        <span class="kw">let </span>entry = cards.get(id).ok_or_else(|| BoardError::UnknownCard(id.clone()))<span class="question-mark">?</span>;
+<a href=#388 id=388 data-nosnippet>388</a>        <span class="prelude-val">Ok</span>(<span class="self">self</span>.entry_footprint(entry))
+<a href=#389 id=389 data-nosnippet>389</a>    }
+<a href=#390 id=390 data-nosnippet>390</a>
+<a href=#391 id=391 data-nosnippet>391</a>    <span class="doccomment">/// Union of every card's rotated footprint in card-layer (board)
+<a href=#392 id=392 data-nosnippet>392</a>    /// coordinates. Consumers restricting the surface input region to
+<a href=#393 id=393 data-nosnippet>393</a>    /// interactive chrome - e.g. touch-passthrough overlays - union this
+<a href=#394 id=394 data-nosnippet>394</a>    /// with their own regions after translating to surface coordinates.
+<a href=#395 id=395 data-nosnippet>395</a>    </span><span class="kw">pub fn </span>cards_region(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Region {
+<a href=#396 id=396 data-nosnippet>396</a>        <span class="kw">let </span>region = Region::create();
+<a href=#397 id=397 data-nosnippet>397</a>        <span class="kw">for </span>entry <span class="kw">in </span><span class="self">self</span>.imp().cards.borrow().values() {
+<a href=#398 id=398 data-nosnippet>398</a>            <span class="kw">if let </span><span class="prelude-val">Err</span>(error) = region.union(<span class="kw-2">&amp;</span><span class="self">self</span>.entry_footprint(entry)) {
+<a href=#399 id=399 data-nosnippet>399</a>                <span class="macro">warn!</span>(%error, <span class="string">"failed to union card footprint"</span>);
+<a href=#400 id=400 data-nosnippet>400</a>            }
+<a href=#401 id=401 data-nosnippet>401</a>        }
+<a href=#402 id=402 data-nosnippet>402</a>        region
+<a href=#403 id=403 data-nosnippet>403</a>    }
+<a href=#404 id=404 data-nosnippet>404</a>
+<a href=#405 id=405 data-nosnippet>405</a>    <span class="doccomment">/// Rotated footprint rasterized from the card's natural size, scale and
+<a href=#406 id=406 data-nosnippet>406</a>    /// rotation, centered on its board position.
+<a href=#407 id=407 data-nosnippet>407</a>    </span><span class="kw">fn </span>entry_footprint(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; Region {
+<a href=#408 id=408 data-nosnippet>408</a>        <span class="kw">let </span>(<span class="kw">_</span>, natural_width, <span class="kw">_</span>, <span class="kw">_</span>) = entry.card.measure(Orientation::Horizontal, -<span class="number">1</span>);
+<a href=#409 id=409 data-nosnippet>409</a>        <span class="kw">let </span>(<span class="kw">_</span>, natural_height, <span class="kw">_</span>, <span class="kw">_</span>) = entry.card.measure(Orientation::Vertical, -<span class="number">1</span>);
+<a href=#410 id=410 data-nosnippet>410</a>        <span class="kw">let </span>scale = entry.scale.get().value();
+<a href=#411 id=411 data-nosnippet>411</a>        <span class="kw">let </span>degrees = entry.rotation_widget.rotation() <span class="kw">as </span>f64;
+<a href=#412 id=412 data-nosnippet>412</a>        <span class="kw">let </span>position = entry.position.get();
+<a href=#413 id=413 data-nosnippet>413</a>        <span class="kw">let </span>center_x = position.x().round() <span class="kw">as </span>i32;
+<a href=#414 id=414 data-nosnippet>414</a>        <span class="kw">let </span>center_y = position.y().round() <span class="kw">as </span>i32;
+<a href=#415 id=415 data-nosnippet>415</a>        <span class="kw">let </span>region = Region::create();
+<a href=#416 id=416 data-nosnippet>416</a>        <span class="kw">for </span>(y, x_start, x_end) <span class="kw">in </span>rotated_region_scanlines(natural_width <span class="kw">as </span>f64 * scale, natural_height <span class="kw">as </span>f64 * scale, degrees) {
+<a href=#417 id=417 data-nosnippet>417</a>            <span class="kw">let </span>strip = RectangleInt::new(center_x + x_start, center_y + y, x_end - x_start, <span class="number">1</span>);
+<a href=#418 id=418 data-nosnippet>418</a>            <span class="kw">if let </span><span class="prelude-val">Err</span>(error) = region.union_rectangle(<span class="kw-2">&amp;</span>strip) {
+<a href=#419 id=419 data-nosnippet>419</a>                <span class="macro">warn!</span>(%error, <span class="string">"failed to union footprint strip"</span>);
+<a href=#420 id=420 data-nosnippet>420</a>            }
+<a href=#421 id=421 data-nosnippet>421</a>        }
+<a href=#422 id=422 data-nosnippet>422</a>        region
+<a href=#423 id=423 data-nosnippet>423</a>    }
+<a href=#424 id=424 data-nosnippet>424</a>
+<a href=#425 id=425 data-nosnippet>425</a>    <span class="doccomment">/// Whether an external consumer manages the surface input region.
+<a href=#426 id=426 data-nosnippet>426</a>    </span><span class="kw">pub fn </span>input_region_managed(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+<a href=#427 id=427 data-nosnippet>427</a>        <span class="self">self</span>.imp().input_region_managed.get()
+<a href=#428 id=428 data-nosnippet>428</a>    }
+<a href=#429 id=429 data-nosnippet>429</a>
+<a href=#430 id=430 data-nosnippet>430</a>    <span class="doccomment">/// Hands the surface input region to an external consumer: the board
+<a href=#431 id=431 data-nosnippet>431</a>    /// stops resetting it on every allocation (its default defense against
+<a href=#432 id=432 data-nosnippet>432</a>    /// `RotationWidget`'s own region narrowing). Consumers computing custom
+<a href=#433 id=433 data-nosnippet>433</a>    /// input regions - e.g. restricting input to cards plus chrome in
+<a href=#434 id=434 data-nosnippet>434</a>    /// touch-passthrough overlays - must set this so their region survives
+<a href=#435 id=435 data-nosnippet>435</a>    /// the next layout pass.
+<a href=#436 id=436 data-nosnippet>436</a>    </span><span class="kw">pub fn </span>set_input_region_managed(<span class="kw-2">&amp;</span><span class="self">self</span>, managed: bool) {
+<a href=#437 id=437 data-nosnippet>437</a>        <span class="self">self</span>.imp().input_region_managed.set(managed);
+<a href=#438 id=438 data-nosnippet>438</a>    }
+<a href=#439 id=439 data-nosnippet>439</a>
+<a href=#440 id=440 data-nosnippet>440</a>    <span class="doccomment">/// Called from `WidgetImpl::size_allocate`: resolves pending anchors and
+<a href=#441 id=441 data-nosnippet>441</a>    /// re-clamps all cards against the new bounds.
+<a href=#442 id=442 data-nosnippet>442</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_board_allocated(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+<a href=#443 id=443 data-nosnippet>443</a>        <span class="kw">let </span>bounds = <span class="self">self</span>.board_bounds();
+<a href=#444 id=444 data-nosnippet>444</a>        <span class="kw">if </span>bounds.is_empty() {
+<a href=#445 id=445 data-nosnippet>445</a>            <span class="kw">return</span>;
+<a href=#446 id=446 data-nosnippet>446</a>        }
+<a href=#447 id=447 data-nosnippet>447</a>        <span class="kw">let </span><span class="kw-2">mut </span>resolved = <span class="bool-val">false</span>;
+<a href=#448 id=448 data-nosnippet>448</a>        {
+<a href=#449 id=449 data-nosnippet>449</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#450 id=450 data-nosnippet>450</a>            <span class="kw">for </span>entry <span class="kw">in </span>cards.values() {
+<a href=#451 id=451 data-nosnippet>451</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(anchor) = entry.pending_anchor.borrow_mut().take() {
+<a href=#452 id=452 data-nosnippet>452</a>                    <span class="kw">let </span>(width, height) = <span class="self">self</span>.predicted_size(entry);
+<a href=#453 id=453 data-nosnippet>453</a>                    entry.position.set(resolve_anchor(<span class="kw-2">&amp;</span>anchor, <span class="kw-2">&amp;</span>bounds, width, height, entry.config.anchor_margin));
+<a href=#454 id=454 data-nosnippet>454</a>                    resolved = <span class="bool-val">true</span>;
+<a href=#455 id=455 data-nosnippet>455</a>                }
+<a href=#456 id=456 data-nosnippet>456</a>                <span class="comment">// Reconcile render state with position state on every
+<a href=#457 id=457 data-nosnippet>457</a>                // allocation: `gtk4::Fixed` positions are only ever moved via
+<a href=#458 id=458 data-nosnippet>458</a>                // apply_position, so cards added before the first allocation
+<a href=#459 id=459 data-nosnippet>459</a>                // would otherwise stay at (0,0).
+<a href=#460 id=460 data-nosnippet>460</a>                </span><span class="self">self</span>.apply_position(entry);
+<a href=#461 id=461 data-nosnippet>461</a>            }
+<a href=#462 id=462 data-nosnippet>462</a>        }
+<a href=#463 id=463 data-nosnippet>463</a>        <span class="self">self</span>.clamp_all();
+<a href=#464 id=464 data-nosnippet>464</a>        <span class="kw">if </span>resolved {
+<a href=#465 id=465 data-nosnippet>465</a>            <span class="self">self</span>.emit_geometry_changed();
+<a href=#466 id=466 data-nosnippet>466</a>        }
+<a href=#467 id=467 data-nosnippet>467</a>    }
+<a href=#468 id=468 data-nosnippet>468</a>
+<a href=#469 id=469 data-nosnippet>469</a>    <span class="doccomment">/// `notify::rotation` on the card's `RotatedLayout`: re-centers the card
+<a href=#470 id=470 data-nosnippet>470</a>    /// (the rotated bounding box changes size), clamps and emits signals.
+<a href=#471 id=471 data-nosnippet>471</a>    </span><span class="kw">fn </span>on_card_rotated(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) {
+<a href=#472 id=472 data-nosnippet>472</a>        <span class="kw">let </span>card = {
+<a href=#473 id=473 data-nosnippet>473</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#474 id=474 data-nosnippet>474</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
+<a href=#475 id=475 data-nosnippet>475</a>                <span class="kw">return</span>;
+<a href=#476 id=476 data-nosnippet>476</a>            };
+<a href=#477 id=477 data-nosnippet>477</a>            entry.scaling.queue_resize();
+<a href=#478 id=478 data-nosnippet>478</a>            <span class="self">self</span>.apply_position(entry);
+<a href=#479 id=479 data-nosnippet>479</a>            <span class="self">self</span>.clamp_entry(entry);
+<a href=#480 id=480 data-nosnippet>480</a>            entry.card.clone()
+<a href=#481 id=481 data-nosnippet>481</a>        };
+<a href=#482 id=482 data-nosnippet>482</a>        card.emit_card_rotated();
+<a href=#483 id=483 data-nosnippet>483</a>        <span class="self">self</span>.emit_geometry_changed();
+<a href=#484 id=484 data-nosnippet>484</a>    }
+<a href=#485 id=485 data-nosnippet>485</a>
+<a href=#486 id=486 data-nosnippet>486</a>    <span class="kw">fn </span>on_card_pinch_begin(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) {
+<a href=#487 id=487 data-nosnippet>487</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = <span class="self">self</span>.imp().cards.borrow().get(id) {
+<a href=#488 id=488 data-nosnippet>488</a>            entry.pinch_start.set(entry.scale.get().value());
+<a href=#489 id=489 data-nosnippet>489</a>        }
+<a href=#490 id=490 data-nosnippet>490</a>    }
+<a href=#491 id=491 data-nosnippet>491</a>
+<a href=#492 id=492 data-nosnippet>492</a>    <span class="doccomment">/// Live pinch zoom: `scale = start * zoom`, clamped to `scale_limits`.
+<a href=#493 id=493 data-nosnippet>493</a>    ///
+<a href=#494 id=494 data-nosnippet>494</a>    /// The card grows around the pinch midpoint - the card point under the
+<a href=#495 id=495 data-nosnippet>495</a>    /// fingers stays fixed - instead of around the card center, which would
+<a href=#496 id=496 data-nosnippet>496</a>    /// visually drift the card away from the gesture.
+<a href=#497 id=497 data-nosnippet>497</a>    </span><span class="kw">fn </span>on_card_pinch_changed(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, gesture: <span class="kw-2">&amp;</span>gtk4::GestureZoom, zoom: f64) {
+<a href=#498 id=498 data-nosnippet>498</a>        {
+<a href=#499 id=499 data-nosnippet>499</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#500 id=500 data-nosnippet>500</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
+<a href=#501 id=501 data-nosnippet>501</a>                <span class="kw">return</span>;
+<a href=#502 id=502 data-nosnippet>502</a>            };
+<a href=#503 id=503 data-nosnippet>503</a>            <span class="kw">let </span>previous = entry.scale.get().value();
+<a href=#504 id=504 data-nosnippet>504</a>            <span class="kw">let </span>scale = ScaleFactor::new(entry.pinch_start.get() * zoom).clamped(<span class="kw-2">&amp;</span>entry.config.scale_limits);
+<a href=#505 id=505 data-nosnippet>505</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>((mid_x, mid_y)) = <span class="self">self</span>.pinch_midpoint_in_layer(gesture, entry)
+<a href=#506 id=506 data-nosnippet>506</a>                &amp;&amp; scale.value() != previous
+<a href=#507 id=507 data-nosnippet>507</a>            {
+<a href=#508 id=508 data-nosnippet>508</a>                <span class="kw">let </span>position = entry.position.get();
+<a href=#509 id=509 data-nosnippet>509</a>                <span class="kw">let </span>ratio = scale.value() / previous;
+<a href=#510 id=510 data-nosnippet>510</a>                entry
+<a href=#511 id=511 data-nosnippet>511</a>                    .position
+<a href=#512 id=512 data-nosnippet>512</a>                    .set(CardPosition::new(mid_x - (mid_x - position.x()) * ratio, mid_y - (mid_y - position.y()) * ratio));
+<a href=#513 id=513 data-nosnippet>513</a>            }
+<a href=#514 id=514 data-nosnippet>514</a>            entry.scale.set(scale);
+<a href=#515 id=515 data-nosnippet>515</a>            entry.scaling.set_scale(scale.value());
+<a href=#516 id=516 data-nosnippet>516</a>            <span class="self">self</span>.apply_position(entry);
+<a href=#517 id=517 data-nosnippet>517</a>            <span class="kw">if </span>entry.config.bounds_mode == BoundsMode::Contained {
+<a href=#518 id=518 data-nosnippet>518</a>                <span class="self">self</span>.clamp_entry(entry);
+<a href=#519 id=519 data-nosnippet>519</a>            }
+<a href=#520 id=520 data-nosnippet>520</a>        }
+<a href=#521 id=521 data-nosnippet>521</a>        <span class="self">self</span>.emit_geometry_changed();
+<a href=#522 id=522 data-nosnippet>522</a>    }
+<a href=#523 id=523 data-nosnippet>523</a>
+<a href=#524 id=524 data-nosnippet>524</a>    <span class="doccomment">/// Pinch midpoint in card-layer (board) coordinates. `gesture.point()`
+<a href=#525 id=525 data-nosnippet>525</a>    /// reports in `scaling` widget coordinates, which are untransformed - the
+<a href=#526 id=526 data-nosnippet>526</a>    /// scale transform applies to its child only - so adding the stack's
+<a href=#527 id=527 data-nosnippet>527</a>    /// top-left layer offset yields board space.
+<a href=#528 id=528 data-nosnippet>528</a>    </span><span class="kw">fn </span>pinch_midpoint_in_layer(<span class="kw-2">&amp;</span><span class="self">self</span>, gesture: <span class="kw-2">&amp;</span>gtk4::GestureZoom, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; <span class="prelude-ty">Option</span>&lt;(f64, f64)&gt; {
+<a href=#529 id=529 data-nosnippet>529</a>        <span class="kw">let </span>(px, py) = gesture.point(<span class="prelude-val">None</span>)<span class="question-mark">?</span>;
+<a href=#530 id=530 data-nosnippet>530</a>        <span class="kw">let </span>layer = <span class="self">self</span>.card_layer()<span class="question-mark">?</span>;
+<a href=#531 id=531 data-nosnippet>531</a>        <span class="kw">let </span>(offset_x, offset_y) = layer.child_position(<span class="kw-2">&amp;</span>entry.scaling);
+<a href=#532 id=532 data-nosnippet>532</a>        <span class="prelude-val">Some</span>((offset_x + px, offset_y + py))
+<a href=#533 id=533 data-nosnippet>533</a>    }
+<a href=#534 id=534 data-nosnippet>534</a>
+<a href=#535 id=535 data-nosnippet>535</a>    <span class="kw">fn </span>on_card_pinch_end(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId) {
+<a href=#536 id=536 data-nosnippet>536</a>        <span class="kw">let </span>card = {
+<a href=#537 id=537 data-nosnippet>537</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#538 id=538 data-nosnippet>538</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
+<a href=#539 id=539 data-nosnippet>539</a>                <span class="kw">return</span>;
+<a href=#540 id=540 data-nosnippet>540</a>            };
+<a href=#541 id=541 data-nosnippet>541</a>            <span class="self">self</span>.clamp_entry(entry);
+<a href=#542 id=542 data-nosnippet>542</a>            entry.card.clone()
+<a href=#543 id=543 data-nosnippet>543</a>        };
+<a href=#544 id=544 data-nosnippet>544</a>        card.emit_card_scaled();
+<a href=#545 id=545 data-nosnippet>545</a>        <span class="self">self</span>.emit_geometry_changed();
+<a href=#546 id=546 data-nosnippet>546</a>    }
+<a href=#547 id=547 data-nosnippet>547</a>
+<a href=#548 id=548 data-nosnippet>548</a>    <span class="doccomment">/// Records the card position and the pointer's board coordinates at drag
+<a href=#549 id=549 data-nosnippet>549</a>    /// begin; the update delta is measured between two board-space pointer
+<a href=#550 id=550 data-nosnippet>550</a>    /// samples, which stays stable while the card follows the pointer.
+<a href=#551 id=551 data-nosnippet>551</a>    </span><span class="kw">fn </span>on_card_drag_begin(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, gesture: <span class="kw-2">&amp;</span>gtk4::GestureDrag) {
+<a href=#552 id=552 data-nosnippet>552</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = <span class="self">self</span>.imp().cards.borrow().get(id) {
+<a href=#553 id=553 data-nosnippet>553</a>            entry.drag_start.set(entry.position.get());
+<a href=#554 id=554 data-nosnippet>554</a>            entry.drag_grab.set(<span class="self">self</span>.pointer_in_layer(gesture));
+<a href=#555 id=555 data-nosnippet>555</a>        }
+<a href=#556 id=556 data-nosnippet>556</a>    }
+<a href=#557 id=557 data-nosnippet>557</a>
+<a href=#558 id=558 data-nosnippet>558</a>    <span class="doccomment">/// Moves the card so it follows the pointer.
+<a href=#559 id=559 data-nosnippet>559</a>    ///
+<a href=#560 id=560 data-nosnippet>560</a>    /// `GestureDrag` reports offsets in the coordinate space of the drag
+<a href=#561 id=561 data-nosnippet>561</a>    /// source - which lives *inside* the rotating/scaling transform stack and
+<a href=#562 id=562 data-nosnippet>562</a>    /// *moves* with the card. Mapping that delta with `compute_point` under
+<a href=#563 id=563 data-nosnippet>563</a>    /// the current transform creates a feedback loop (the reference frame
+<a href=#564 id=564 data-nosnippet>564</a>    /// shifts as the card tracks the pointer) that shows up as jitter and
+<a href=#565 id=565 data-nosnippet>565</a>    /// roughly half pointer speed. Instead, the pointer's board position is
+<a href=#566 id=566 data-nosnippet>566</a>    /// taken straight from the event's surface coordinates, which are
+<a href=#567 id=567 data-nosnippet>567</a>    /// independent of the widget's own transform.
+<a href=#568 id=568 data-nosnippet>568</a>    </span><span class="kw">fn </span>on_card_drag_update(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, gesture: <span class="kw-2">&amp;</span>gtk4::GestureDrag, offset_x: f64, offset_y: f64) {
+<a href=#569 id=569 data-nosnippet>569</a>        {
+<a href=#570 id=570 data-nosnippet>570</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#571 id=571 data-nosnippet>571</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
+<a href=#572 id=572 data-nosnippet>572</a>                <span class="kw">return</span>;
+<a href=#573 id=573 data-nosnippet>573</a>            };
+<a href=#574 id=574 data-nosnippet>574</a>            <span class="kw">let </span>delta = <span class="self">self</span>.drag_delta(gesture, offset_x, offset_y, entry);
+<a href=#575 id=575 data-nosnippet>575</a>            entry.position.set(entry.drag_start.get().translated(delta.<span class="number">0</span>, delta.<span class="number">1</span>));
+<a href=#576 id=576 data-nosnippet>576</a>            <span class="self">self</span>.apply_position(entry);
+<a href=#577 id=577 data-nosnippet>577</a>            <span class="kw">if </span>entry.config.bounds_mode == BoundsMode::Contained {
+<a href=#578 id=578 data-nosnippet>578</a>                <span class="self">self</span>.clamp_entry(entry);
+<a href=#579 id=579 data-nosnippet>579</a>            }
+<a href=#580 id=580 data-nosnippet>580</a>        }
+<a href=#581 id=581 data-nosnippet>581</a>        <span class="self">self</span>.emit_geometry_changed();
+<a href=#582 id=582 data-nosnippet>582</a>    }
+<a href=#583 id=583 data-nosnippet>583</a>
+<a href=#584 id=584 data-nosnippet>584</a>    <span class="kw">fn </span>on_card_drag_end(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, gesture: <span class="kw-2">&amp;</span>gtk4::GestureDrag, offset_x: f64, offset_y: f64) {
+<a href=#585 id=585 data-nosnippet>585</a>        <span class="self">self</span>.on_card_drag_update(id, gesture, offset_x, offset_y);
+<a href=#586 id=586 data-nosnippet>586</a>        <span class="kw">let </span>card = {
+<a href=#587 id=587 data-nosnippet>587</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#588 id=588 data-nosnippet>588</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(entry) = cards.get(id) <span class="kw">else </span>{
+<a href=#589 id=589 data-nosnippet>589</a>                <span class="kw">return</span>;
+<a href=#590 id=590 data-nosnippet>590</a>            };
+<a href=#591 id=591 data-nosnippet>591</a>            <span class="self">self</span>.clamp_entry(entry);
+<a href=#592 id=592 data-nosnippet>592</a>            entry.card.clone()
+<a href=#593 id=593 data-nosnippet>593</a>        };
+<a href=#594 id=594 data-nosnippet>594</a>        card.emit_card_moved();
+<a href=#595 id=595 data-nosnippet>595</a>        <span class="self">self</span>.emit_geometry_changed();
+<a href=#596 id=596 data-nosnippet>596</a>    }
+<a href=#597 id=597 data-nosnippet>597</a>
+<a href=#598 id=598 data-nosnippet>598</a>    <span class="doccomment">/// Pointer position in card-layer (board) coordinates, taken from the
+<a href=#599 id=599 data-nosnippet>599</a>    /// event's surface coordinates - independent of the card's own transform.
+<a href=#600 id=600 data-nosnippet>600</a>    </span><span class="kw">fn </span>pointer_in_layer(<span class="kw-2">&amp;</span><span class="self">self</span>, gesture: <span class="kw-2">&amp;</span>gtk4::GestureDrag) -&gt; <span class="prelude-ty">Option</span>&lt;(f64, f64)&gt; {
+<a href=#601 id=601 data-nosnippet>601</a>        <span class="kw">let </span>event = gesture.current_event()<span class="question-mark">?</span>;
+<a href=#602 id=602 data-nosnippet>602</a>        <span class="kw">let </span>(x, y) = event.position()<span class="question-mark">?</span>;
+<a href=#603 id=603 data-nosnippet>603</a>        <span class="kw">let </span>layer = <span class="self">self</span>.card_layer()<span class="question-mark">?</span>;
+<a href=#604 id=604 data-nosnippet>604</a>        <span class="kw">let </span>native = layer.native()<span class="question-mark">?</span>;
+<a href=#605 id=605 data-nosnippet>605</a>        <span class="kw">let </span>point = native.compute_point(<span class="kw-2">&amp;</span>layer, <span class="kw-2">&amp;</span>Point::new(x <span class="kw">as </span>f32, y <span class="kw">as </span>f32))<span class="question-mark">?</span>;
+<a href=#606 id=606 data-nosnippet>606</a>        <span class="prelude-val">Some</span>((point.x() <span class="kw">as </span>f64, point.y() <span class="kw">as </span>f64))
+<a href=#607 id=607 data-nosnippet>607</a>    }
+<a href=#608 id=608 data-nosnippet>608</a>
+<a href=#609 id=609 data-nosnippet>609</a>    <span class="doccomment">/// Drag delta in board coordinates: current pointer position minus the
+<a href=#610 id=610 data-nosnippet>610</a>    /// pointer position captured at drag begin. Falls back to undoing the
+<a href=#611 id=611 data-nosnippet>611</a>    /// inverse `rotate . scale` on the widget-space offset before the first
+<a href=#612 id=612 data-nosnippet>612</a>    /// allocation, when no surface mapping is available yet.
+<a href=#613 id=613 data-nosnippet>613</a>    </span><span class="kw">fn </span>drag_delta(<span class="kw-2">&amp;</span><span class="self">self</span>, gesture: <span class="kw-2">&amp;</span>gtk4::GestureDrag, offset_x: f64, offset_y: f64, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; (f64, f64) {
+<a href=#614 id=614 data-nosnippet>614</a>        <span class="kw">if let </span>(<span class="prelude-val">Some</span>(now), <span class="prelude-val">Some</span>((grab_x, grab_y))) = (<span class="self">self</span>.pointer_in_layer(gesture), entry.drag_grab.get()) {
+<a href=#615 id=615 data-nosnippet>615</a>            <span class="kw">return </span>(now.<span class="number">0 </span>- grab_x, now.<span class="number">1 </span>- grab_y);
+<a href=#616 id=616 data-nosnippet>616</a>        }
+<a href=#617 id=617 data-nosnippet>617</a>        <span class="kw">let </span>degrees = entry.rotation_widget.rotation() <span class="kw">as </span>f64;
+<a href=#618 id=618 data-nosnippet>618</a>        <span class="kw">let </span>scale = entry.scale.get().value();
+<a href=#619 id=619 data-nosnippet>619</a>        <span class="kw">let </span>(dx, dy) = rotate_vector(offset_x, offset_y, degrees);
+<a href=#620 id=620 data-nosnippet>620</a>        (dx * scale, dy * scale)
+<a href=#621 id=621 data-nosnippet>621</a>    }
+<a href=#622 id=622 data-nosnippet>622</a>
+<a href=#623 id=623 data-nosnippet>623</a>    <span class="doccomment">/// Reorders the card layer by `z_index` (stable by insertion sequence).
+<a href=#624 id=624 data-nosnippet>624</a>    </span><span class="kw">fn </span>restack(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+<a href=#625 id=625 data-nosnippet>625</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(layer) = <span class="self">self</span>.card_layer() <span class="kw">else </span>{
+<a href=#626 id=626 data-nosnippet>626</a>            <span class="kw">return</span>;
+<a href=#627 id=627 data-nosnippet>627</a>        };
+<a href=#628 id=628 data-nosnippet>628</a>        <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#629 id=629 data-nosnippet>629</a>        <span class="kw">let </span><span class="kw-2">mut </span>ordered: Vec&lt;<span class="kw-2">&amp;</span>CardEntry&gt; = cards.values().collect();
+<a href=#630 id=630 data-nosnippet>630</a>        ordered.sort_by_key(|entry| (entry.config.z_index.unwrap_or(i32::MAX), entry.sequence));
+<a href=#631 id=631 data-nosnippet>631</a>        <span class="kw">for </span>entry <span class="kw">in </span>ordered {
+<a href=#632 id=632 data-nosnippet>632</a>            <span class="kw">let </span>(width, height) = <span class="self">self</span>.displayed_size(entry);
+<a href=#633 id=633 data-nosnippet>633</a>            <span class="kw">let </span>position = entry.position.get();
+<a href=#634 id=634 data-nosnippet>634</a>            layer.remove(<span class="kw-2">&amp;</span>entry.scaling);
+<a href=#635 id=635 data-nosnippet>635</a>            layer.put(<span class="kw-2">&amp;</span>entry.scaling, position.x() - width / <span class="number">2.0</span>, position.y() - height / <span class="number">2.0</span>);
+<a href=#636 id=636 data-nosnippet>636</a>        }
+<a href=#637 id=637 data-nosnippet>637</a>    }
+<a href=#638 id=638 data-nosnippet>638</a>
+<a href=#639 id=639 data-nosnippet>639</a>    <span class="kw">fn </span>wire_gestures(<span class="kw-2">&amp;</span><span class="self">self</span>, id: <span class="kw-2">&amp;</span>CardId, card: <span class="kw-2">&amp;</span>Card, scaling: <span class="kw-2">&amp;</span>ScalingWidget, rotation_widget: <span class="kw-2">&amp;</span>RotationWidget, config: <span class="kw-2">&amp;</span>CardConfig) {
+<a href=#640 id=640 data-nosnippet>640</a>        <span class="comment">// Fold changes the card footprint - layout persistence and
+<a href=#641 id=641 data-nosnippet>641</a>        // input-region consumers track it through `geometry-changed`.
+<a href=#642 id=642 data-nosnippet>642</a>        </span><span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
+<a href=#643 id=643 data-nosnippet>643</a>        card.connect_local(<span class="string">"card-folded"</span>, <span class="bool-val">false</span>, <span class="kw">move </span>|<span class="kw">_</span>| {
+<a href=#644 id=644 data-nosnippet>644</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
+<a href=#645 id=645 data-nosnippet>645</a>                board.emit_geometry_changed();
+<a href=#646 id=646 data-nosnippet>646</a>            }
+<a href=#647 id=647 data-nosnippet>647</a>            <span class="prelude-val">None
+<a href=#648 id=648 data-nosnippet>648</a>        </span>});
+<a href=#649 id=649 data-nosnippet>649</a>
+<a href=#650 id=650 data-nosnippet>650</a>        <span class="comment">// Rotation tracking: RotatedLayout exposes `rotation` as a notify-able
+<a href=#651 id=651 data-nosnippet>651</a>        // property, covering both gesture and programmatic changes.
+<a href=#652 id=652 data-nosnippet>652</a>        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(manager) = rotation_widget.layout_manager() {
 <a href=#653 id=653 data-nosnippet>653</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
 <a href=#654 id=654 data-nosnippet>654</a>            <span class="kw">let </span>card_id = id.clone();
-<a href=#655 id=655 data-nosnippet>655</a>            zoom.connect_begin(<span class="kw">move </span>|<span class="kw">_</span>, <span class="kw">_</span>| {
+<a href=#655 id=655 data-nosnippet>655</a>            manager.connect_notify_local(<span class="prelude-val">Some</span>(<span class="string">"rotation"</span>), <span class="kw">move </span>|<span class="kw">_</span>, <span class="kw">_</span>| {
 <a href=#656 id=656 data-nosnippet>656</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
-<a href=#657 id=657 data-nosnippet>657</a>                    board.on_card_pinch_begin(<span class="kw-2">&amp;</span>card_id);
+<a href=#657 id=657 data-nosnippet>657</a>                    board.on_card_rotated(<span class="kw-2">&amp;</span>card_id);
 <a href=#658 id=658 data-nosnippet>658</a>                }
 <a href=#659 id=659 data-nosnippet>659</a>            });
-<a href=#660 id=660 data-nosnippet>660</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
-<a href=#661 id=661 data-nosnippet>661</a>            <span class="kw">let </span>card_id = id.clone();
-<a href=#662 id=662 data-nosnippet>662</a>            zoom.connect_scale_changed(<span class="kw">move </span>|gesture, zoom| {
-<a href=#663 id=663 data-nosnippet>663</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
-<a href=#664 id=664 data-nosnippet>664</a>                    board.on_card_pinch_changed(<span class="kw-2">&amp;</span>card_id, gesture, zoom);
-<a href=#665 id=665 data-nosnippet>665</a>                }
-<a href=#666 id=666 data-nosnippet>666</a>            });
-<a href=#667 id=667 data-nosnippet>667</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
-<a href=#668 id=668 data-nosnippet>668</a>            <span class="kw">let </span>card_id = id.clone();
-<a href=#669 id=669 data-nosnippet>669</a>            zoom.connect_end(<span class="kw">move </span>|<span class="kw">_</span>, <span class="kw">_</span>| {
-<a href=#670 id=670 data-nosnippet>670</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
-<a href=#671 id=671 data-nosnippet>671</a>                    board.on_card_pinch_end(<span class="kw-2">&amp;</span>card_id);
-<a href=#672 id=672 data-nosnippet>672</a>                }
-<a href=#673 id=673 data-nosnippet>673</a>            });
-<a href=#674 id=674 data-nosnippet>674</a>            scaling.add_controller(zoom);
-<a href=#675 id=675 data-nosnippet>675</a>        }
-<a href=#676 id=676 data-nosnippet>676</a>
-<a href=#677 id=677 data-nosnippet>677</a>        <span class="comment">// Raise on release: a click raises the card, and a finished drag ends
-<a href=#678 id=678 data-nosnippet>678</a>        // raised too. Raising on press would cancel the in-flight sequence.
-<a href=#679 id=679 data-nosnippet>679</a>        </span><span class="kw">let </span>click = gtk4::GestureClick::new();
-<a href=#680 id=680 data-nosnippet>680</a>        click.set_button(<span class="number">0</span>);
-<a href=#681 id=681 data-nosnippet>681</a>        <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
-<a href=#682 id=682 data-nosnippet>682</a>        <span class="kw">let </span>card_id = id.clone();
-<a href=#683 id=683 data-nosnippet>683</a>        click.connect_released(<span class="kw">move </span>|<span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>| {
-<a href=#684 id=684 data-nosnippet>684</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
-<a href=#685 id=685 data-nosnippet>685</a>                board.raise_card(<span class="kw-2">&amp;</span>card_id);
-<a href=#686 id=686 data-nosnippet>686</a>            }
-<a href=#687 id=687 data-nosnippet>687</a>        });
-<a href=#688 id=688 data-nosnippet>688</a>        scaling.add_controller(click);
-<a href=#689 id=689 data-nosnippet>689</a>
-<a href=#690 id=690 data-nosnippet>690</a>        <span class="kw">if </span>config.draggable {
-<a href=#691 id=691 data-nosnippet>691</a>            <span class="kw">let </span>drag = gtk4::GestureDrag::new();
-<a href=#692 id=692 data-nosnippet>692</a>            drag.set_button(<span class="number">0</span>);
-<a href=#693 id=693 data-nosnippet>693</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
-<a href=#694 id=694 data-nosnippet>694</a>            <span class="kw">let </span>card_id = id.clone();
-<a href=#695 id=695 data-nosnippet>695</a>            drag.connect_drag_begin(<span class="kw">move </span>|gesture, <span class="kw">_</span>, <span class="kw">_</span>| {
-<a href=#696 id=696 data-nosnippet>696</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
-<a href=#697 id=697 data-nosnippet>697</a>                    board.on_card_drag_begin(<span class="kw-2">&amp;</span>card_id, gesture);
-<a href=#698 id=698 data-nosnippet>698</a>                }
-<a href=#699 id=699 data-nosnippet>699</a>            });
-<a href=#700 id=700 data-nosnippet>700</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
-<a href=#701 id=701 data-nosnippet>701</a>            <span class="kw">let </span>card_id = id.clone();
-<a href=#702 id=702 data-nosnippet>702</a>            drag.connect_drag_update(<span class="kw">move </span>|gesture, offset_x, offset_y| {
-<a href=#703 id=703 data-nosnippet>703</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
-<a href=#704 id=704 data-nosnippet>704</a>                    board.on_card_drag_update(<span class="kw-2">&amp;</span>card_id, gesture, offset_x, offset_y);
-<a href=#705 id=705 data-nosnippet>705</a>                }
-<a href=#706 id=706 data-nosnippet>706</a>            });
-<a href=#707 id=707 data-nosnippet>707</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
-<a href=#708 id=708 data-nosnippet>708</a>            <span class="kw">let </span>card_id = id.clone();
-<a href=#709 id=709 data-nosnippet>709</a>            drag.connect_drag_end(<span class="kw">move </span>|gesture, offset_x, offset_y| {
-<a href=#710 id=710 data-nosnippet>710</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
-<a href=#711 id=711 data-nosnippet>711</a>                    board.on_card_drag_end(<span class="kw-2">&amp;</span>card_id, gesture, offset_x, offset_y);
-<a href=#712 id=712 data-nosnippet>712</a>                }
-<a href=#713 id=713 data-nosnippet>713</a>            });
-<a href=#714 id=714 data-nosnippet>714</a>            card.drag_source(config.drag_handle).add_controller(drag);
-<a href=#715 id=715 data-nosnippet>715</a>        }
-<a href=#716 id=716 data-nosnippet>716</a>    }
-<a href=#717 id=717 data-nosnippet>717</a>
-<a href=#718 id=718 data-nosnippet>718</a>    <span class="doccomment">/// Emits `geometry-changed` on the board.
-<a href=#719 id=719 data-nosnippet>719</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_geometry_changed(<span class="kw-2">&amp;</span><span class="self">self</span>) {
-<a href=#720 id=720 data-nosnippet>720</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(<span class="string">"geometry-changed"</span>, <span class="kw-2">&amp;</span>[]);
-<a href=#721 id=721 data-nosnippet>721</a>    }
-<a href=#722 id=722 data-nosnippet>722</a>
-<a href=#723 id=723 data-nosnippet>723</a>    <span class="kw">fn </span>card_layer(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;CardLayer&gt; {
-<a href=#724 id=724 data-nosnippet>724</a>        <span class="self">self</span>.imp().card_layer.get().cloned()
-<a href=#725 id=725 data-nosnippet>725</a>    }
-<a href=#726 id=726 data-nosnippet>726</a>
-<a href=#727 id=727 data-nosnippet>727</a>    <span class="kw">fn </span>board_bounds(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Rect {
-<a href=#728 id=728 data-nosnippet>728</a>        <span class="kw">match </span><span class="self">self</span>.card_layer() {
-<a href=#729 id=729 data-nosnippet>729</a>            <span class="prelude-val">Some</span>(layer) =&gt; Rect::new(<span class="number">0.0</span>, <span class="number">0.0</span>, layer.width() <span class="kw">as </span>f64, layer.height() <span class="kw">as </span>f64),
-<a href=#730 id=730 data-nosnippet>730</a>            <span class="prelude-val">None </span>=&gt; Rect::default(),
-<a href=#731 id=731 data-nosnippet>731</a>        }
+<a href=#660 id=660 data-nosnippet>660</a>        }
+<a href=#661 id=661 data-nosnippet>661</a>
+<a href=#662 id=662 data-nosnippet>662</a>        <span class="kw">if </span>config.scalable {
+<a href=#663 id=663 data-nosnippet>663</a>            <span class="kw">let </span>zoom = gtk4::GestureZoom::new();
+<a href=#664 id=664 data-nosnippet>664</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
+<a href=#665 id=665 data-nosnippet>665</a>            <span class="kw">let </span>card_id = id.clone();
+<a href=#666 id=666 data-nosnippet>666</a>            zoom.connect_begin(<span class="kw">move </span>|<span class="kw">_</span>, <span class="kw">_</span>| {
+<a href=#667 id=667 data-nosnippet>667</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
+<a href=#668 id=668 data-nosnippet>668</a>                    board.on_card_pinch_begin(<span class="kw-2">&amp;</span>card_id);
+<a href=#669 id=669 data-nosnippet>669</a>                }
+<a href=#670 id=670 data-nosnippet>670</a>            });
+<a href=#671 id=671 data-nosnippet>671</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
+<a href=#672 id=672 data-nosnippet>672</a>            <span class="kw">let </span>card_id = id.clone();
+<a href=#673 id=673 data-nosnippet>673</a>            zoom.connect_scale_changed(<span class="kw">move </span>|gesture, zoom| {
+<a href=#674 id=674 data-nosnippet>674</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
+<a href=#675 id=675 data-nosnippet>675</a>                    board.on_card_pinch_changed(<span class="kw-2">&amp;</span>card_id, gesture, zoom);
+<a href=#676 id=676 data-nosnippet>676</a>                }
+<a href=#677 id=677 data-nosnippet>677</a>            });
+<a href=#678 id=678 data-nosnippet>678</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
+<a href=#679 id=679 data-nosnippet>679</a>            <span class="kw">let </span>card_id = id.clone();
+<a href=#680 id=680 data-nosnippet>680</a>            zoom.connect_end(<span class="kw">move </span>|<span class="kw">_</span>, <span class="kw">_</span>| {
+<a href=#681 id=681 data-nosnippet>681</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
+<a href=#682 id=682 data-nosnippet>682</a>                    board.on_card_pinch_end(<span class="kw-2">&amp;</span>card_id);
+<a href=#683 id=683 data-nosnippet>683</a>                }
+<a href=#684 id=684 data-nosnippet>684</a>            });
+<a href=#685 id=685 data-nosnippet>685</a>            scaling.add_controller(zoom);
+<a href=#686 id=686 data-nosnippet>686</a>        }
+<a href=#687 id=687 data-nosnippet>687</a>
+<a href=#688 id=688 data-nosnippet>688</a>        <span class="comment">// Raise on release: a click raises the card, and a finished drag ends
+<a href=#689 id=689 data-nosnippet>689</a>        // raised too. Raising on press would cancel the in-flight sequence.
+<a href=#690 id=690 data-nosnippet>690</a>        </span><span class="kw">let </span>click = gtk4::GestureClick::new();
+<a href=#691 id=691 data-nosnippet>691</a>        click.set_button(<span class="number">0</span>);
+<a href=#692 id=692 data-nosnippet>692</a>        <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
+<a href=#693 id=693 data-nosnippet>693</a>        <span class="kw">let </span>card_id = id.clone();
+<a href=#694 id=694 data-nosnippet>694</a>        click.connect_released(<span class="kw">move </span>|<span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>| {
+<a href=#695 id=695 data-nosnippet>695</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
+<a href=#696 id=696 data-nosnippet>696</a>                board.raise_card(<span class="kw-2">&amp;</span>card_id);
+<a href=#697 id=697 data-nosnippet>697</a>            }
+<a href=#698 id=698 data-nosnippet>698</a>        });
+<a href=#699 id=699 data-nosnippet>699</a>        scaling.add_controller(click);
+<a href=#700 id=700 data-nosnippet>700</a>
+<a href=#701 id=701 data-nosnippet>701</a>        <span class="kw">if </span>config.draggable {
+<a href=#702 id=702 data-nosnippet>702</a>            <span class="kw">let </span>drag = gtk4::GestureDrag::new();
+<a href=#703 id=703 data-nosnippet>703</a>            drag.set_button(<span class="number">0</span>);
+<a href=#704 id=704 data-nosnippet>704</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
+<a href=#705 id=705 data-nosnippet>705</a>            <span class="kw">let </span>card_id = id.clone();
+<a href=#706 id=706 data-nosnippet>706</a>            drag.connect_drag_begin(<span class="kw">move </span>|gesture, <span class="kw">_</span>, <span class="kw">_</span>| {
+<a href=#707 id=707 data-nosnippet>707</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
+<a href=#708 id=708 data-nosnippet>708</a>                    board.on_card_drag_begin(<span class="kw-2">&amp;</span>card_id, gesture);
+<a href=#709 id=709 data-nosnippet>709</a>                }
+<a href=#710 id=710 data-nosnippet>710</a>            });
+<a href=#711 id=711 data-nosnippet>711</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
+<a href=#712 id=712 data-nosnippet>712</a>            <span class="kw">let </span>card_id = id.clone();
+<a href=#713 id=713 data-nosnippet>713</a>            drag.connect_drag_update(<span class="kw">move </span>|gesture, offset_x, offset_y| {
+<a href=#714 id=714 data-nosnippet>714</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
+<a href=#715 id=715 data-nosnippet>715</a>                    board.on_card_drag_update(<span class="kw-2">&amp;</span>card_id, gesture, offset_x, offset_y);
+<a href=#716 id=716 data-nosnippet>716</a>                }
+<a href=#717 id=717 data-nosnippet>717</a>            });
+<a href=#718 id=718 data-nosnippet>718</a>            <span class="kw">let </span>board_weak = <span class="self">self</span>.downgrade();
+<a href=#719 id=719 data-nosnippet>719</a>            <span class="kw">let </span>card_id = id.clone();
+<a href=#720 id=720 data-nosnippet>720</a>            drag.connect_drag_end(<span class="kw">move </span>|gesture, offset_x, offset_y| {
+<a href=#721 id=721 data-nosnippet>721</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
+<a href=#722 id=722 data-nosnippet>722</a>                    board.on_card_drag_end(<span class="kw-2">&amp;</span>card_id, gesture, offset_x, offset_y);
+<a href=#723 id=723 data-nosnippet>723</a>                }
+<a href=#724 id=724 data-nosnippet>724</a>            });
+<a href=#725 id=725 data-nosnippet>725</a>            card.drag_source(config.drag_handle).add_controller(drag);
+<a href=#726 id=726 data-nosnippet>726</a>        }
+<a href=#727 id=727 data-nosnippet>727</a>    }
+<a href=#728 id=728 data-nosnippet>728</a>
+<a href=#729 id=729 data-nosnippet>729</a>    <span class="doccomment">/// Emits `geometry-changed` on the board.
+<a href=#730 id=730 data-nosnippet>730</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_geometry_changed(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+<a href=#731 id=731 data-nosnippet>731</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(<span class="string">"geometry-changed"</span>, <span class="kw-2">&amp;</span>[]);
 <a href=#732 id=732 data-nosnippet>732</a>    }
 <a href=#733 id=733 data-nosnippet>733</a>
-<a href=#734 id=734 data-nosnippet>734</a>    <span class="doccomment">/// Positions the transform stack so its displayed center matches
-<a href=#735 id=735 data-nosnippet>735</a>    /// `entry.position` (`gtk4::Fixed` positions by top-left). No-ops when the
-<a href=#736 id=736 data-nosnippet>736</a>    /// stack already sits at the target spot, avoiding needless relayouts.
-<a href=#737 id=737 data-nosnippet>737</a>    </span><span class="kw">fn </span>apply_position(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) {
-<a href=#738 id=738 data-nosnippet>738</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(layer) = <span class="self">self</span>.card_layer() <span class="kw">else </span>{
-<a href=#739 id=739 data-nosnippet>739</a>            <span class="kw">return</span>;
-<a href=#740 id=740 data-nosnippet>740</a>        };
-<a href=#741 id=741 data-nosnippet>741</a>        <span class="kw">let </span>(width, height) = <span class="self">self</span>.displayed_size(entry);
-<a href=#742 id=742 data-nosnippet>742</a>        <span class="kw">let </span>position = entry.position.get();
-<a href=#743 id=743 data-nosnippet>743</a>        <span class="kw">let </span>target_x = position.x() - width / <span class="number">2.0</span>;
-<a href=#744 id=744 data-nosnippet>744</a>        <span class="kw">let </span>target_y = position.y() - height / <span class="number">2.0</span>;
-<a href=#745 id=745 data-nosnippet>745</a>        <span class="kw">let </span>(current_x, current_y) = layer.child_position(<span class="kw-2">&amp;</span>entry.scaling);
-<a href=#746 id=746 data-nosnippet>746</a>        <span class="kw">if </span>(current_x - target_x).abs() &gt; <span class="number">0.5 </span>|| (current_y - target_y).abs() &gt; <span class="number">0.5 </span>{
-<a href=#747 id=747 data-nosnippet>747</a>            layer.move_(<span class="kw-2">&amp;</span>entry.scaling, target_x, target_y);
-<a href=#748 id=748 data-nosnippet>748</a>        }
-<a href=#749 id=749 data-nosnippet>749</a>    }
-<a href=#750 id=750 data-nosnippet>750</a>
-<a href=#751 id=751 data-nosnippet>751</a>    <span class="doccomment">/// Pushes the card back inside the board bounds. `BoundsMode::Loose`
-<a href=#752 id=752 data-nosnippet>752</a>    /// cards keep only `min_visible` pixels inside; `Contained` cards get
-<a href=#753 id=753 data-nosnippet>753</a>    /// their whole footprint pulled back.
-<a href=#754 id=754 data-nosnippet>754</a>    </span><span class="kw">fn </span>clamp_entry(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) {
-<a href=#755 id=755 data-nosnippet>755</a>        <span class="kw">let </span>bounds = <span class="self">self</span>.board_bounds();
-<a href=#756 id=756 data-nosnippet>756</a>        <span class="kw">if </span>bounds.is_empty() {
-<a href=#757 id=757 data-nosnippet>757</a>            <span class="kw">return</span>;
-<a href=#758 id=758 data-nosnippet>758</a>        }
-<a href=#759 id=759 data-nosnippet>759</a>        <span class="kw">let </span>(width, height) = <span class="self">self</span>.displayed_size(entry);
-<a href=#760 id=760 data-nosnippet>760</a>        <span class="kw">let </span>footprint = Rect::centered(entry.position.get(), width, height);
-<a href=#761 id=761 data-nosnippet>761</a>        <span class="kw">let </span>(dx, dy) = <span class="kw">match </span>entry.config.bounds_mode {
-<a href=#762 id=762 data-nosnippet>762</a>            BoundsMode::Loose =&gt; clamp_offset(<span class="kw-2">&amp;</span>footprint, <span class="kw-2">&amp;</span>bounds, entry.config.min_visible),
-<a href=#763 id=763 data-nosnippet>763</a>            BoundsMode::Contained =&gt; contain_offset(<span class="kw-2">&amp;</span>footprint, <span class="kw-2">&amp;</span>bounds),
-<a href=#764 id=764 data-nosnippet>764</a>        };
-<a href=#765 id=765 data-nosnippet>765</a>        <span class="kw">if </span>dx != <span class="number">0.0 </span>|| dy != <span class="number">0.0 </span>{
-<a href=#766 id=766 data-nosnippet>766</a>            entry.position.set(entry.position.get().translated(dx, dy));
-<a href=#767 id=767 data-nosnippet>767</a>            <span class="self">self</span>.apply_position(entry);
-<a href=#768 id=768 data-nosnippet>768</a>        }
-<a href=#769 id=769 data-nosnippet>769</a>    }
-<a href=#770 id=770 data-nosnippet>770</a>
-<a href=#771 id=771 data-nosnippet>771</a>    <span class="kw">fn </span>clamp_all(<span class="kw-2">&amp;</span><span class="self">self</span>) {
-<a href=#772 id=772 data-nosnippet>772</a>        <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
-<a href=#773 id=773 data-nosnippet>773</a>        <span class="kw">for </span>entry <span class="kw">in </span>cards.values() {
-<a href=#774 id=774 data-nosnippet>774</a>            <span class="self">self</span>.clamp_entry(entry);
-<a href=#775 id=775 data-nosnippet>775</a>        }
-<a href=#776 id=776 data-nosnippet>776</a>    }
-<a href=#777 id=777 data-nosnippet>777</a>
-<a href=#778 id=778 data-nosnippet>778</a>    <span class="doccomment">/// The size the transform stack occupies on the layer: the predicted size
-<a href=#779 id=779 data-nosnippet>779</a>    /// (what `gtk4::Fixed` will allocate next, reflecting pending rotation and
-<a href=#780 id=780 data-nosnippet>780</a>    /// scale changes), falling back to the allocated size before measuring is
-<a href=#781 id=781 data-nosnippet>781</a>    /// possible.
-<a href=#782 id=782 data-nosnippet>782</a>    </span><span class="kw">fn </span>displayed_size(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; (f64, f64) {
-<a href=#783 id=783 data-nosnippet>783</a>        <span class="kw">let </span>(width, height) = <span class="self">self</span>.predicted_size(entry);
-<a href=#784 id=784 data-nosnippet>784</a>        <span class="kw">if </span>width &gt; <span class="number">0.0 </span>&amp;&amp; height &gt; <span class="number">0.0 </span>{
-<a href=#785 id=785 data-nosnippet>785</a>            (width, height)
-<a href=#786 id=786 data-nosnippet>786</a>        } <span class="kw">else </span>{
-<a href=#787 id=787 data-nosnippet>787</a>            (entry.scaling.width() <span class="kw">as </span>f64, entry.scaling.height() <span class="kw">as </span>f64)
-<a href=#788 id=788 data-nosnippet>788</a>        }
-<a href=#789 id=789 data-nosnippet>789</a>    }
-<a href=#790 id=790 data-nosnippet>790</a>
-<a href=#791 id=791 data-nosnippet>791</a>    <span class="doccomment">/// Predicted displayed size: rotated bounding box of the card's natural
-<a href=#792 id=792 data-nosnippet>792</a>    /// size, times the scale factor.
-<a href=#793 id=793 data-nosnippet>793</a>    </span><span class="kw">fn </span>predicted_size(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; (f64, f64) {
-<a href=#794 id=794 data-nosnippet>794</a>        <span class="kw">let </span>(<span class="kw">_</span>, natural_width, <span class="kw">_</span>, <span class="kw">_</span>) = entry.card.measure(Orientation::Horizontal, -<span class="number">1</span>);
-<a href=#795 id=795 data-nosnippet>795</a>        <span class="kw">let </span>(<span class="kw">_</span>, natural_height, <span class="kw">_</span>, <span class="kw">_</span>) = entry.card.measure(Orientation::Vertical, -<span class="number">1</span>);
-<a href=#796 id=796 data-nosnippet>796</a>        <span class="kw">let </span>scale = entry.scale.get().value();
-<a href=#797 id=797 data-nosnippet>797</a>        <span class="kw">let </span>degrees = entry.rotation_widget.rotation() <span class="kw">as </span>f64;
-<a href=#798 id=798 data-nosnippet>798</a>        rotated_bounds(natural_width <span class="kw">as </span>f64 * scale, natural_height <span class="kw">as </span>f64 * scale, degrees)
-<a href=#799 id=799 data-nosnippet>799</a>    }
-<a href=#800 id=800 data-nosnippet>800</a>
-<a href=#801 id=801 data-nosnippet>801</a>    <span class="kw">fn </span>entry_geometry(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; CardGeometry {
-<a href=#802 id=802 data-nosnippet>802</a>        CardGeometry {
-<a href=#803 id=803 data-nosnippet>803</a>            position: entry.position.get(),
-<a href=#804 id=804 data-nosnippet>804</a>            rotation: SmearorRotation::new(entry.rotation_widget.rotation()),
-<a href=#805 id=805 data-nosnippet>805</a>            scale: entry.scale.get(),
-<a href=#806 id=806 data-nosnippet>806</a>        }
-<a href=#807 id=807 data-nosnippet>807</a>    }
-<a href=#808 id=808 data-nosnippet>808</a>}
+<a href=#734 id=734 data-nosnippet>734</a>    <span class="kw">fn </span>card_layer(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;CardLayer&gt; {
+<a href=#735 id=735 data-nosnippet>735</a>        <span class="self">self</span>.imp().card_layer.get().cloned()
+<a href=#736 id=736 data-nosnippet>736</a>    }
+<a href=#737 id=737 data-nosnippet>737</a>
+<a href=#738 id=738 data-nosnippet>738</a>    <span class="kw">fn </span>board_bounds(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Rect {
+<a href=#739 id=739 data-nosnippet>739</a>        <span class="kw">match </span><span class="self">self</span>.card_layer() {
+<a href=#740 id=740 data-nosnippet>740</a>            <span class="prelude-val">Some</span>(layer) =&gt; Rect::new(<span class="number">0.0</span>, <span class="number">0.0</span>, layer.width() <span class="kw">as </span>f64, layer.height() <span class="kw">as </span>f64),
+<a href=#741 id=741 data-nosnippet>741</a>            <span class="prelude-val">None </span>=&gt; Rect::default(),
+<a href=#742 id=742 data-nosnippet>742</a>        }
+<a href=#743 id=743 data-nosnippet>743</a>    }
+<a href=#744 id=744 data-nosnippet>744</a>
+<a href=#745 id=745 data-nosnippet>745</a>    <span class="doccomment">/// Positions the transform stack so its displayed center matches
+<a href=#746 id=746 data-nosnippet>746</a>    /// `entry.position` (`gtk4::Fixed` positions by top-left). No-ops when the
+<a href=#747 id=747 data-nosnippet>747</a>    /// stack already sits at the target spot, avoiding needless relayouts.
+<a href=#748 id=748 data-nosnippet>748</a>    </span><span class="kw">fn </span>apply_position(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) {
+<a href=#749 id=749 data-nosnippet>749</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(layer) = <span class="self">self</span>.card_layer() <span class="kw">else </span>{
+<a href=#750 id=750 data-nosnippet>750</a>            <span class="kw">return</span>;
+<a href=#751 id=751 data-nosnippet>751</a>        };
+<a href=#752 id=752 data-nosnippet>752</a>        <span class="kw">let </span>(width, height) = <span class="self">self</span>.displayed_size(entry);
+<a href=#753 id=753 data-nosnippet>753</a>        <span class="kw">let </span>position = entry.position.get();
+<a href=#754 id=754 data-nosnippet>754</a>        <span class="kw">let </span>target_x = position.x() - width / <span class="number">2.0</span>;
+<a href=#755 id=755 data-nosnippet>755</a>        <span class="kw">let </span>target_y = position.y() - height / <span class="number">2.0</span>;
+<a href=#756 id=756 data-nosnippet>756</a>        <span class="kw">let </span>(current_x, current_y) = layer.child_position(<span class="kw-2">&amp;</span>entry.scaling);
+<a href=#757 id=757 data-nosnippet>757</a>        <span class="kw">if </span>(current_x - target_x).abs() &gt; <span class="number">0.5 </span>|| (current_y - target_y).abs() &gt; <span class="number">0.5 </span>{
+<a href=#758 id=758 data-nosnippet>758</a>            layer.move_(<span class="kw-2">&amp;</span>entry.scaling, target_x, target_y);
+<a href=#759 id=759 data-nosnippet>759</a>        }
+<a href=#760 id=760 data-nosnippet>760</a>    }
+<a href=#761 id=761 data-nosnippet>761</a>
+<a href=#762 id=762 data-nosnippet>762</a>    <span class="doccomment">/// Pushes the card back inside the board bounds. `BoundsMode::Loose`
+<a href=#763 id=763 data-nosnippet>763</a>    /// cards keep only `min_visible` pixels inside; `Contained` cards get
+<a href=#764 id=764 data-nosnippet>764</a>    /// their whole footprint pulled back.
+<a href=#765 id=765 data-nosnippet>765</a>    </span><span class="kw">fn </span>clamp_entry(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) {
+<a href=#766 id=766 data-nosnippet>766</a>        <span class="kw">let </span>bounds = <span class="self">self</span>.board_bounds();
+<a href=#767 id=767 data-nosnippet>767</a>        <span class="kw">if </span>bounds.is_empty() {
+<a href=#768 id=768 data-nosnippet>768</a>            <span class="kw">return</span>;
+<a href=#769 id=769 data-nosnippet>769</a>        }
+<a href=#770 id=770 data-nosnippet>770</a>        <span class="kw">let </span>(width, height) = <span class="self">self</span>.displayed_size(entry);
+<a href=#771 id=771 data-nosnippet>771</a>        <span class="kw">let </span>footprint = Rect::centered(entry.position.get(), width, height);
+<a href=#772 id=772 data-nosnippet>772</a>        <span class="kw">let </span>(dx, dy) = <span class="kw">match </span>entry.config.bounds_mode {
+<a href=#773 id=773 data-nosnippet>773</a>            BoundsMode::Loose =&gt; clamp_offset(<span class="kw-2">&amp;</span>footprint, <span class="kw-2">&amp;</span>bounds, entry.config.min_visible),
+<a href=#774 id=774 data-nosnippet>774</a>            BoundsMode::Contained =&gt; contain_offset(<span class="kw-2">&amp;</span>footprint, <span class="kw-2">&amp;</span>bounds),
+<a href=#775 id=775 data-nosnippet>775</a>        };
+<a href=#776 id=776 data-nosnippet>776</a>        <span class="kw">if </span>dx != <span class="number">0.0 </span>|| dy != <span class="number">0.0 </span>{
+<a href=#777 id=777 data-nosnippet>777</a>            entry.position.set(entry.position.get().translated(dx, dy));
+<a href=#778 id=778 data-nosnippet>778</a>            <span class="self">self</span>.apply_position(entry);
+<a href=#779 id=779 data-nosnippet>779</a>        }
+<a href=#780 id=780 data-nosnippet>780</a>    }
+<a href=#781 id=781 data-nosnippet>781</a>
+<a href=#782 id=782 data-nosnippet>782</a>    <span class="kw">fn </span>clamp_all(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+<a href=#783 id=783 data-nosnippet>783</a>        <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
+<a href=#784 id=784 data-nosnippet>784</a>        <span class="kw">for </span>entry <span class="kw">in </span>cards.values() {
+<a href=#785 id=785 data-nosnippet>785</a>            <span class="self">self</span>.clamp_entry(entry);
+<a href=#786 id=786 data-nosnippet>786</a>        }
+<a href=#787 id=787 data-nosnippet>787</a>    }
+<a href=#788 id=788 data-nosnippet>788</a>
+<a href=#789 id=789 data-nosnippet>789</a>    <span class="doccomment">/// The size the transform stack occupies on the layer: the predicted size
+<a href=#790 id=790 data-nosnippet>790</a>    /// (what `gtk4::Fixed` will allocate next, reflecting pending rotation and
+<a href=#791 id=791 data-nosnippet>791</a>    /// scale changes), falling back to the allocated size before measuring is
+<a href=#792 id=792 data-nosnippet>792</a>    /// possible.
+<a href=#793 id=793 data-nosnippet>793</a>    </span><span class="kw">fn </span>displayed_size(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; (f64, f64) {
+<a href=#794 id=794 data-nosnippet>794</a>        <span class="kw">let </span>(width, height) = <span class="self">self</span>.predicted_size(entry);
+<a href=#795 id=795 data-nosnippet>795</a>        <span class="kw">if </span>width &gt; <span class="number">0.0 </span>&amp;&amp; height &gt; <span class="number">0.0 </span>{
+<a href=#796 id=796 data-nosnippet>796</a>            (width, height)
+<a href=#797 id=797 data-nosnippet>797</a>        } <span class="kw">else </span>{
+<a href=#798 id=798 data-nosnippet>798</a>            (entry.scaling.width() <span class="kw">as </span>f64, entry.scaling.height() <span class="kw">as </span>f64)
+<a href=#799 id=799 data-nosnippet>799</a>        }
+<a href=#800 id=800 data-nosnippet>800</a>    }
+<a href=#801 id=801 data-nosnippet>801</a>
+<a href=#802 id=802 data-nosnippet>802</a>    <span class="doccomment">/// Predicted displayed size: rotated bounding box of the card's natural
+<a href=#803 id=803 data-nosnippet>803</a>    /// size, times the scale factor.
+<a href=#804 id=804 data-nosnippet>804</a>    </span><span class="kw">fn </span>predicted_size(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; (f64, f64) {
+<a href=#805 id=805 data-nosnippet>805</a>        <span class="kw">let </span>(<span class="kw">_</span>, natural_width, <span class="kw">_</span>, <span class="kw">_</span>) = entry.card.measure(Orientation::Horizontal, -<span class="number">1</span>);
+<a href=#806 id=806 data-nosnippet>806</a>        <span class="kw">let </span>(<span class="kw">_</span>, natural_height, <span class="kw">_</span>, <span class="kw">_</span>) = entry.card.measure(Orientation::Vertical, -<span class="number">1</span>);
+<a href=#807 id=807 data-nosnippet>807</a>        <span class="kw">let </span>scale = entry.scale.get().value();
+<a href=#808 id=808 data-nosnippet>808</a>        <span class="kw">let </span>degrees = entry.rotation_widget.rotation() <span class="kw">as </span>f64;
+<a href=#809 id=809 data-nosnippet>809</a>        rotated_bounds(natural_width <span class="kw">as </span>f64 * scale, natural_height <span class="kw">as </span>f64 * scale, degrees)
+<a href=#810 id=810 data-nosnippet>810</a>    }
+<a href=#811 id=811 data-nosnippet>811</a>
+<a href=#812 id=812 data-nosnippet>812</a>    <span class="kw">fn </span>entry_geometry(<span class="kw-2">&amp;</span><span class="self">self</span>, entry: <span class="kw-2">&amp;</span>CardEntry) -&gt; CardGeometry {
+<a href=#813 id=813 data-nosnippet>813</a>        CardGeometry {
+<a href=#814 id=814 data-nosnippet>814</a>            position: entry.position.get(),
+<a href=#815 id=815 data-nosnippet>815</a>            rotation: SmearorRotation::new(entry.rotation_widget.rotation()),
+<a href=#816 id=816 data-nosnippet>816</a>            scale: entry.scale.get(),
+<a href=#817 id=817 data-nosnippet>817</a>        }
+<a href=#818 id=818 data-nosnippet>818</a>    }
+<a href=#819 id=819 data-nosnippet>819</a>}
 </code></pre></div></section></main></body></html>
