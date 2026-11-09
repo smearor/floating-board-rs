@@ -200,7 +200,7 @@ impl FloatingBoard {
         BoardLayout::new(
             cards
                 .iter()
-                .map(|(id, entry)| CardPlacement::new(id.clone(), self.entry_geometry(entry)))
+                .map(|(id, entry)| CardPlacement::new(id.clone(), self.entry_geometry(entry), entry.card.folded()))
                 .collect(),
         )
     }
@@ -211,14 +211,14 @@ impl FloatingBoard {
     /// clamped to the current board bounds so nothing restores off-screen.
     pub fn restore_layout(&self, layout: &BoardLayout) {
         for placement in &layout.cards {
-            let (rotation_widget, scaling) = {
+            let (card, rotation_widget, scaling) = {
                 let cards = self.imp().cards.borrow();
                 match cards.get(&placement.id) {
                     Some(entry) => {
                         entry.position.set(placement.geometry.position);
                         entry.scale.set(placement.geometry.scale.clamped(&entry.config.scale_limits));
                         entry.pending_anchor.borrow_mut().take();
-                        (entry.rotation_widget.clone(), entry.scaling.clone())
+                        (entry.card.clone(), entry.rotation_widget.clone(), entry.scaling.clone())
                     }
                     None => {
                         warn!(card = %placement.id, "skipping unknown card in layout restore");
@@ -230,6 +230,7 @@ impl FloatingBoard {
             // outside of it.
             rotation_widget.set_rotation(placement.geometry.rotation);
             scaling.set_scale(placement.geometry.scale.value());
+            card.set_folded(placement.folded);
             let cards = self.imp().cards.borrow();
             if let Some(entry) = cards.get(&placement.id) {
                 self.apply_position(entry);
@@ -636,6 +637,16 @@ impl FloatingBoard {
     }
 
     fn wire_gestures(&self, id: &CardId, card: &Card, scaling: &ScalingWidget, rotation_widget: &RotationWidget, config: &CardConfig) {
+        // Fold changes the card footprint - layout persistence and
+        // input-region consumers track it through `geometry-changed`.
+        let board_weak = self.downgrade();
+        card.connect_local("card-folded", false, move |_| {
+            if let Some(board) = board_weak.upgrade() {
+                board.emit_geometry_changed();
+            }
+            None
+        });
+
         // Rotation tracking: RotatedLayout exposes `rotation` as a notify-able
         // property, covering both gesture and programmatic changes.
         if let Some(manager) = rotation_widget.layout_manager() {

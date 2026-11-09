@@ -96,6 +96,7 @@ scale = 1.0
                 rotation: SmearorRotation::Deg90,
                 scale: ScaleFactor::new(1.5),
             },
+            true,
         )]);
         let parsed: BoardLayout = serde_json::from_str(&serde_json::to_string(&layout).unwrap()).unwrap();
         assert_eq!(parsed.len(), 1);
