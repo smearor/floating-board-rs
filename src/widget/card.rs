@@ -15,6 +15,7 @@ use gtk4::Accessible;
 use gtk4::Buildable;
 use gtk4::ConstraintTarget;
 use gtk4::Orientable;
+use gtk4::Orientation;
 use gtk4::Widget;
 use gtk4::glib;
 use gtk4::prelude::BoxExt;
@@ -46,6 +47,8 @@ impl Card {
         let imp = card.imp();
         imp.id.replace(id.clone());
         imp.board.replace(board.downgrade());
+        imp.max_width.set(config.max_width);
+        imp.max_height.set(config.max_height);
 
         if config.headerless {
             card.add_css_class(CLASS_HEADERLESS);
@@ -181,6 +184,15 @@ impl Card {
         }
         imp.folded.set(folded);
         if let Some(holder) = imp.content_holder.get() {
+            if folded {
+                // Pin the card width while folded: without the content the
+                // natural width shrinks to the header alone and the fold
+                // button would end up outside the shrunken header.
+                let (_, natural_width, _, _) = self.measure(Orientation::Horizontal, -1);
+                self.set_size_request(natural_width, -1);
+            } else {
+                self.set_size_request(-1, -1);
+            }
             holder.set_visible(!folded);
         }
         if let Some(button) = imp.fold_button.get() {

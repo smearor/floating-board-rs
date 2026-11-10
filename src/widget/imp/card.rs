@@ -18,6 +18,7 @@ use gtk4::subclass::prelude::ObjectImplExt;
 use gtk4::subclass::prelude::ObjectSubclass;
 use gtk4::subclass::prelude::ObjectSubclassExt;
 use gtk4::subclass::prelude::WidgetImpl;
+use gtk4::subclass::prelude::WidgetImplExt;
 use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
@@ -46,6 +47,10 @@ pub struct CardImpl {
     pub close_button: OnceCell<gtk4::Button>,
     /// Whether the card is currently folded to its header.
     pub folded: Cell<bool>,
+    /// Upper bound on the reported width (`CardConfig::max_width`).
+    pub max_width: Cell<Option<i32>>,
+    /// Upper bound on the reported height (`CardConfig::max_height`).
+    pub max_height: Cell<Option<i32>>,
 }
 
 impl Default for CardImpl {
@@ -60,6 +65,8 @@ impl Default for CardImpl {
             fold_button: OnceCell::new(),
             close_button: OnceCell::new(),
             folded: Cell::new(false),
+            max_width: Cell::new(None),
+            max_height: Cell::new(None),
         }
     }
 }
@@ -77,6 +84,9 @@ impl ObjectImpl for CardImpl {
         let card = self.obj();
         card.set_orientation(Orientation::Vertical);
         card.set_spacing(0);
+        // Clips content that exceeds a `max_width`/`max_height` cap and keeps
+        // it inside the rounded corners (GTK CSS has no `overflow` property).
+        card.set_overflow(gtk4::Overflow::Hidden);
         card.add_css_class(CLASS_CARD);
 
         let header = gtk4::Box::new(Orientation::Horizontal, 6);
@@ -133,6 +143,22 @@ impl ObjectImpl for CardImpl {
     }
 }
 
-impl WidgetImpl for CardImpl {}
+impl WidgetImpl for CardImpl {
+    // Caps the reported size at `CardConfig::max_width`/`max_height` so the
+    // card stops growing when its content grows; the parent layer allocates
+    // at most the capped size and the default CSS clips the overflow.
+    fn measure(&self, orientation: Orientation, for_size: i32) -> (i32, i32, i32, i32) {
+        let (minimum, natural, minimum_baseline, natural_baseline) = self.parent_measure(orientation, for_size);
+        let limit = match orientation {
+            Orientation::Horizontal => self.max_width.get(),
+            Orientation::Vertical => self.max_height.get(),
+            _ => None,
+        };
+        match limit {
+            Some(cap) => (minimum.min(cap), natural.min(cap), -1, -1),
+            None => (minimum, natural, minimum_baseline, natural_baseline),
+        }
+    }
+}
 
 impl BoxImpl for CardImpl {}

@@ -91,8 +91,37 @@ rotation or scale transitions are still pending re-allocation.
 |---------|-----------|--------|---------------|
 | 1-finger drag on header/handle/card | `GestureDrag` | move card (live), clamp on end, `card-moved` | exclusive per sequence |
 | 1-finger touch on card | `GestureClick` | raise card on release, `card-raised` | claims only on release without movement — also raises after a finished drag |
-| 2-finger rotate | `GestureRotate` (inside `RotationWidget`) | rotation with 90° snap, `card-rotated` | independent per card |
-| 2-finger pinch | `GestureZoom` | `scale = start · zoom` live, clamped to `scale_limits`, `card-scaled` | may run alongside rotation |
+| 2+ finger transform | quad tracker (`EventControllerLegacy`) | similarity transform: centroid = move, radius = scale, point-cloud angle = rotate | one mechanism, nothing to arbitrate |
+| 1-finger touch on empty area | — | falls through to content | pick-based, no controller needed |
+
+### The quad transform gesture
+
+Move, rotate and zoom are **one** gesture, not three competing ones. A raw
+`EventControllerLegacy` on the card observes every touch sequence
+(`TouchBegin`/`Update`/`End`/`Cancel`) without claiming any — each finger
+maps to a tracked board-space point and interactive content keeps working.
+(`GestureSingle`-based slots were abandoned: a single locks onto the first
+sequence it sees and cannot distribute touches across siblings.)
+
+With `QUAD_MIN_POINTS` (2) or more live points the board fits a transform
+between the baseline point cloud and the current points:
+
+- **Move**: the card center follows the point-cloud centroid (the card point
+  under the finger polygon stays fixed).
+- **Scale**: the RMS radius ratio of the two point sets, clamped to
+  `scale_limits` — the card keeps its aspect ratio.
+- **Rotate**: the Procrustes angle `atan2(Σ w×u, Σ w·u)` between the two
+  point sets, applied via `RotationWidget::set_rotation` (negated — the
+  angle is computed in y-down screen coordinates).
+
+The baseline re-snapshots whenever a finger joins or leaves, so the
+transform never jumps; a frame-to-frame angle jump beyond `60°` is treated
+as a degenerate finger crossing (points through the centroid) and re-baselines
+instead of applying. Tracked touches that get claimed by another gesture or
+produce no event for `1.5 s` are swept out, so lost `TouchEnd` events cannot
+linger as phantom points. smearor-wrot-rotation's built-in rotate gesture is
+disabled; `rotatable`/`scalable`/`draggable` gate which transform degrees of
+freedom apply.
 | 1-finger touch on empty area | — | falls through to content | pick-based, no controller needed |
 
 ### Drag deltas in board space

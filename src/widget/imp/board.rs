@@ -32,6 +32,45 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
+/// Snapshot of the card geometry and quad points taken when a quad
+/// transform (re-)activates; refreshed whenever the point count changes so
+/// adding or lifting fingers never causes a jump.
+pub(crate) struct QuadBaseline {
+    /// Card center when the baseline was taken (board coordinates).
+    pub position: CardPosition,
+    /// Scale factor at baseline.
+    pub scale: f64,
+    /// Rotation in degrees at baseline.
+    pub rotation_deg: f64,
+    /// Centroid of `points` (board coordinates).
+    pub centroid: (f64, f64),
+    /// Board-space point per active quad slot at baseline.
+    pub points: Vec<(f64, f64)>,
+    /// Whether the transform already changed the position.
+    pub moved: bool,
+    /// Whether the transform already changed the rotation.
+    pub rotated: bool,
+    /// Whether the transform already changed the scale.
+    pub scaled: bool,
+    /// The angle applied by the most recent transform update, used to
+    /// detect degenerate finger crossings (~180° flips between frames).
+    pub applied_angle_deg: f64,
+}
+
+/// One finger tracked by the quad transform: the touch sequence, its latest
+/// board-space point and when the last event for it arrived (the timestamp
+/// detects touches whose `TouchEnd` was routed to a claiming gesture and
+/// never reached the tracker).
+#[derive(Debug, Clone)]
+pub(crate) struct TrackedTouch {
+    /// The touch sequence identifying this finger.
+    pub sequence: gtk4::gdk::EventSequence,
+    /// Latest finger position in board coordinates.
+    pub point: (f64, f64),
+    /// Timestamp of the most recent event for this sequence.
+    pub last_event: std::time::Instant,
+}
+
 /// Board-owned state of one card: the transform stack widgets plus the
 /// geometry cells. `Card` objects carry only a weak backlink - this entry is
 /// the single owner of position/scale state (rotation lives inside the
@@ -55,8 +94,15 @@ pub(crate) struct CardEntry {
     pub drag_start: Cell<CardPosition>,
     /// Pointer position in board coordinates at drag begin.
     pub drag_grab: Cell<Option<(f64, f64)>>,
-    /// Card scale at the start of the active pinch gesture.
-    pub pinch_start: Cell<f64>,
+    /// Live touch points for the quad transform, one entry per finger
+    /// currently on the card. The tracker's `EventControllerLegacy` keeps
+    /// this in sync - a plain event observer that sees every sequence
+    /// without claiming it, so interactive content keeps working (unlike
+    /// `GestureSingle`, which locks onto the first sequence it sees and
+    /// cannot distribute touches across siblings).
+    pub quad_touches: RefCell<Vec<TrackedTouch>>,
+    /// Baseline for the active quad transform.
+    pub quad_baseline: RefCell<Option<QuadBaseline>>,
     /// Insertion sequence number for stable z-ordering.
     pub sequence: u64,
 }

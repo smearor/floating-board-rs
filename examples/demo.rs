@@ -43,17 +43,19 @@ fn build_ui(application: &gtk4::Application) {
     toolbar.set_margin_start(8);
     toolbar.set_margin_end(8);
 
-    let hint = gtk4::Label::new(Some("Drag card header | two-finger rotate | pinch to scale | click raises"));
+    let hint = gtk4::Label::new(Some("Drag card header | 2+ finger move/rotate/stretch | click raises"));
     hint.set_hexpand(true);
     hint.set_halign(gtk4::Align::Start);
     let content_button = gtk4::Button::with_label("Content button (click-through)");
     let add_button = gtk4::Button::with_label("Add card");
+    let rotate_button = gtk4::Button::with_label("Rotate 90°");
     let snapshot_button = gtk4::Button::with_label("Snapshot");
     let restore_button = gtk4::Button::with_label("Restore");
     restore_button.set_sensitive(false);
     toolbar.append(&hint);
     toolbar.append(&content_button);
     toolbar.append(&add_button);
+    toolbar.append(&rotate_button);
     toolbar.append(&snapshot_button);
     toolbar.append(&restore_button);
 
@@ -115,7 +117,7 @@ fn build_ui(application: &gtk4::Application) {
                 position: CardAnchor::Explicit(CardPosition::new(300.0, 420.0)),
                 foldable: true,
                 closable: true,
-                scale_limits: ScaleBounds::new(0.5, 2.0),
+                scale_limits: ScaleBounds::new(0.75, 4.0),
                 ..Default::default()
             },
         )
@@ -172,6 +174,7 @@ fn build_ui(application: &gtk4::Application) {
                 title: Some("Parameters".to_string()),
                 position: CardAnchor::Explicit(CardPosition::new(1000.0, 420.0)),
                 foldable: true,
+                max_width: Some(300),
                 ..Default::default()
             },
         )
@@ -198,6 +201,18 @@ fn build_ui(application: &gtk4::Application) {
                 },
             );
             info!(card = %id, "dynamic card added");
+        });
+    }
+
+    // Rotates every card by +90 degrees with the zoom-snap animation
+    // (duration: `CardConfig::animation_speed_ms`, default 500 ms).
+    {
+        let board = board.clone();
+        rotate_button.connect_clicked(move |_| {
+            for card in board.cards() {
+                let next = card.rotation().to_degrees() + 90.0;
+                card.set_rotation_with_animation(SmearorRotation::Deg(next));
+            }
         });
     }
 

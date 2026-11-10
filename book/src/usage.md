@@ -75,7 +75,11 @@ let controls_id = board.add_card_with_id(
 | `headerless` | `bool` | `false` | Collapse the header to a slim grip |
 | `drag_handle` | `DragHandle` | `Header` | `Header`, `WholeCard` or `Handle` (grip icon) |
 | `scale_limits` | `ScaleBounds` | `0.5 – 2.0` | Inclusive pinch zoom limits |
-| `min_visible` | `MinVisible` | `40.0` | Pixels that must stay inside the bounds (boundary clamping) |
+| `min_visible` | `MinVisible` | `40.0` | Pixels that must stay inside the bounds (`Loose` mode) |
+| `bounds_mode` | `BoundsMode` | `Loose` | `Loose` clamps on drag end; `Contained` keeps the whole footprint inside, live |
+| `anchor_margin` | `f64` | `24.0` | Margin edge/corner anchors keep to the board edge |
+| `max_width` / `max_height` | `Option<i32>` | `None` | Hard cap on the measured size — keeps the card stable when content changes size |
+| `animation_speed_ms` | `u64` | `500` | Duration of rotation animations |
 | `z_index` | `Option<i32>` | `None` | Initial stacking order; `None` appends on top |
 
 `CardConfig::default()` yields a fully interactive card anchored at the board
@@ -164,7 +168,7 @@ card.connect_closure("card-moved", false,
 |--------|--------|----------|
 | `card-moved` | `Card` | drag end |
 | `card-rotated` | `Card` | any rotation change (gesture or programmatic) |
-| `card-scaled` | `Card` | pinch end or `set_scale` |
+| `card-scaled` | `Card` | transform end or `set_scale` |
 | `card-raised` | `Card` | raise to top |
 | `card-folded` | `Card` | fold state toggles |
 | `card-added` / `card-removed` | `FloatingBoard` | card lifecycle (carries the `Card`) |

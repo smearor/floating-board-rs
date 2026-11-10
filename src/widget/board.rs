@@ -20,6 +20,8 @@ use crate::widget::card_layer::CardLayer;
 use crate::widget::css::ensure_default_css;
 use crate::widget::imp::board::CardEntry;
 use crate::widget::imp::board::FloatingBoardImpl;
+use crate::widget::imp::board::QuadBaseline;
+use crate::widget::imp::board::TrackedTouch;
 use crate::widget::scaling::ScalingWidget;
 use glib::object::Cast;
 use glib::object::IsA;
@@ -41,6 +43,7 @@ use gtk4::prelude::FixedExt;
 use gtk4::prelude::GestureDragExt;
 use gtk4::prelude::GestureExt;
 use gtk4::prelude::GestureSingleExt;
+use gtk4::prelude::LayoutManagerExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use smearor_wrot_rotation::RotationControlHandler;
@@ -49,6 +52,7 @@ use smearor_wrot_rotation::SmearorRotation;
 use std::cell::Cell;
 use std::cell::RefCell;
 use tracing::debug;
+use tracing::info;
 use tracing::warn;
 
 glib::wrapper! {
@@ -62,6 +66,33 @@ glib::wrapper! {
     pub struct FloatingBoard(ObjectSubclass<FloatingBoardImpl>)
         @extends Widget, gtk4::Box,
         @implements Accessible, Buildable, ConstraintTarget, Orientable;
+}
+
+/// Minimum live points before the quad transform applies - a single touch
+/// stays a plain touch and never moves the card.
+const QUAD_MIN_POINTS: usize = 2;
+
+/// Frame-to-frame angle jump treated as a degenerate finger crossing
+/// (~180° flips when points cross the centroid) rather than real rotation.
+const QUAD_ANGLE_JUMP_DEG: f64 = 60.0;
+
+/// How long a tracked touch may stay silent before it counts as dead - its
+/// `TouchEnd` was routed to a claiming gesture or lost on the wire. Real
+/// resting fingers still produce sensor jitter, so they never go silent.
+const QUAD_STALE_MS: u64 = 1500;
+
+/// Centroid of a point set.
+fn quad_centroid(points: &[(f64, f64)]) -> (f64, f64) {
+    let count = points.len().max(1) as f64;
+    (points.iter().map(|p| p.0).sum::<f64>() / count, points.iter().map(|p| p.1).sum::<f64>() / count)
+}
+
+/// Denies every sequence a gesture currently tracks (`set_state` is like
+/// `set_sequence_state(.., Denied)` on all handled sequences; the per-sequence
+/// variant is deprecated since GTK 4.10). The gesture stops receiving updates
+/// and its `end`/`cancel` handlers run.
+fn deny_gesture(gesture: &impl IsA<gtk4::Gesture>) {
+    gesture.set_state(gtk4::EventSequenceState::Denied);
 }
 
 impl FloatingBoard {
@@ -120,11 +151,14 @@ impl FloatingBoard {
 
         let card = Card::build(&id, content.upcast_ref(), self, &config);
         let rotation_widget = RotationWidget::new(SmearorRotation::Deg0)
-            .with_gesture_rotation_enabled(config.rotatable)
+            // Rotation comes from the board's own quad transform gesture;
+            // smearor's built-in rotate gesture stays off.
+            .with_gesture_rotation_enabled(false)
             // The card is nested inside the board's `Fixed` layer - the
             // surface-global input-region clamp would kill input for the
             // rest of the window (`smearor-wrot-rotation` >= 0.2.1).
             .with_input_region_enabled(false);
+        rotation_widget.set_animation_speed(config.animation_speed_ms);
         rotation_widget.set_child(Some(&card));
         let scaling = ScalingWidget::new(&rotation_widget);
         layer.put(&scaling, 0.0, 0.0);
@@ -144,7 +178,8 @@ impl FloatingBoard {
             pending_anchor: RefCell::new(pending_anchor),
             drag_start: Cell::new(CardPosition::default()),
             drag_grab: Cell::new(None),
-            pinch_start: Cell::new(1.0),
+            quad_touches: RefCell::new(Vec::new()),
+            quad_baseline: RefCell::new(None),
             sequence,
         };
         self.imp().cards.borrow_mut().insert(id.clone(), entry);
@@ -474,6 +509,13 @@ impl FloatingBoard {
             let Some(entry) = cards.get(id) else {
                 return;
             };
+            // smearor-wrot-rotation queues allocation rather than resize, so
+            // the RotatedLayout measure would stay stale; `layout_changed`
+            // invalidates the measure chain and a 90 degree turn correctly
+            // swaps the child's width/height.
+            if let Some(manager) = entry.rotation_widget.layout_manager() {
+                manager.layout_changed();
+            }
             entry.scaling.queue_resize();
             self.apply_position(entry);
             self.clamp_entry(entry);
@@ -483,66 +525,314 @@ impl FloatingBoard {
         self.emit_geometry_changed();
     }
 
-    fn on_card_pinch_begin(&self, id: &CardId) {
-        if let Some(entry) = self.imp().cards.borrow().get(id) {
-            entry.pinch_start.set(entry.scale.get().value());
+    /// Slot activation at sequence begin: the quad drags are `exclusive`,
+    /// so GTK's own `GtkGestureSingle` distribution hands each slot a
+    /// different touch sequence and `begin` only fires for the sequence this
+    /// slot actually owns. The slot records the finger's board-space
+    /// position at touch-down, not only once GTK recognizes a drag.
+    /// Routes a raw touch event from the quad tracker: `TouchBegin`
+    /// registers the sequence as a live point, `TouchUpdate` moves it and
+    /// feeds the similarity transform, `TouchEnd`/`TouchCancel` removes it.
+    fn on_quad_touch_event(
+        &self,
+        id: &CardId,
+        controller: &gtk4::EventControllerLegacy,
+        event: &gtk4::gdk::Event,
+        card_drag: Option<&gtk4::GestureDrag>,
+        claimers: &[gtk4::Gesture],
+    ) {
+        let event_type = event.event_type();
+        if !matches!(
+            event_type,
+            gtk4::gdk::EventType::TouchBegin | gtk4::gdk::EventType::TouchUpdate | gtk4::gdk::EventType::TouchEnd | gtk4::gdk::EventType::TouchCancel
+        ) {
+            return;
+        }
+        // `event_sequence` is a plain (non-Option) binding - calling it on
+        // sequence-less events asserts on a NULL pointer, so it may only run
+        // after the touch-type check above.
+        self.sweep_quad_touches(id, claimers);
+        let sequence = event.event_sequence();
+        match event_type {
+            gtk4::gdk::EventType::TouchBegin => {
+                info!(card = %id, "quad touch begin");
+                if let Some(point) = self.event_point_in_layer(controller, event) {
+                    let cards = self.imp().cards.borrow();
+                    if let Some(entry) = cards.get(id) {
+                        self.activate_quad_touch(entry, sequence, point, card_drag);
+                    }
+                }
+                self.emit_geometry_changed();
+            }
+            gtk4::gdk::EventType::TouchUpdate => {
+                let Some(point) = self.event_point_in_layer(controller, event) else {
+                    return;
+                };
+                {
+                    let cards = self.imp().cards.borrow();
+                    let Some(entry) = cards.get(id) else {
+                        return;
+                    };
+                    let tracked = {
+                        let mut touches = entry.quad_touches.borrow_mut();
+                        let Some(tracked) = touches.iter_mut().find(|touch| touch.sequence == sequence) else {
+                            return;
+                        };
+                        tracked.point = point;
+                        tracked.last_event = std::time::Instant::now();
+                        touches.len()
+                    };
+                    debug!(card = %id, tracked, point = ?point, "quad touch update");
+                    self.apply_quad_transform(entry);
+                }
+                self.emit_geometry_changed();
+            }
+            gtk4::gdk::EventType::TouchEnd | gtk4::gdk::EventType::TouchCancel => {
+                self.release_quad_touch(id, &sequence);
+            }
+            _ => {}
         }
     }
 
-    /// Live pinch zoom: `scale = start * zoom`, clamped to `scale_limits`.
-    ///
-    /// The card grows around the pinch midpoint - the card point under the
-    /// fingers stays fixed - instead of around the card center, which would
-    /// visually drift the card away from the gesture.
-    fn on_card_pinch_changed(&self, id: &CardId, gesture: &gtk4::GestureZoom, zoom: f64) {
-        {
+    /// Drops tracked touches that are no longer live. Two cases:
+    /// a touch *claimed* by another gesture (its remaining events are routed
+    /// to the claimer only) and a touch that went *silent* - its `TouchEnd`
+    /// already went to a claimer or was lost on the wire, so only the event
+    /// timestamp reveals it is dead. Without the sweep a dead touch lingers
+    /// as a phantom point, keeps the transform "active" for a single new
+    /// finger and distorts radius/angle.
+    fn sweep_quad_touches(&self, id: &CardId, claimers: &[gtk4::Gesture]) {
+        let pruned = {
             let cards = self.imp().cards.borrow();
             let Some(entry) = cards.get(id) else {
                 return;
             };
-            let previous = entry.scale.get().value();
-            let scale = ScaleFactor::new(entry.pinch_start.get() * zoom).clamped(&entry.config.scale_limits);
-            if let Some((mid_x, mid_y)) = self.pinch_midpoint_in_layer(gesture, entry)
-                && scale.value() != previous
-            {
-                let position = entry.position.get();
-                let ratio = scale.value() / previous;
-                entry
-                    .position
-                    .set(CardPosition::new(mid_x - (mid_x - position.x()) * ratio, mid_y - (mid_y - position.y()) * ratio));
+            let pruned = {
+                let mut touches = entry.quad_touches.borrow_mut();
+                let before = touches.len();
+                touches.retain(|touch| {
+                    touch.last_event.elapsed() < std::time::Duration::from_millis(QUAD_STALE_MS)
+                        && claimers
+                            .iter()
+                            .all(|gesture| gesture.sequence_state(&touch.sequence) != gtk4::EventSequenceState::Claimed)
+                });
+                before - touches.len()
+            };
+            if pruned > 0 {
+                info!(card = %id, pruned, "quad touches pruned (claimed or stale)");
+                if entry.quad_touches.borrow().len() >= QUAD_MIN_POINTS {
+                    self.refresh_quad_baseline(entry);
+                } else {
+                    entry.quad_baseline.borrow_mut().take();
+                }
             }
+            pruned
+        };
+        if pruned > 0 {
+            self.emit_geometry_changed();
+        }
+    }
+
+    /// Drops a quad touch: re-baselines for the remaining fingers or
+    /// finishes the transform and emits the collected signals.
+    fn release_quad_touch(&self, id: &CardId, sequence: &gtk4::gdk::EventSequence) {
+        let (card, moved, rotated, scaled) = {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return;
+            };
+            let active = {
+                let mut touches = entry.quad_touches.borrow_mut();
+                let Some(index) = touches.iter().position(|touch| touch.sequence == *sequence) else {
+                    return;
+                };
+                touches.remove(index);
+                touches.len()
+            };
+            info!(card = %id, active, "quad touch released");
+            if active >= QUAD_MIN_POINTS {
+                // A finger left while the transform is still running: snap a
+                // fresh baseline so the remaining fingers continue smoothly.
+                self.refresh_quad_baseline(entry);
+                (entry.card.clone(), false, false, false)
+            } else {
+                let baseline = entry.quad_baseline.borrow_mut().take();
+                self.clamp_entry(entry);
+                let flags = baseline.map(|b| (b.moved, b.rotated, b.scaled)).unwrap_or_default();
+                (entry.card.clone(), flags.0, flags.1, flags.2)
+            }
+        };
+        if moved {
+            card.emit_card_moved();
+        }
+        if rotated {
+            card.emit_card_rotated();
+        }
+        if scaled {
+            card.emit_card_scaled();
+        }
+        self.emit_geometry_changed();
+    }
+
+    /// Activates a quad touch: records the finger's board-space position,
+    /// denies the card's own drag once the transform threshold is reached
+    /// (no double-move while the quad transform runs) and (re-)takes the
+    /// baseline snapshot.
+    fn activate_quad_touch(&self, entry: &CardEntry, sequence: gtk4::gdk::EventSequence, point: (f64, f64), card_drag: Option<&gtk4::GestureDrag>) {
+        let active = {
+            let mut touches = entry.quad_touches.borrow_mut();
+            touches.push(TrackedTouch {
+                sequence,
+                point,
+                last_event: std::time::Instant::now(),
+            });
+            touches.len()
+        };
+        info!(active, point = ?point, "quad touch activated");
+        if active == QUAD_MIN_POINTS {
+            info!("quad transform active - denying card drag");
+            if let Some(card_drag) = card_drag {
+                deny_gesture(card_drag);
+            }
+        }
+        if active >= QUAD_MIN_POINTS {
+            self.refresh_quad_baseline(entry);
+        }
+    }
+
+    /// Touch position in board coordinates: the event reports its position
+    /// in surface space; it is mapped into the controller widget's
+    /// coordinate space through the native's `compute_point` and then down
+    /// the transform stack into layer (board) space.
+    fn event_point_in_layer(&self, controller: &gtk4::EventControllerLegacy, event: &gtk4::gdk::Event) -> Option<(f64, f64)> {
+        let (px, py) = event.position()?;
+        let widget = controller.widget()?;
+        let native = widget.native()?;
+        let surface_point = Point::new(px as f32, py as f32);
+        let widget_point = native.compute_point(&widget, &surface_point)?;
+        let layer = self.card_layer()?;
+        let point = widget.compute_point(&layer, &widget_point)?;
+        Some((point.x() as f64, point.y() as f64))
+    }
+
+    /// Takes a fresh baseline: current geometry plus the live quad points.
+    /// Called on activation and whenever the point count changes, so adding
+    /// or lifting fingers never produces a jump.
+    fn refresh_quad_baseline(&self, entry: &CardEntry) {
+        let points: Vec<(f64, f64)> = entry.quad_touches.borrow().iter().map(|touch| touch.point).collect();
+        let previous = entry.quad_baseline.borrow_mut().take();
+        if points.len() < QUAD_MIN_POINTS {
+            return;
+        }
+        let (moved, rotated, scaled) = previous.map(|b| (b.moved, b.rotated, b.scaled)).unwrap_or_default();
+        info!(points = ?points, position = ?entry.position.get(), scale = entry.scale.get().value(), rotation_deg = entry.rotation_widget.rotation() as f64, "quad baseline snapshot");
+        entry.quad_baseline.replace(Some(QuadBaseline {
+            position: entry.position.get(),
+            scale: entry.scale.get().value(),
+            rotation_deg: entry.rotation_widget.rotation() as f64,
+            centroid: quad_centroid(&points),
+            points,
+            moved,
+            rotated,
+            scaled,
+            applied_angle_deg: 0.0,
+        }));
+    }
+
+    /// Applies the similarity transform fitted between the baseline point
+    /// cloud and the current points: the card center follows the same
+    /// rotation/scale/translation the fingers describe.
+    fn apply_quad_transform(&self, entry: &CardEntry) {
+        let current: Vec<(f64, f64)> = entry.quad_touches.borrow().iter().map(|touch| touch.point).collect();
+        let mut baseline_ref = entry.quad_baseline.borrow_mut();
+        let Some(baseline) = baseline_ref.as_mut() else {
+            return;
+        };
+        if current.len() != baseline.points.len() || baseline.points.is_empty() {
+            return;
+        }
+        let centroid_now = quad_centroid(&current);
+        // Finger crossings through the centroid flip the point-cloud angle
+        // by ~180° in a single update - far faster than a real hand can
+        // rotate. Re-baseline on such jumps instead of applying them.
+        {
+            let preview_numerator = current
+                .iter()
+                .zip(&baseline.points)
+                .map(|((cx, cy), (sx, sy))| (cx - centroid_now.0) * (sy - baseline.centroid.1) - (cy - centroid_now.1) * (sx - baseline.centroid.0))
+                .sum::<f64>();
+            let preview_denominator = current
+                .iter()
+                .zip(&baseline.points)
+                .map(|((cx, cy), (sx, sy))| (cx - centroid_now.0) * (sx - baseline.centroid.0) + (cy - centroid_now.1) * (sy - baseline.centroid.1))
+                .sum::<f64>();
+            let preview_angle = preview_numerator.atan2(preview_denominator).to_degrees();
+            if (preview_angle - baseline.applied_angle_deg).abs() > QUAD_ANGLE_JUMP_DEG {
+                drop(baseline_ref);
+                self.refresh_quad_baseline(entry);
+                return;
+            }
+        }
+        let centroid_start = baseline.centroid;
+        let (mut numerator, mut denominator, mut radius_now, mut radius_start) = (0.0, 0.0, 0.0, 0.0);
+        for ((cx, cy), (sx, sy)) in current.iter().zip(&baseline.points) {
+            let (wx, wy) = (cx - centroid_now.0, cy - centroid_now.1);
+            let (ux, uy) = (sx - centroid_start.0, sy - centroid_start.1);
+            numerator += wx * uy - wy * ux;
+            denominator += wx * ux + wy * uy;
+            radius_now += wx * wx + wy * wy;
+            radius_start += ux * ux + uy * uy;
+        }
+        let raw_angle_deg = numerator.atan2(denominator).to_degrees();
+        let raw_ratio = if radius_start > f64::EPSILON {
+            (radius_now / radius_start).sqrt()
+        } else {
+            1.0
+        };
+        // The Procrustes angle is computed in y-down screen coordinates;
+        // negating converts it to the rotation the widget actually renders.
+        baseline.applied_angle_deg = raw_angle_deg;
+        let angle_deg = if entry.config.rotatable { -raw_angle_deg } else { 0.0 };
+        let scale = if entry.config.scalable && radius_start > f64::EPSILON {
+            ScaleFactor::new(baseline.scale * raw_ratio).clamped(&entry.config.scale_limits)
+        } else {
+            ScaleFactor::new(baseline.scale)
+        };
+        debug!(
+            raw_angle_deg,
+            raw_ratio,
+            applied_angle_deg = angle_deg,
+            applied_scale = scale.value(),
+            centroid_now = ?centroid_now,
+            "quad transform computed"
+        );
+        let applied_ratio = scale.value() / baseline.scale.max(f64::EPSILON);
+        if entry.config.draggable {
+            let rel = (baseline.position.x() - centroid_start.0, baseline.position.y() - centroid_start.1);
+            let (rot_x, rot_y) = rotate_vector(rel.0, rel.1, angle_deg);
+            let position = CardPosition::new(centroid_now.0 + rot_x * applied_ratio, centroid_now.1 + rot_y * applied_ratio);
+            if position != entry.position.get() {
+                baseline.moved = true;
+                entry.position.set(position);
+            }
+        }
+        if entry.config.rotatable {
+            let rotation = (baseline.rotation_deg + angle_deg) as f32;
+            if (rotation - entry.rotation_widget.rotation()).abs() > 0.01 {
+                baseline.rotated = true;
+                entry.rotation_widget.set_rotation(SmearorRotation::new(rotation));
+            }
+        }
+        if entry.config.scalable && scale != entry.scale.get() {
+            baseline.scaled = true;
             entry.scale.set(scale);
             entry.scaling.set_scale(scale.value());
-            self.apply_position(entry);
-            if entry.config.bounds_mode == BoundsMode::Contained {
-                self.clamp_entry(entry);
-            }
         }
-        self.emit_geometry_changed();
-    }
-
-    /// Pinch midpoint in card-layer (board) coordinates. `gesture.point()`
-    /// reports in `scaling` widget coordinates, which are untransformed - the
-    /// scale transform applies to its child only - so adding the stack's
-    /// top-left layer offset yields board space.
-    fn pinch_midpoint_in_layer(&self, gesture: &gtk4::GestureZoom, entry: &CardEntry) -> Option<(f64, f64)> {
-        let (px, py) = gesture.point(None)?;
-        let layer = self.card_layer()?;
-        let (offset_x, offset_y) = layer.child_position(&entry.scaling);
-        Some((offset_x + px, offset_y + py))
-    }
-
-    fn on_card_pinch_end(&self, id: &CardId) {
-        let card = {
-            let cards = self.imp().cards.borrow();
-            let Some(entry) = cards.get(id) else {
-                return;
-            };
+        drop(baseline_ref);
+        self.apply_position(entry);
+        if entry.config.bounds_mode == BoundsMode::Contained {
             self.clamp_entry(entry);
-            entry.card.clone()
-        };
-        card.emit_card_scaled();
-        self.emit_geometry_changed();
+        }
     }
 
     /// Records the card position and the pointer's board coordinates at drag
@@ -572,7 +862,9 @@ impl FloatingBoard {
                 return;
             };
             let delta = self.drag_delta(gesture, offset_x, offset_y, entry);
-            entry.position.set(entry.drag_start.get().translated(delta.0, delta.1));
+            let position = entry.drag_start.get().translated(delta.0, delta.1);
+            debug!(card = %id, delta = ?delta, position = ?(position.x(), position.y()), "drag update");
+            entry.position.set(position);
             self.apply_position(entry);
             if entry.config.bounds_mode == BoundsMode::Contained {
                 self.clamp_entry(entry);
@@ -596,13 +888,19 @@ impl FloatingBoard {
     }
 
     /// Pointer position in card-layer (board) coordinates, taken from the
-    /// event's surface coordinates - independent of the card's own transform.
+    /// gesture's own point tracking (`start_point + offset` in its widget
+    /// space, mapped through `compute_point`). The round trip through the
+    /// transform stack yields the true board-space position: GTK delivers the
+    /// widget-space point via the inverse transform, so applying the forward
+    /// transform returns the surface point - independent of the card's own
+    /// motion, and always fresh at signal emission time (unlike
+    /// `current_event`, which can lag one touch event behind).
     fn pointer_in_layer(&self, gesture: &gtk4::GestureDrag) -> Option<(f64, f64)> {
-        let event = gesture.current_event()?;
-        let (x, y) = event.position()?;
+        let (sx, sy) = gesture.start_point()?;
+        let (ox, oy) = gesture.offset()?;
+        let widget = gesture.widget()?;
         let layer = self.card_layer()?;
-        let native = layer.native()?;
-        let point = native.compute_point(&layer, &Point::new(x as f32, y as f32))?;
+        let point = widget.compute_point(&layer, &Point::new((sx + ox) as f32, (sy + oy) as f32))?;
         Some((point.x() as f64, point.y() as f64))
     }
 
@@ -659,32 +957,6 @@ impl FloatingBoard {
             });
         }
 
-        if config.scalable {
-            let zoom = gtk4::GestureZoom::new();
-            let board_weak = self.downgrade();
-            let card_id = id.clone();
-            zoom.connect_begin(move |_, _| {
-                if let Some(board) = board_weak.upgrade() {
-                    board.on_card_pinch_begin(&card_id);
-                }
-            });
-            let board_weak = self.downgrade();
-            let card_id = id.clone();
-            zoom.connect_scale_changed(move |gesture, zoom| {
-                if let Some(board) = board_weak.upgrade() {
-                    board.on_card_pinch_changed(&card_id, gesture, zoom);
-                }
-            });
-            let board_weak = self.downgrade();
-            let card_id = id.clone();
-            zoom.connect_end(move |_, _| {
-                if let Some(board) = board_weak.upgrade() {
-                    board.on_card_pinch_end(&card_id);
-                }
-            });
-            scaling.add_controller(zoom);
-        }
-
         // Raise on release: a click raises the card, and a finished drag ends
         // raised too. Raising on press would cancel the in-flight sequence.
         let click = gtk4::GestureClick::new();
@@ -696,8 +968,9 @@ impl FloatingBoard {
                 board.raise_card(&card_id);
             }
         });
-        scaling.add_controller(click);
+        scaling.add_controller(click.clone());
 
+        let mut card_drag: Option<gtk4::GestureDrag> = None;
         if config.draggable {
             let drag = gtk4::GestureDrag::new();
             drag.set_button(0);
@@ -722,7 +995,37 @@ impl FloatingBoard {
                     board.on_card_drag_end(&card_id, gesture, offset_x, offset_y);
                 }
             });
-            card.drag_source(config.drag_handle).add_controller(drag);
+            card.drag_source(config.drag_handle).add_controller(drag.clone());
+            card_drag = Some(drag);
+        }
+
+        // Quad transform tracker: a raw `EventControllerLegacy` observing
+        // every touch sequence on the card. Unlike `GestureSingle` siblings
+        // it sees all sequences without claiming any, so each finger maps to
+        // a tracked point and interactive content keeps working. With
+        // `QUAD_MIN_POINTS` or more live points a similarity transform
+        // applies - centroid delta moves, radius ratio scales, point-cloud
+        // rotation rotates - so move, rotate and zoom are one mechanism
+        // instead of arbitrated gestures. `FBD_NO_QUAD` disables it for
+        // A/B testing.
+        let quad_enabled = std::env::var_os("FBD_NO_QUAD").is_none() && (config.draggable || config.rotatable || config.scalable);
+        if quad_enabled {
+            // Gestures whose claims would steal a tracked touch's remaining
+            // events (incl. `TouchEnd`) from the legacy tracker.
+            let mut claimers: Vec<gtk4::Gesture> = vec![click.clone().upcast()];
+            if let Some(drag) = &card_drag {
+                claimers.push(drag.clone().upcast());
+            }
+            let tracker = gtk4::EventControllerLegacy::new();
+            let board_weak = self.downgrade();
+            let card_id = id.clone();
+            tracker.connect_event(move |controller, event| {
+                if let Some(board) = board_weak.upgrade() {
+                    board.on_quad_touch_event(&card_id, controller, event, card_drag.as_ref(), &claimers);
+                }
+                glib::Propagation::Proceed
+            });
+            scaling.add_controller(tracker);
         }
     }
 
