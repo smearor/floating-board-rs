@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["ANCHOR_MARGIN"],"enum":["BoardError","BoundsMode","CardAnchor","DragHandle"],"struct":["BoardLayout","BoardPoint","CardGeometry","CardId","CardPlacement","CardPosition","MinVisible","Rect","RotationRad","ScaleBounds","ScaleFactor","SequenceNumber"]};
+window.SIDEBAR_ITEMS = {"constant":["ANCHOR_MARGIN"],"enum":["BoardError","BoundsMode","CardAnchor","DragHandle"],"struct":["BoardLayout","CardGeometry","CardId","CardPlacement","CardPosition","MinVisible","Rect","ScaleBounds","ScaleFactor","SequenceNumber"]};
