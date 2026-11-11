@@ -4,6 +4,7 @@ use crate::domain::CardAnchor;
 use crate::domain::DragHandle;
 use crate::domain::MinVisible;
 use crate::domain::ScaleBounds;
+use crate::widget::card_close_action::CardCloseAction;
 
 /// Placement and interaction configuration of a card.
 ///
@@ -26,8 +27,11 @@ pub struct CardConfig {
     pub scalable: bool,
     /// Whether the card can be folded down to its header.
     pub foldable: bool,
-    /// Whether the header shows a close button that removes the card.
+    /// Whether the header shows a close button.
     pub closable: bool,
+    /// What the close button does - remove the card (default) or hide it
+    /// so a menu can re-open it later.
+    pub close_action: CardCloseAction,
     /// Collapses the header to a slim grip when no title/buttons are needed.
     pub headerless: bool,
     /// Which part of the card acts as the drag affordance.
@@ -73,6 +77,7 @@ impl Default for CardConfig {
             scalable: true,
             foldable: false,
             closable: false,
+            close_action: CardCloseAction::Remove,
             headerless: false,
             drag_handle: DragHandle::Header,
             anchor_margin: ANCHOR_MARGIN,

@@ -5,7 +5,9 @@ use crate::domain::DragHandle;
 use crate::domain::ScaleFactor;
 use crate::l10n::l10n;
 use crate::widget::board::FloatingBoard;
+use crate::widget::card_close_action::CardCloseAction;
 use crate::widget::card_config::CardConfig;
+use crate::widget::card_signal::CardSignal;
 use crate::widget::css::CLASS_FOLDED;
 use crate::widget::css::CLASS_HEADERLESS;
 use crate::widget::imp::card::CardImpl;
@@ -17,6 +19,7 @@ use gtk4::ConstraintTarget;
 use gtk4::Orientable;
 use gtk4::Orientation;
 use gtk4::Widget;
+use gtk4::cairo::Region;
 use gtk4::glib;
 use gtk4::prelude::BoxExt;
 use gtk4::prelude::ButtonExt;
@@ -77,9 +80,17 @@ impl Card {
             close_button.set_tooltip_text(Some(&l10n().message("card-close")));
             let board_weak = board.downgrade();
             let id = id.clone();
+            let close_action = config.close_action;
             close_button.connect_clicked(move |_| {
                 if let Some(board) = board_weak.upgrade() {
-                    let _ = board.remove_card(&id);
+                    match close_action {
+                        CardCloseAction::Remove => {
+                            let _ = board.remove_card(&id);
+                        }
+                        CardCloseAction::Hide => {
+                            let _ = board.set_card_visible(&id, false);
+                        }
+                    }
                 }
             });
         }
@@ -92,6 +103,12 @@ impl Card {
     /// Semantic identifier of this card.
     pub fn id(&self) -> CardId {
         self.imp().id.borrow().clone()
+    }
+
+    /// The title rendered in the header strip (the resolved `CardConfig`
+    /// title or the localized fallback).
+    pub fn title(&self) -> String {
+        self.imp().title_label.get().map(|label| label.text().to_string()).unwrap_or_default()
     }
 
     /// The board this card belongs to, if it is still on one.
@@ -209,7 +226,7 @@ impl Card {
             board.recenter_card(&self.id());
         }
         debug!(card = %self.id(), folded, "card folded state changed");
-        self.emit_by_name::<()>("card-folded", &[]);
+        self.emit_by_name::<()>(CardSignal::Folded.name(), &[]);
     }
 
     /// Whether the card is folded to its header.
@@ -221,10 +238,10 @@ impl Card {
     ///
     /// The union of all card footprints forms the dynamic safe-area of the
     /// board (used e.g. by robofigure to avoid drawing under cards).
-    pub fn footprint(&self) -> gtk4::cairo::Region {
+    pub fn footprint(&self) -> Region {
         self.board()
             .and_then(|board| board.card_footprint(&self.id()).ok())
-            .unwrap_or_else(gtk4::cairo::Region::create)
+            .unwrap_or_else(Region::create)
     }
 
     /// The consumer content widget of this card.
@@ -234,22 +251,22 @@ impl Card {
 
     /// Emits `card-moved` (called by the board at drag end).
     pub(crate) fn emit_card_moved(&self) {
-        self.emit_by_name::<()>("card-moved", &[]);
+        self.emit_by_name::<()>(CardSignal::Moved.name(), &[]);
     }
 
     /// Emits `card-rotated` (called by the board on rotation changes).
     pub(crate) fn emit_card_rotated(&self) {
-        self.emit_by_name::<()>("card-rotated", &[]);
+        self.emit_by_name::<()>(CardSignal::Rotated.name(), &[]);
     }
 
     /// Emits `card-scaled` (called by the board at pinch end).
     pub(crate) fn emit_card_scaled(&self) {
-        self.emit_by_name::<()>("card-scaled", &[]);
+        self.emit_by_name::<()>(CardSignal::Scaled.name(), &[]);
     }
 
     /// Emits `card-raised` (called by the board on raise).
     pub(crate) fn emit_card_raised(&self) {
-        self.emit_by_name::<()>("card-raised", &[]);
+        self.emit_by_name::<()>(CardSignal::Raised.name(), &[]);
     }
 
     /// Widget acting as the drag affordance for the given handle mode.

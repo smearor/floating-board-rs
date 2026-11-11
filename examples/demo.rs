@@ -10,6 +10,7 @@ use floating_board::ScaleBounds;
 use floating_board::SmearorRotation;
 use gtk4::glib::closure_local;
 use gtk4::prelude::*;
+use gtk4::{Align, Button, Label, Orientation, Scale};
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -35,22 +36,22 @@ fn build_ui(application: &gtk4::Application) {
 
     // --- Bottom layer: ordinary application content -------------------------
     // Clicks on empty areas of the card layer fall through to these widgets.
-    let content = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    let content = gtk4::Box::new(Orientation::Vertical, 0);
 
-    let toolbar = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    let toolbar = gtk4::Box::new(Orientation::Horizontal, 8);
     toolbar.set_margin_top(8);
     toolbar.set_margin_bottom(8);
     toolbar.set_margin_start(8);
     toolbar.set_margin_end(8);
 
-    let hint = gtk4::Label::new(Some("Drag card header | 2+ finger move/rotate/stretch | click raises"));
+    let hint = Label::new(Some("Drag card header | 2+ finger move/rotate/stretch | click raises"));
     hint.set_hexpand(true);
-    hint.set_halign(gtk4::Align::Start);
-    let content_button = gtk4::Button::with_label("Content button (click-through)");
-    let add_button = gtk4::Button::with_label("Add card");
-    let rotate_button = gtk4::Button::with_label("Rotate 90°");
-    let snapshot_button = gtk4::Button::with_label("Snapshot");
-    let restore_button = gtk4::Button::with_label("Restore");
+    hint.set_halign(Align::Start);
+    let content_button = Button::with_label("Content button (click-through)");
+    let add_button = Button::with_label("Add card");
+    let rotate_button = Button::with_label("Rotate 90°");
+    let snapshot_button = Button::with_label("Snapshot");
+    let restore_button = Button::with_label("Restore");
     restore_button.set_sensitive(false);
     toolbar.append(&hint);
     toolbar.append(&content_button);
@@ -100,13 +101,13 @@ fn build_ui(application: &gtk4::Application) {
     controls.set_margin_bottom(4);
     controls.set_margin_start(4);
     controls.set_margin_end(4);
-    controls.append(&gtk4::Label::new(Some("Volume")));
-    controls.append(&gtk4::Scale::with_range(gtk4::Orientation::Horizontal, 0.0, 100.0, 1.0));
-    let controls_buttons = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
-    let play_button = gtk4::Button::with_label("Play");
+    controls.append(&Label::new(Some("Volume")));
+    controls.append(&Scale::with_range(Orientation::Horizontal, 0.0, 100.0, 1.0));
+    let controls_buttons = gtk4::Box::new(Orientation::Horizontal, 8);
+    let play_button = Button::with_label("Play");
     play_button.connect_clicked(|_| info!("play clicked"));
     controls_buttons.append(&play_button);
-    controls_buttons.append(&gtk4::Button::with_label("Stop"));
+    controls_buttons.append(&Button::with_label("Stop"));
     controls.append(&controls_buttons);
     let controls_id = board
         .add_card_with_id(
@@ -125,8 +126,8 @@ fn build_ui(application: &gtk4::Application) {
 
     // Card 2: "info" - readable from the other side of the table (rotated
     // 90 degrees), dragged by its dedicated grip handle.
-    let info = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
-    info.append(&gtk4::Label::new(Some("This card is readable\nfrom the other side\nof the table.")));
+    let info = gtk4::Box::new(Orientation::Vertical, 4);
+    info.append(&Label::new(Some("This card is readable\nfrom the other side\nof the table.")));
     let info_id = board
         .add_card_with_id(
             "info",
@@ -146,7 +147,7 @@ fn build_ui(application: &gtk4::Application) {
 
     // Card 3: "display" - pure view, headerless; the whole card is the drag
     // affordance.
-    let display = gtk4::Label::new(Some("Display card\n(drag anywhere)"));
+    let display = Label::new(Some("Display card\n(drag anywhere)"));
     let display_id = board
         .add_card_with_id(
             "display",
@@ -162,7 +163,7 @@ fn build_ui(application: &gtk4::Application) {
         .unwrap_or_else(|_| CardId::new("display"));
 
     // Card 4: "parameters" - second foldable card for multi-user testing.
-    let parameters = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+    let parameters = gtk4::Box::new(Orientation::Vertical, 8);
     parameters.append(&gtk4::Label::new(Some("Edge margin")));
     parameters.append(&gtk4::Scale::with_range(gtk4::Orientation::Horizontal, 0.0, 40.0, 1.0));
     parameters.append(&gtk4::CheckButton::with_label("Legacy mode"));

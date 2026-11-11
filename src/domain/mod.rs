@@ -1,42 +1,25 @@
-//! Pure domain model: newtypes, enums, geometry math and layout serde.
-//!
-//! Nothing in this module depends on `gtk4`; everything is display-free and
-//! unit-testable.
+//! Pure, GTK-free domain core: card identity/geometry, board layout and
+//! bounds math, and shared geometry primitives. Everything in this module
+//! is serializable or pure value/method code and free of `gtk4` imports.
 
-mod anchor;
-mod board_error;
-mod board_layout;
-mod bounds_mode;
-mod card_anchor;
-mod card_geometry;
-mod card_id;
-mod card_placement;
-mod card_position;
-mod clamp;
-mod drag_handle;
-mod geometry;
-mod min_visible;
-mod rect;
-mod scale_bounds;
-mod scale_factor;
+pub(crate) mod board;
+pub(crate) mod card;
+pub(crate) mod geometry;
 
-pub use anchor::ANCHOR_MARGIN;
-pub use anchor::resolve_anchor;
-pub use board_error::BoardError;
-pub use board_layout::BoardLayout;
-pub use bounds_mode::BoundsMode;
-pub use card_anchor::CardAnchor;
-pub use card_geometry::CardGeometry;
-pub use card_id::CardId;
-pub use card_placement::CardPlacement;
-pub use card_position::CardPosition;
-pub use clamp::clamp_offset;
-pub use clamp::contain_offset;
-pub use drag_handle::DragHandle;
-pub use geometry::rotate_vector;
-pub use geometry::rotated_bounds;
-pub use geometry::rotated_region_scanlines;
-pub use min_visible::MinVisible;
-pub use rect::Rect;
-pub use scale_bounds::ScaleBounds;
-pub use scale_factor::ScaleFactor;
+pub use board::BoardError;
+pub use board::BoardLayout;
+pub use board::BoardPoint;
+pub use board::SequenceNumber;
+pub use card::ANCHOR_MARGIN;
+pub use card::BoundsMode;
+pub use card::CardAnchor;
+pub use card::CardGeometry;
+pub use card::CardId;
+pub use card::CardPlacement;
+pub use card::CardPosition;
+pub use card::DragHandle;
+pub use card::MinVisible;
+pub use card::ScaleBounds;
+pub use card::ScaleFactor;
+pub use geometry::Rect;
+pub use geometry::RotationRad;

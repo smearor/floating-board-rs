@@ -1,5 +1,6 @@
 use crate::domain::BoardError;
 use crate::domain::BoardLayout;
+use crate::domain::BoardPoint;
 use crate::domain::BoundsMode;
 use crate::domain::CardAnchor;
 use crate::domain::CardGeometry;
@@ -7,21 +8,17 @@ use crate::domain::CardId;
 use crate::domain::CardPlacement;
 use crate::domain::CardPosition;
 use crate::domain::Rect;
+use crate::domain::RotationRad;
 use crate::domain::ScaleFactor;
-use crate::domain::clamp_offset;
-use crate::domain::contain_offset;
-use crate::domain::resolve_anchor;
-use crate::domain::rotate_vector;
-use crate::domain::rotated_bounds;
-use crate::domain::rotated_region_scanlines;
+use crate::widget::board_signal::BoardSignal;
 use crate::widget::card::Card;
 use crate::widget::card_config::CardConfig;
 use crate::widget::card_layer::CardLayer;
 use crate::widget::css::ensure_default_css;
-use crate::widget::imp::board::CardEntry;
 use crate::widget::imp::board::FloatingBoardImpl;
-use crate::widget::imp::board::QuadBaseline;
-use crate::widget::imp::board::TrackedTouch;
+use crate::widget::imp::card_entry::CardEntry;
+use crate::widget::imp::quad_baseline::QuadBaseline;
+use crate::widget::imp::tracked_touch::TrackedTouch;
 use crate::widget::scaling::ScalingWidget;
 use glib::object::Cast;
 use glib::object::IsA;
@@ -36,6 +33,8 @@ use gtk4::Overlay;
 use gtk4::Widget;
 use gtk4::cairo::RectangleInt;
 use gtk4::cairo::Region;
+use gtk4::gdk::EventType;
+use gtk4::gio::prelude::ListModelExtManual;
 use gtk4::glib;
 use gtk4::graphene::Point;
 use gtk4::prelude::EventControllerExt;
@@ -51,6 +50,10 @@ use smearor_wrot_rotation::RotationWidget;
 use smearor_wrot_rotation::SmearorRotation;
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::time::Duration;
+use std::time::Instant;
 use tracing::debug;
 use tracing::info;
 use tracing::warn;
@@ -80,12 +83,6 @@ const QUAD_ANGLE_JUMP_DEG: f64 = 60.0;
 /// `TouchEnd` was routed to a claiming gesture or lost on the wire. Real
 /// resting fingers still produce sensor jitter, so they never go silent.
 const QUAD_STALE_MS: u64 = 1500;
-
-/// Centroid of a point set.
-fn quad_centroid(points: &[(f64, f64)]) -> (f64, f64) {
-    let count = points.len().max(1) as f64;
-    (points.iter().map(|p| p.0).sum::<f64>() / count, points.iter().map(|p| p.1).sum::<f64>() / count)
-}
 
 /// Denies every sequence a gesture currently tracks (`set_state` is like
 /// `set_sequence_state(.., Denied)` on all handled sequences; the per-sequence
@@ -126,7 +123,7 @@ impl FloatingBoard {
     /// Adds a card with an auto-generated `card-N` id and returns its id.
     pub fn add_card(&self, content: &impl IsA<Widget>, config: CardConfig) -> CardId {
         loop {
-            let sequence = self.imp().sequence.get() + 1;
+            let sequence = self.imp().sequence.get().incremented();
             let id = CardId::new(format!("card-{sequence}"));
             match self.add_card_with_id(id.clone(), content, config.clone()) {
                 Ok(id) => return id,
@@ -166,7 +163,7 @@ impl FloatingBoard {
         let scaling = ScalingWidget::new(&rotation_widget);
         layer.put(&scaling, 0.0, 0.0);
 
-        let sequence = self.imp().sequence.replace(self.imp().sequence.get() + 1);
+        let sequence = self.imp().sequence.replace(self.imp().sequence.get().incremented());
         let (initial_position, pending_anchor) = match config.position {
             CardAnchor::Explicit(position) => (position, None),
             anchor => (CardPosition::default(), Some(anchor)),
@@ -183,6 +180,8 @@ impl FloatingBoard {
             drag_grab: Cell::new(None),
             quad_touches: RefCell::new(Vec::new()),
             quad_baseline: RefCell::new(None),
+            claimed: RefCell::new(HashMap::new()),
+            watched: RefCell::new(HashSet::new()),
             sequence,
         };
         self.imp().cards.borrow_mut().insert(id.clone(), entry);
@@ -202,7 +201,7 @@ impl FloatingBoard {
         }
 
         debug!(card = %id, "card added");
-        self.emit_by_name::<()>("card-added", &[&card]);
+        self.emit_by_name::<()>(BoardSignal::CardAdded.name(), &[&card]);
         Ok(id)
     }
 
@@ -213,7 +212,7 @@ impl FloatingBoard {
             layer.remove(&entry.scaling);
         }
         debug!(card = %id, "card removed");
-        self.emit_by_name::<()>("card-removed", &[&entry.card]);
+        self.emit_by_name::<()>(BoardSignal::CardRemoved.name(), &[&entry.card]);
         Ok(())
     }
 
@@ -378,7 +377,7 @@ impl FloatingBoard {
                     } else {
                         entry.pending_anchor.borrow_mut().take();
                         let (width, height) = self.predicted_size(entry);
-                        entry.position.set(resolve_anchor(&anchor, &bounds, width, height, entry.config.anchor_margin));
+                        entry.position.set(anchor.resolve(&bounds, width, height, entry.config.anchor_margin));
                     }
                 }
             }
@@ -433,11 +432,46 @@ impl FloatingBoard {
     pub fn cards_region(&self) -> Region {
         let region = Region::create();
         for entry in self.imp().cards.borrow().values() {
+            // Hidden cards keep their geometry but contribute no input
+            // footprint - a stale rect would dead-zone the canvas.
+            if !entry.scaling.is_visible() {
+                continue;
+            }
             if let Err(error) = region.union(&self.entry_footprint(entry)) {
                 warn!(%error, "failed to union card footprint");
             }
         }
         region
+    }
+
+    /// Shows or hides the card's whole transform stack. A hidden card keeps
+    /// its geometry and entry, drops out of [`Self::cards_region`] and can be
+    /// re-shown here - the menu-driven counterpart of [`Self::remove_card`].
+    /// Emits `card-visibility-changed` with the card.
+    pub fn set_card_visible(&self, id: &CardId, visible: bool) -> Result<(), BoardError> {
+        let card = {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return Err(BoardError::UnknownCard(id.clone()));
+            };
+            if entry.scaling.is_visible() == visible {
+                return Ok(());
+            }
+            entry.scaling.set_visible(visible);
+            entry.card.clone()
+        };
+        self.emit_by_name::<()>(BoardSignal::CardVisibilityChanged.name(), &[&card]);
+        self.emit_geometry_changed();
+        Ok(())
+    }
+
+    /// Whether the card's transform stack is currently shown.
+    pub fn is_card_visible(&self, id: &CardId) -> Result<bool, BoardError> {
+        let cards = self.imp().cards.borrow();
+        let Some(entry) = cards.get(id) else {
+            return Err(BoardError::UnknownCard(id.clone()));
+        };
+        Ok(entry.scaling.is_visible())
     }
 
     /// Rotated footprint rasterized from the card's natural size, scale and
@@ -451,7 +485,7 @@ impl FloatingBoard {
         let center_x = position.x().round() as i32;
         let center_y = position.y().round() as i32;
         let region = Region::create();
-        for (y, x_start, x_end) in rotated_region_scanlines(natural_width as f64 * scale, natural_height as f64 * scale, degrees) {
+        for (y, x_start, x_end) in Rect::new(0.0, 0.0, natural_width as f64 * scale, natural_height as f64 * scale).rotated_region_scanlines(degrees) {
             let strip = RectangleInt::new(center_x + x_start, center_y + y, x_end - x_start, 1);
             if let Err(error) = region.union_rectangle(&strip) {
                 warn!(%error, "failed to union footprint strip");
@@ -488,7 +522,7 @@ impl FloatingBoard {
             for entry in cards.values() {
                 if let Some(anchor) = entry.pending_anchor.borrow_mut().take() {
                     let (width, height) = self.predicted_size(entry);
-                    entry.position.set(resolve_anchor(&anchor, &bounds, width, height, entry.config.anchor_margin));
+                    entry.position.set(anchor.resolve(&bounds, width, height, entry.config.anchor_margin));
                     resolved = true;
                 }
                 // Reconcile render state with position state on every
@@ -543,23 +577,22 @@ impl FloatingBoard {
         event: &gtk4::gdk::Event,
         card_drag: Option<&gtk4::GestureDrag>,
         click: &gtk4::GestureClick,
-        claimers: &[gtk4::Gesture],
     ) {
         let event_type = event.event_type();
-        if !matches!(
-            event_type,
-            gtk4::gdk::EventType::TouchBegin | gtk4::gdk::EventType::TouchUpdate | gtk4::gdk::EventType::TouchEnd | gtk4::gdk::EventType::TouchCancel
-        ) {
+        if !matches!(event_type, EventType::TouchBegin | EventType::TouchUpdate | EventType::TouchEnd | EventType::TouchCancel) {
             return;
         }
         // `event_sequence` is a plain (non-Option) binding - calling it on
         // sequence-less events asserts on a NULL pointer, so it may only run
         // after the touch-type check above.
-        self.sweep_quad_touches(id, claimers);
+        self.sweep_quad_touches(id);
         let sequence = event.event_sequence();
         match event_type {
-            gtk4::gdk::EventType::TouchBegin => {
-                info!(card = %id, "quad touch begin");
+            EventType::TouchBegin => {
+                // Diagnostic: two TouchBegins for one physical contact
+                // (slot + emulated/pointer dupe) would look identical
+                // here - sequence address + device distinguishes them.
+                info!(card = %id, sequence = ?sequence, "quad touch begin");
                 if let Some(point) = self.event_point_in_layer(controller, event) {
                     let cards = self.imp().cards.borrow();
                     if let Some(entry) = cards.get(id) {
@@ -568,7 +601,7 @@ impl FloatingBoard {
                 }
                 self.emit_geometry_changed();
             }
-            gtk4::gdk::EventType::TouchUpdate => {
+            EventType::TouchUpdate => {
                 let Some(point) = self.event_point_in_layer(controller, event) else {
                     return;
                 };
@@ -583,7 +616,7 @@ impl FloatingBoard {
                             return;
                         };
                         tracked.point = point;
-                        tracked.last_event = std::time::Instant::now();
+                        tracked.last_event = Instant::now();
                         touches.len()
                     };
                     debug!(card = %id, tracked, point = ?point, "quad touch update");
@@ -591,10 +624,56 @@ impl FloatingBoard {
                 }
                 self.emit_geometry_changed();
             }
-            gtk4::gdk::EventType::TouchEnd | gtk4::gdk::EventType::TouchCancel => {
+            EventType::TouchEnd | EventType::TouchCancel => {
                 self.release_quad_touch(id, &sequence);
             }
             _ => {}
+        }
+    }
+
+    /// Attaches a `sequence-state-changed` watcher to every `Gesture`
+    /// controller in the card subtree that does not have one yet. The
+    /// watcher marks claimed sequences on the entry - the mark
+    /// survives the gesture's own reset, which a `sequence_state`
+    /// query would not. Walked lazily on each sweep so gestures
+    /// children add at runtime are covered too.
+    fn watch_claims(&self, entry: &CardEntry) {
+        let root = entry.scaling.clone().upcast::<gtk4::Widget>();
+        let card_id = entry.card.id();
+        let mut stack = vec![root];
+        while let Some(widget) = stack.pop() {
+            for controller in widget.observe_controllers().iter::<glib::Object>() {
+                let Ok(controller) = controller else {
+                    continue;
+                };
+                let Some(gesture) = controller.downcast_ref::<gtk4::Gesture>() else {
+                    continue;
+                };
+                // The wrapper reference is a temporary - the stable
+                // identity is the underlying GObject pointer.
+                let address = glib::translate::ToGlibPtr::<*mut gtk4::ffi::GtkGesture>::to_glib_none(&gesture).0 as usize;
+                if !entry.watched.borrow_mut().insert(address) {
+                    continue;
+                }
+                let board_weak = self.downgrade();
+                let card_id = card_id.clone();
+                gesture.connect_sequence_state_changed(move |_, sequence, state| {
+                    if state != gtk4::EventSequenceState::Claimed {
+                        return;
+                    }
+                    if let (Some(board), Some(sequence)) = (board_weak.upgrade(), sequence) {
+                        let cards = board.imp().cards.borrow();
+                        if let Some(entry) = cards.get(&card_id) {
+                            entry.claimed.borrow_mut().insert(sequence.clone(), Instant::now());
+                        }
+                    }
+                });
+            }
+            let mut child = widget.first_child();
+            while let Some(ref sibling) = child {
+                stack.push(sibling.clone());
+                child = sibling.next_sibling();
+            }
         }
     }
 
@@ -604,22 +683,25 @@ impl FloatingBoard {
     /// already went to a claimer or was lost on the wire, so only the event
     /// timestamp reveals it is dead. Without the sweep a dead touch lingers
     /// as a phantom point, keeps the transform "active" for a single new
-    /// finger and distorts radius/angle.
-    fn sweep_quad_touches(&self, id: &CardId, claimers: &[gtk4::Gesture]) {
+    /// finger and distorts radius/angle. Claims are checked against every
+    /// gesture in the card subtree - the board's own click/drag as well as
+    /// child widgets (buttons, toggles), even ones added at runtime.
+    fn sweep_quad_touches(&self, id: &CardId) {
         let pruned = {
             let cards = self.imp().cards.borrow();
             let Some(entry) = cards.get(id) else {
                 return;
             };
+            self.watch_claims(entry);
+            // Slot ids recycle: a mark older than the stale window can
+            // only belong to a press that already ended - expire it so
+            // the next touch on the same slot is not shadowed.
+            entry.claimed.borrow_mut().retain(|_, ts| ts.elapsed() < Duration::from_millis(QUAD_STALE_MS));
             let pruned = {
                 let mut touches = entry.quad_touches.borrow_mut();
+                let claimed = entry.claimed.borrow();
                 let before = touches.len();
-                touches.retain(|touch| {
-                    touch.last_event.elapsed() < std::time::Duration::from_millis(QUAD_STALE_MS)
-                        && claimers
-                            .iter()
-                            .all(|gesture| gesture.sequence_state(&touch.sequence) != gtk4::EventSequenceState::Claimed)
-                });
+                touches.retain(|touch| touch.last_event.elapsed() < Duration::from_millis(QUAD_STALE_MS) && !claimed.contains_key(&touch.sequence));
                 before - touches.len()
             };
             if pruned > 0 {
@@ -651,6 +733,7 @@ impl FloatingBoard {
                     return;
                 };
                 touches.remove(index);
+                entry.claimed.borrow_mut().remove(sequence);
                 touches.len()
             };
             info!(card = %id, active, "quad touch released");
@@ -686,16 +769,20 @@ impl FloatingBoard {
         &self,
         entry: &CardEntry,
         sequence: gtk4::gdk::EventSequence,
-        point: (f64, f64),
+        point: BoardPoint,
         card_drag: Option<&gtk4::GestureDrag>,
         click: &gtk4::GestureClick,
     ) {
+        if entry.claimed.borrow().contains_key(&sequence) {
+            debug!(point = ?point, "quad touch skipped - sequence claimed");
+            return;
+        }
         let active = {
             let mut touches = entry.quad_touches.borrow_mut();
             touches.push(TrackedTouch {
                 sequence,
                 point,
-                last_event: std::time::Instant::now(),
+                last_event: Instant::now(),
             });
             touches.len()
         };
@@ -722,7 +809,7 @@ impl FloatingBoard {
     /// in surface space; it is mapped into the controller widget's
     /// coordinate space through the native's `compute_point` and then down
     /// the transform stack into layer (board) space.
-    fn event_point_in_layer(&self, controller: &gtk4::EventControllerLegacy, event: &gtk4::gdk::Event) -> Option<(f64, f64)> {
+    fn event_point_in_layer(&self, controller: &gtk4::EventControllerLegacy, event: &gtk4::gdk::Event) -> Option<BoardPoint> {
         let (px, py) = event.position()?;
         let widget = controller.widget()?;
         let native = widget.native()?;
@@ -730,14 +817,14 @@ impl FloatingBoard {
         let widget_point = native.compute_point(&widget, &surface_point)?;
         let layer = self.card_layer()?;
         let point = widget.compute_point(&layer, &widget_point)?;
-        Some((point.x() as f64, point.y() as f64))
+        Some(BoardPoint::new(point.x() as f64, point.y() as f64))
     }
 
     /// Takes a fresh baseline: current geometry plus the live quad points.
     /// Called on activation and whenever the point count changes, so adding
     /// or lifting fingers never produces a jump.
     fn refresh_quad_baseline(&self, entry: &CardEntry) {
-        let points: Vec<(f64, f64)> = entry.quad_touches.borrow().iter().map(|touch| touch.point).collect();
+        let points: Vec<BoardPoint> = entry.quad_touches.borrow().iter().map(|touch| touch.point).collect();
         let previous = entry.quad_baseline.borrow_mut().take();
         if points.len() < QUAD_MIN_POINTS {
             return;
@@ -747,8 +834,8 @@ impl FloatingBoard {
         entry.quad_baseline.replace(Some(QuadBaseline {
             position: entry.position.get(),
             scale: entry.scale.get().value(),
-            rotation_deg: entry.rotation_widget.rotation() as f64,
-            centroid: quad_centroid(&points),
+            rotation: RotationRad::from_degrees(entry.rotation_widget.rotation() as f64),
+            centroid: BoardPoint::centroid(&points),
             points,
             moved,
             rotated,
@@ -761,7 +848,7 @@ impl FloatingBoard {
     /// cloud and the current points: the card center follows the same
     /// rotation/scale/translation the fingers describe.
     fn apply_quad_transform(&self, entry: &CardEntry) {
-        let current: Vec<(f64, f64)> = entry.quad_touches.borrow().iter().map(|touch| touch.point).collect();
+        let current: Vec<BoardPoint> = entry.quad_touches.borrow().iter().map(|touch| touch.point).collect();
         let mut baseline_ref = entry.quad_baseline.borrow_mut();
         let Some(baseline) = baseline_ref.as_mut() else {
             return;
@@ -769,7 +856,7 @@ impl FloatingBoard {
         if current.len() != baseline.points.len() || baseline.points.is_empty() {
             return;
         }
-        let centroid_now = quad_centroid(&current);
+        let centroid_now = BoardPoint::centroid(&current);
         // Finger crossings through the centroid flip the point-cloud angle
         // by ~180° in a single update - far faster than a real hand can
         // rotate. Re-baseline on such jumps instead of applying them.
@@ -777,12 +864,16 @@ impl FloatingBoard {
             let preview_numerator = current
                 .iter()
                 .zip(&baseline.points)
-                .map(|((cx, cy), (sx, sy))| (cx - centroid_now.0) * (sy - baseline.centroid.1) - (cy - centroid_now.1) * (sx - baseline.centroid.0))
+                .map(|(cur, base)| {
+                    (cur.x() - centroid_now.x()) * (base.y() - baseline.centroid.y()) - (cur.y() - centroid_now.y()) * (base.x() - baseline.centroid.x())
+                })
                 .sum::<f64>();
             let preview_denominator = current
                 .iter()
                 .zip(&baseline.points)
-                .map(|((cx, cy), (sx, sy))| (cx - centroid_now.0) * (sx - baseline.centroid.0) + (cy - centroid_now.1) * (sy - baseline.centroid.1))
+                .map(|(cur, base)| {
+                    (cur.x() - centroid_now.x()) * (base.x() - baseline.centroid.x()) + (cur.y() - centroid_now.y()) * (base.y() - baseline.centroid.y())
+                })
                 .sum::<f64>();
             let preview_angle = preview_numerator.atan2(preview_denominator).to_degrees();
             if (preview_angle - baseline.applied_angle_deg).abs() > QUAD_ANGLE_JUMP_DEG {
@@ -793,9 +884,9 @@ impl FloatingBoard {
         }
         let centroid_start = baseline.centroid;
         let (mut numerator, mut denominator, mut radius_now, mut radius_start) = (0.0, 0.0, 0.0, 0.0);
-        for ((cx, cy), (sx, sy)) in current.iter().zip(&baseline.points) {
-            let (wx, wy) = (cx - centroid_now.0, cy - centroid_now.1);
-            let (ux, uy) = (sx - centroid_start.0, sy - centroid_start.1);
+        for (cur, base) in current.iter().zip(&baseline.points) {
+            let (wx, wy) = (cur.x() - centroid_now.x(), cur.y() - centroid_now.y());
+            let (ux, uy) = (base.x() - centroid_start.x(), base.y() - centroid_start.y());
             numerator += wx * uy - wy * ux;
             denominator += wx * ux + wy * uy;
             radius_now += wx * wx + wy * wy;
@@ -826,16 +917,16 @@ impl FloatingBoard {
         );
         let applied_ratio = scale.value() / baseline.scale.max(f64::EPSILON);
         if entry.config.draggable {
-            let rel = (baseline.position.x() - centroid_start.0, baseline.position.y() - centroid_start.1);
-            let (rot_x, rot_y) = rotate_vector(rel.0, rel.1, angle_deg);
-            let position = CardPosition::new(centroid_now.0 + rot_x * applied_ratio, centroid_now.1 + rot_y * applied_ratio);
+            let rel = BoardPoint::new(baseline.position.x() - centroid_start.x(), baseline.position.y() - centroid_start.y());
+            let rot = rel.rotated(angle_deg);
+            let position = CardPosition::new(centroid_now.x() + rot.x() * applied_ratio, centroid_now.y() + rot.y() * applied_ratio);
             if position != entry.position.get() {
                 baseline.moved = true;
                 entry.position.set(position);
             }
         }
         if entry.config.rotatable {
-            let rotation = (baseline.rotation_deg + angle_deg) as f32;
+            let rotation = (baseline.rotation.to_degrees() + angle_deg) as f32;
             if (rotation - entry.rotation_widget.rotation()).abs() > 0.01 {
                 baseline.rotated = true;
                 entry.rotation_widget.set_rotation(SmearorRotation::new(rotation));
@@ -913,13 +1004,13 @@ impl FloatingBoard {
     /// transform returns the surface point - independent of the card's own
     /// motion, and always fresh at signal emission time (unlike
     /// `current_event`, which can lag one touch event behind).
-    fn pointer_in_layer(&self, gesture: &gtk4::GestureDrag) -> Option<(f64, f64)> {
+    fn pointer_in_layer(&self, gesture: &gtk4::GestureDrag) -> Option<BoardPoint> {
         let (sx, sy) = gesture.start_point()?;
         let (ox, oy) = gesture.offset()?;
         let widget = gesture.widget()?;
         let layer = self.card_layer()?;
         let point = widget.compute_point(&layer, &Point::new((sx + ox) as f32, (sy + oy) as f32))?;
-        Some((point.x() as f64, point.y() as f64))
+        Some(BoardPoint::new(point.x() as f64, point.y() as f64))
     }
 
     /// Drag delta in board coordinates: current pointer position minus the
@@ -927,13 +1018,13 @@ impl FloatingBoard {
     /// inverse `rotate . scale` on the widget-space offset before the first
     /// allocation, when no surface mapping is available yet.
     fn drag_delta(&self, gesture: &gtk4::GestureDrag, offset_x: f64, offset_y: f64, entry: &CardEntry) -> (f64, f64) {
-        if let (Some(now), Some((grab_x, grab_y))) = (self.pointer_in_layer(gesture), entry.drag_grab.get()) {
-            return (now.0 - grab_x, now.1 - grab_y);
+        if let (Some(now), Some(grab)) = (self.pointer_in_layer(gesture), entry.drag_grab.get()) {
+            return (now.x() - grab.x(), now.y() - grab.y());
         }
         let degrees = entry.rotation_widget.rotation() as f64;
         let scale = entry.scale.get().value();
-        let (dx, dy) = rotate_vector(offset_x, offset_y, degrees);
-        (dx * scale, dy * scale)
+        let delta = BoardPoint::new(offset_x, offset_y).rotated(degrees);
+        (delta.x() * scale, delta.y() * scale)
     }
 
     /// Reorders the card layer by `z_index` (stable by insertion sequence).
@@ -1028,19 +1119,13 @@ impl FloatingBoard {
         // A/B testing.
         let quad_enabled = std::env::var_os("FBD_NO_QUAD").is_none() && (config.draggable || config.rotatable || config.scalable);
         if quad_enabled {
-            // Gestures whose claims would steal a tracked touch's remaining
-            // events (incl. `TouchEnd`) from the legacy tracker.
-            let mut claimers: Vec<gtk4::Gesture> = vec![click.clone().upcast()];
-            if let Some(drag) = &card_drag {
-                claimers.push(drag.clone().upcast());
-            }
             let tracker = gtk4::EventControllerLegacy::new();
             let board_weak = self.downgrade();
             let card_id = id.clone();
             let click_for_tracker = click.clone();
             tracker.connect_event(move |controller, event| {
                 if let Some(board) = board_weak.upgrade() {
-                    board.on_quad_touch_event(&card_id, controller, event, card_drag.as_ref(), &click_for_tracker, &claimers);
+                    board.on_quad_touch_event(&card_id, controller, event, card_drag.as_ref(), &click_for_tracker);
                 }
                 glib::Propagation::Proceed
             });
@@ -1050,7 +1135,7 @@ impl FloatingBoard {
 
     /// Emits `geometry-changed` on the board.
     pub(crate) fn emit_geometry_changed(&self) {
-        self.emit_by_name::<()>("geometry-changed", &[]);
+        self.emit_by_name::<()>(BoardSignal::GeometryChanged.name(), &[]);
     }
 
     fn card_layer(&self) -> Option<CardLayer> {
@@ -1092,8 +1177,8 @@ impl FloatingBoard {
         let (width, height) = self.displayed_size(entry);
         let footprint = Rect::centered(entry.position.get(), width, height);
         let (dx, dy) = match entry.config.bounds_mode {
-            BoundsMode::Loose => clamp_offset(&footprint, &bounds, entry.config.min_visible),
-            BoundsMode::Contained => contain_offset(&footprint, &bounds),
+            BoundsMode::Loose => footprint.clamp_offset(&bounds, entry.config.min_visible),
+            BoundsMode::Contained => footprint.contain_offset(&bounds),
         };
         if dx != 0.0 || dy != 0.0 {
             entry.position.set(entry.position.get().translated(dx, dy));
@@ -1128,7 +1213,7 @@ impl FloatingBoard {
         let (_, natural_height, _, _) = entry.card.measure(Orientation::Vertical, -1);
         let scale = entry.scale.get().value();
         let degrees = entry.rotation_widget.rotation() as f64;
-        rotated_bounds(natural_width as f64 * scale, natural_height as f64 * scale, degrees)
+        Rect::new(0.0, 0.0, natural_width as f64 * scale, natural_height as f64 * scale).rotated_bounds(degrees)
     }
 
     fn entry_geometry(&self, entry: &CardEntry) -> CardGeometry {

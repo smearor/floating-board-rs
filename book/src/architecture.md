@@ -4,17 +4,20 @@
 widget layer that maps GTK mechanics (gestures, layout, transforms) onto
 domain operations.
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ Consumer application                                            │
-│   floating_board::FloatingBoard + domain types in/out            │
-├─────────────────────────────────────────────────────────────────┤
-│ src/widget/   - ObjectSubclass glue (gestures, layout, CSS)      │
-│   FloatingBoard > Overlay { content, Fixed { card stacks } }     │
-├─────────────────────────────────────────────────────────────────┤
-│ src/domain/   - pure Rust, no gtk4                               │
-│   NewTypes, Enums, geometry math, BoardLayout serde              │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    classDef consumer fill: #00a1e4, stroke: #ffffff, stroke-width: 2px, color: #ffffff
+    classDef widget fill: #1e1e1e, stroke: #00a1e4, stroke-width: 2px, color: #ffffff
+    classDef domain fill: #89fc00, stroke: #333333, stroke-width: 2px, color: #000000
+
+    Consumer["Consumer application<br/><small>floating_board::FloatingBoard + domain types in/out</small>"]:::consumer --> Widget
+    subgraph Widget["src/widget/ - ObjectSubclass glue (gestures, layout, CSS)"]
+        FB["FloatingBoard &gt; Overlay &lbrace; content, Fixed &lbrace; card stacks &rbrace; &rbrace;"]
+    end
+    Widget --> Domain
+    subgraph Domain["src/domain/ - pure Rust, no gtk4"]
+        DT["NewTypes, Enums, geometry math,<br/>BoardLayout serde"]
+    end
 ```
 
 ## Widget Stack
@@ -52,15 +55,24 @@ graph TD
 
 ## The Card
 
-```text
-┌─ Card (gtk4::Box, .floating-card) ─────────────────────────────────┐
-│ ┌─ Header (.floating-card-header, drag affordance) ──────────────┐ │
-│ │ [≡ handle] Title  ········· [fold] [close]                     │ │
-│ └────────────────────────────────────────────────────────────────┘ │
-│ ┌─ Content (.floating-card-content) ─────────────────────────────┐ │
-│ │ arbitrary consumer widget                                      │ │
-│ └────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    classDef card fill: #89fc00, stroke: #333333, stroke-width: 2px, color: #000000
+    classDef header fill: #1e1e1e, stroke: #00a1e4, stroke-width: 2px, color: #ffffff
+    classDef content fill: #dc0073, stroke: #ffffff, stroke-width: 2px, color: #ffffff
+
+    subgraph CardBox["Card (gtk4::Box, .floating-card)"]
+        direction TB
+        subgraph Header["Header (.floating-card-header, drag affordance)"]
+            Chrome["&#x2261; handle &nbsp;&nbsp; Title &nbsp;&nbsp; &#x2B1C; fold &nbsp; &#x2715; close"]
+        end
+        subgraph ContentBox["Content (.floating-card-content)"]
+            Content["arbitrary consumer widget"]
+        end
+    end
+    class CardBox card
+    class Header header
+    class ContentBox content
 ```
 
 - `Card` is a `gtk4::Box` subclass: header strip plus a content holder for the

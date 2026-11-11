@@ -1,6 +1,7 @@
 use crate::domain::CardId;
 use crate::widget::FloatingBoard;
 use crate::widget::card::Card;
+use crate::widget::card_signal::CARD_SIGNALS;
 use crate::widget::css::CLASS_CARD;
 use crate::widget::css::CLASS_CONTENT;
 use crate::widget::css::CLASS_HANDLE;
@@ -130,15 +131,7 @@ impl ObjectImpl for CardImpl {
     }
 
     fn signals() -> &'static [Signal] {
-        static SIGNALS: LazyLock<Vec<Signal>> = LazyLock::new(|| {
-            vec![
-                Signal::builder("card-moved").build(),
-                Signal::builder("card-rotated").build(),
-                Signal::builder("card-scaled").build(),
-                Signal::builder("card-raised").build(),
-                Signal::builder("card-folded").build(),
-            ]
-        });
+        static SIGNALS: LazyLock<Vec<Signal>> = LazyLock::new(|| CARD_SIGNALS.iter().map(|signal| signal.signal()).collect());
         &SIGNALS
     }
 }

@@ -20,34 +20,7 @@ pub const CLASS_HANDLE: &str = "floating-card-handle";
 /// CSS class applied while a card is folded.
 pub const CLASS_FOLDED: &str = "floating-card-folded";
 
-const DEFAULT_CSS: &str = "
-.floating-card {
-    background-color: #2e3440;
-    color: #eceff4;
-    border-radius: 12px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-}
-.floating-card-header {
-    background-color: #3b4252;
-    border-radius: 12px 12px 0 0;
-    padding: 4px 8px;
-    min-height: 26px;
-}
-.floating-card-folded .floating-card-header {
-    border-radius: 12px;
-}
-.floating-card-headerless .floating-card-header {
-    min-height: 10px;
-    padding: 2px 8px;
-}
-.floating-card-content {
-    padding: 10px;
-}
-.floating-card-handle {
-    margin-right: 6px;
-    opacity: 0.7;
-}
-";
+const DEFAULT_CSS: &str = include_str!("default.css");
 
 static CSS_LOADED: AtomicBool = AtomicBool::new(false);
 
