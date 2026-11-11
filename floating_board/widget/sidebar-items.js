@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["Card","CardConfig","CardLayer","FloatingBoard","ScalingLayout","ScalingWidget"]};
+window.SIDEBAR_ITEMS = {"enum":["CardCloseAction"],"struct":["Card","CardConfig","CardLayer","FloatingBoard","ScalingLayout","ScalingWidget"]};
