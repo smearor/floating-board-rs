@@ -761,9 +761,9 @@ checksum = "149309498a5f7334b12ddae0cad8aba81ce785fe91755068867e017cf98fee46"
 
 [[package]]
 name = "smearor-wrot-rotation"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64091d85d3b3d4beef3ca55e4832ace9b1b25d0dd3a05fc715c04ac0ebfe2170"
+checksum = "a4d8ae51ae9bcb1e0498b8ebb56f34957e61d747bca6342a533b08e7e0942b09"
 dependencies = [
  "glib",
  "gtk4",

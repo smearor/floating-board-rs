@@ -157,7 +157,10 @@ impl FloatingBoard {
             // The card is nested inside the board's `Fixed` layer - the
             // surface-global input-region clamp would kill input for the
             // rest of the window (`smearor-wrot-rotation` >= 0.2.1).
-            .with_input_region_enabled(false);
+            .with_input_region_enabled(false)
+            // Allocate the card its natural size at any angle - the legacy
+            // inverse-solve shrinks non-square children near 45°.
+            .with_natural_child_size_enabled(true);
         rotation_widget.set_animation_speed(config.animation_speed_ms);
         rotation_widget.set_child(Some(&card));
         let scaling = ScalingWidget::new(&rotation_widget);

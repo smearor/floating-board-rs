@@ -19,7 +19,7 @@ fluent-bundle = "0.16"
 glib = "0.22"
 gtk4 = { version = "0.11", features = ["v4_20"] }
 serde = { version = "1.0", features = ["derive"], optional = true }
-smearor-wrot-rotation = { version = "0.2.1", default-features = false }
+smearor-wrot-rotation = { version = "0.2.2", default-features = false }
 thiserror = "2"
 tracing = "0.1"
 unic-langid = { version = "0.9", features = ["macros"] }
