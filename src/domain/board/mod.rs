@@ -3,10 +3,8 @@
 
 mod error;
 mod layout;
-mod point;
 mod sequence;
 
 pub use error::BoardError;
 pub use layout::BoardLayout;
-pub use point::BoardPoint;
 pub use sequence::SequenceNumber;

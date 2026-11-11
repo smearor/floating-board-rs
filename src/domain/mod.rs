@@ -8,7 +8,6 @@ pub(crate) mod geometry;
 
 pub use board::BoardError;
 pub use board::BoardLayout;
-pub use board::BoardPoint;
 pub use board::SequenceNumber;
 pub use card::ANCHOR_MARGIN;
 pub use card::BoundsMode;
@@ -22,4 +21,3 @@ pub use card::MinVisible;
 pub use card::ScaleBounds;
 pub use card::ScaleFactor;
 pub use geometry::Rect;
-pub use geometry::RotationRad;

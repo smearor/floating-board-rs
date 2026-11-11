@@ -1,4 +1,3 @@
-use crate::domain::BoardPoint;
 use crate::domain::CardAnchor;
 use crate::domain::CardPosition;
 use crate::domain::ScaleFactor;
@@ -8,6 +7,8 @@ use crate::widget::card_config::CardConfig;
 use crate::widget::imp::quad_baseline::QuadBaseline;
 use crate::widget::imp::tracked_touch::TrackedTouch;
 use crate::widget::scaling::ScalingWidget;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Vec2;
 use smearor_wrot_rotation::RotationWidget;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -37,7 +38,7 @@ pub(crate) struct CardEntry {
     /// Card center at the start of the active drag gesture.
     pub drag_start: Cell<CardPosition>,
     /// Pointer position in board coordinates at drag begin.
-    pub drag_grab: Cell<Option<BoardPoint>>,
+    pub drag_grab: Cell<Option<Vec2<Pixels>>>,
     /// Live touch points for the quad transform, one entry per finger
     /// currently on the card. The tracker's `EventControllerLegacy` keeps
     /// this in sync - a plain event observer that sees every sequence

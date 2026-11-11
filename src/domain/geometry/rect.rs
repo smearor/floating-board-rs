@@ -1,6 +1,8 @@
-use crate::domain::BoardPoint;
 use crate::domain::CardPosition;
 use crate::domain::MinVisible;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::Vec2;
 
 /// Axis-aligned rectangle in board coordinates (pixels).
 ///
@@ -93,8 +95,8 @@ impl Rect {
         ];
         let mut transformed = Vec::with_capacity(4);
         for (x, y) in corners {
-            let rotated = BoardPoint::new(x, y).rotated(degrees);
-            transformed.push((rotated.x() as f32, rotated.y() as f32));
+            let rotated = Vec2::<Pixels>::new(x, y).rotated(RotationRad::from_degrees(degrees));
+            transformed.push((rotated.x as f32, rotated.y as f32));
         }
         let min_y = transformed.iter().map(|(_, y)| *y).fold(f32::INFINITY, f32::min).floor() as i32;
         let max_y = transformed.iter().map(|(_, y)| *y).fold(f32::NEG_INFINITY, f32::max).ceil() as i32;

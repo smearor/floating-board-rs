@@ -46,7 +46,6 @@ mod l10n;
 
 pub use domain::BoardError;
 pub use domain::BoardLayout;
-pub use domain::BoardPoint;
 pub use domain::BoundsMode;
 pub use domain::CardAnchor;
 pub use domain::CardGeometry;
@@ -56,7 +55,6 @@ pub use domain::CardPosition;
 pub use domain::DragHandle;
 pub use domain::MinVisible;
 pub use domain::Rect;
-pub use domain::RotationRad;
 pub use domain::ScaleBounds;
 pub use domain::ScaleFactor;
 pub use domain::SequenceNumber;

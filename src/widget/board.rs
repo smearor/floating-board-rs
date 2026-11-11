@@ -1,6 +1,5 @@
 use crate::domain::BoardError;
 use crate::domain::BoardLayout;
-use crate::domain::BoardPoint;
 use crate::domain::BoundsMode;
 use crate::domain::CardAnchor;
 use crate::domain::CardGeometry;
@@ -8,7 +7,6 @@ use crate::domain::CardId;
 use crate::domain::CardPlacement;
 use crate::domain::CardPosition;
 use crate::domain::Rect;
-use crate::domain::RotationRad;
 use crate::domain::ScaleFactor;
 use crate::widget::board_signal::BoardSignal;
 use crate::widget::card::Card;
@@ -45,6 +43,9 @@ use gtk4::prelude::GestureSingleExt;
 use gtk4::prelude::LayoutManagerExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::Vec2;
 use smearor_wrot_rotation::RotationControlHandler;
 use smearor_wrot_rotation::RotationWidget;
 use smearor_wrot_rotation::SmearorRotation;
@@ -769,7 +770,7 @@ impl FloatingBoard {
         &self,
         entry: &CardEntry,
         sequence: gtk4::gdk::EventSequence,
-        point: BoardPoint,
+        point: Vec2<Pixels>,
         card_drag: Option<&gtk4::GestureDrag>,
         click: &gtk4::GestureClick,
     ) {
@@ -809,7 +810,7 @@ impl FloatingBoard {
     /// in surface space; it is mapped into the controller widget's
     /// coordinate space through the native's `compute_point` and then down
     /// the transform stack into layer (board) space.
-    fn event_point_in_layer(&self, controller: &gtk4::EventControllerLegacy, event: &gtk4::gdk::Event) -> Option<BoardPoint> {
+    fn event_point_in_layer(&self, controller: &gtk4::EventControllerLegacy, event: &gtk4::gdk::Event) -> Option<Vec2<Pixels>> {
         let (px, py) = event.position()?;
         let widget = controller.widget()?;
         let native = widget.native()?;
@@ -817,14 +818,14 @@ impl FloatingBoard {
         let widget_point = native.compute_point(&widget, &surface_point)?;
         let layer = self.card_layer()?;
         let point = widget.compute_point(&layer, &widget_point)?;
-        Some(BoardPoint::new(point.x() as f64, point.y() as f64))
+        Some(Vec2::<Pixels>::new(point.x() as f64, point.y() as f64))
     }
 
     /// Takes a fresh baseline: current geometry plus the live quad points.
     /// Called on activation and whenever the point count changes, so adding
     /// or lifting fingers never produces a jump.
     fn refresh_quad_baseline(&self, entry: &CardEntry) {
-        let points: Vec<BoardPoint> = entry.quad_touches.borrow().iter().map(|touch| touch.point).collect();
+        let points: Vec<Vec2<Pixels>> = entry.quad_touches.borrow().iter().map(|touch| touch.point).collect();
         let previous = entry.quad_baseline.borrow_mut().take();
         if points.len() < QUAD_MIN_POINTS {
             return;
@@ -835,7 +836,7 @@ impl FloatingBoard {
             position: entry.position.get(),
             scale: entry.scale.get().value(),
             rotation: RotationRad::from_degrees(entry.rotation_widget.rotation() as f64),
-            centroid: BoardPoint::centroid(&points),
+            centroid: Vec2::centroid(&points),
             points,
             moved,
             rotated,
@@ -848,7 +849,7 @@ impl FloatingBoard {
     /// cloud and the current points: the card center follows the same
     /// rotation/scale/translation the fingers describe.
     fn apply_quad_transform(&self, entry: &CardEntry) {
-        let current: Vec<BoardPoint> = entry.quad_touches.borrow().iter().map(|touch| touch.point).collect();
+        let current: Vec<Vec2<Pixels>> = entry.quad_touches.borrow().iter().map(|touch| touch.point).collect();
         let mut baseline_ref = entry.quad_baseline.borrow_mut();
         let Some(baseline) = baseline_ref.as_mut() else {
             return;
@@ -856,7 +857,7 @@ impl FloatingBoard {
         if current.len() != baseline.points.len() || baseline.points.is_empty() {
             return;
         }
-        let centroid_now = BoardPoint::centroid(&current);
+        let centroid_now = Vec2::centroid(&current);
         // Finger crossings through the centroid flip the point-cloud angle
         // by ~180° in a single update - far faster than a real hand can
         // rotate. Re-baseline on such jumps instead of applying them.
@@ -864,16 +865,12 @@ impl FloatingBoard {
             let preview_numerator = current
                 .iter()
                 .zip(&baseline.points)
-                .map(|(cur, base)| {
-                    (cur.x() - centroid_now.x()) * (base.y() - baseline.centroid.y()) - (cur.y() - centroid_now.y()) * (base.x() - baseline.centroid.x())
-                })
+                .map(|(cur, base)| (cur.x - centroid_now.x) * (base.y - baseline.centroid.y) - (cur.y - centroid_now.y) * (base.x - baseline.centroid.x))
                 .sum::<f64>();
             let preview_denominator = current
                 .iter()
                 .zip(&baseline.points)
-                .map(|(cur, base)| {
-                    (cur.x() - centroid_now.x()) * (base.x() - baseline.centroid.x()) + (cur.y() - centroid_now.y()) * (base.y() - baseline.centroid.y())
-                })
+                .map(|(cur, base)| (cur.x - centroid_now.x) * (base.x - baseline.centroid.x) + (cur.y - centroid_now.y) * (base.y - baseline.centroid.y))
                 .sum::<f64>();
             let preview_angle = preview_numerator.atan2(preview_denominator).to_degrees();
             if (preview_angle - baseline.applied_angle_deg).abs() > QUAD_ANGLE_JUMP_DEG {
@@ -885,8 +882,8 @@ impl FloatingBoard {
         let centroid_start = baseline.centroid;
         let (mut numerator, mut denominator, mut radius_now, mut radius_start) = (0.0, 0.0, 0.0, 0.0);
         for (cur, base) in current.iter().zip(&baseline.points) {
-            let (wx, wy) = (cur.x() - centroid_now.x(), cur.y() - centroid_now.y());
-            let (ux, uy) = (base.x() - centroid_start.x(), base.y() - centroid_start.y());
+            let (wx, wy) = (cur.x - centroid_now.x, cur.y - centroid_now.y);
+            let (ux, uy) = (base.x - centroid_start.x, base.y - centroid_start.y);
             numerator += wx * uy - wy * ux;
             denominator += wx * ux + wy * uy;
             radius_now += wx * wx + wy * wy;
@@ -917,9 +914,9 @@ impl FloatingBoard {
         );
         let applied_ratio = scale.value() / baseline.scale.max(f64::EPSILON);
         if entry.config.draggable {
-            let rel = BoardPoint::new(baseline.position.x() - centroid_start.x(), baseline.position.y() - centroid_start.y());
-            let rot = rel.rotated(angle_deg);
-            let position = CardPosition::new(centroid_now.x() + rot.x() * applied_ratio, centroid_now.y() + rot.y() * applied_ratio);
+            let rel = Vec2::<Pixels>::new(baseline.position.x() - centroid_start.x, baseline.position.y() - centroid_start.y);
+            let rot = rel.rotated(RotationRad::from_degrees(angle_deg));
+            let position = CardPosition::new(centroid_now.x + rot.x * applied_ratio, centroid_now.y + rot.y * applied_ratio);
             if position != entry.position.get() {
                 baseline.moved = true;
                 entry.position.set(position);
@@ -1004,13 +1001,13 @@ impl FloatingBoard {
     /// transform returns the surface point - independent of the card's own
     /// motion, and always fresh at signal emission time (unlike
     /// `current_event`, which can lag one touch event behind).
-    fn pointer_in_layer(&self, gesture: &gtk4::GestureDrag) -> Option<BoardPoint> {
+    fn pointer_in_layer(&self, gesture: &gtk4::GestureDrag) -> Option<Vec2<Pixels>> {
         let (sx, sy) = gesture.start_point()?;
         let (ox, oy) = gesture.offset()?;
         let widget = gesture.widget()?;
         let layer = self.card_layer()?;
         let point = widget.compute_point(&layer, &Point::new((sx + ox) as f32, (sy + oy) as f32))?;
-        Some(BoardPoint::new(point.x() as f64, point.y() as f64))
+        Some(Vec2::<Pixels>::new(point.x() as f64, point.y() as f64))
     }
 
     /// Drag delta in board coordinates: current pointer position minus the
@@ -1019,12 +1016,12 @@ impl FloatingBoard {
     /// allocation, when no surface mapping is available yet.
     fn drag_delta(&self, gesture: &gtk4::GestureDrag, offset_x: f64, offset_y: f64, entry: &CardEntry) -> (f64, f64) {
         if let (Some(now), Some(grab)) = (self.pointer_in_layer(gesture), entry.drag_grab.get()) {
-            return (now.x() - grab.x(), now.y() - grab.y());
+            return (now.x - grab.x, now.y - grab.y);
         }
         let degrees = entry.rotation_widget.rotation() as f64;
         let scale = entry.scale.get().value();
-        let delta = BoardPoint::new(offset_x, offset_y).rotated(degrees);
-        (delta.x() * scale, delta.y() * scale)
+        let delta = Vec2::<Pixels>::new(offset_x, offset_y).rotated(RotationRad::from_degrees(degrees));
+        (delta.x * scale, delta.y * scale)
     }
 
     /// Reorders the card layer by `z_index` (stable by insertion sequence).

@@ -1,4 +1,5 @@
-use crate::domain::BoardPoint;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Vec2;
 use std::time::Instant;
 
 /// One finger tracked by the quad transform: the touch sequence, its latest
@@ -10,7 +11,7 @@ pub(crate) struct TrackedTouch {
     /// The touch sequence identifying this finger.
     pub sequence: gtk4::gdk::EventSequence,
     /// Latest finger position in board coordinates.
-    pub point: BoardPoint,
+    pub point: Vec2<Pixels>,
     /// Timestamp of the most recent event for this sequence.
     pub last_event: Instant,
 }

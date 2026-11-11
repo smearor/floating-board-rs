@@ -1,6 +1,7 @@
-use crate::domain::BoardPoint;
 use crate::domain::CardPosition;
-use crate::domain::RotationRad;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::Vec2;
 
 /// Snapshot of the card geometry and quad points taken when a quad
 /// transform (re-)activates; refreshed whenever the point count changes so
@@ -13,9 +14,9 @@ pub(crate) struct QuadBaseline {
     /// Rotation at baseline.
     pub rotation: RotationRad,
     /// Centroid of `points` (board coordinates).
-    pub centroid: BoardPoint,
+    pub centroid: Vec2<Pixels>,
     /// Board-space point per active quad slot at baseline.
-    pub points: Vec<BoardPoint>,
+    pub points: Vec<Vec2<Pixels>>,
     /// Whether the transform already changed the position.
     pub moved: bool,
     /// Whether the transform already changed the rotation.
