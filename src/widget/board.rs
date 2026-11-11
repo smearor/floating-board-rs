@@ -542,6 +542,7 @@ impl FloatingBoard {
         controller: &gtk4::EventControllerLegacy,
         event: &gtk4::gdk::Event,
         card_drag: Option<&gtk4::GestureDrag>,
+        click: &gtk4::GestureClick,
         claimers: &[gtk4::Gesture],
     ) {
         let event_type = event.event_type();
@@ -562,7 +563,7 @@ impl FloatingBoard {
                 if let Some(point) = self.event_point_in_layer(controller, event) {
                     let cards = self.imp().cards.borrow();
                     if let Some(entry) = cards.get(id) {
-                        self.activate_quad_touch(entry, sequence, point, card_drag);
+                        self.activate_quad_touch(entry, sequence, point, card_drag, click);
                     }
                 }
                 self.emit_geometry_changed();
@@ -681,7 +682,14 @@ impl FloatingBoard {
     /// denies the card's own drag once the transform threshold is reached
     /// (no double-move while the quad transform runs) and (re-)takes the
     /// baseline snapshot.
-    fn activate_quad_touch(&self, entry: &CardEntry, sequence: gtk4::gdk::EventSequence, point: (f64, f64), card_drag: Option<&gtk4::GestureDrag>) {
+    fn activate_quad_touch(
+        &self,
+        entry: &CardEntry,
+        sequence: gtk4::gdk::EventSequence,
+        point: (f64, f64),
+        card_drag: Option<&gtk4::GestureDrag>,
+        click: &gtk4::GestureClick,
+    ) {
         let active = {
             let mut touches = entry.quad_touches.borrow_mut();
             touches.push(TrackedTouch {
@@ -693,10 +701,17 @@ impl FloatingBoard {
         };
         info!(active, point = ?point, "quad touch activated");
         if active == QUAD_MIN_POINTS {
-            info!("quad transform active - denying card drag");
+            info!("quad transform active - denying card drag and click");
             if let Some(card_drag) = card_drag {
                 deny_gesture(card_drag);
             }
+            // GestureClick claims every sequence on press; the claim
+            // steals the first touch's remaining events and makes the
+            // sweep prune it, so the tracker could never
+            // reach two live points. Denying releases the claims - both
+            // sequences stream to the tracker again (raise-on-release
+            // is suppressed mid-gesture).
+            deny_gesture(click);
         }
         if active >= QUAD_MIN_POINTS {
             self.refresh_quad_baseline(entry);
@@ -1022,9 +1037,10 @@ impl FloatingBoard {
             let tracker = gtk4::EventControllerLegacy::new();
             let board_weak = self.downgrade();
             let card_id = id.clone();
+            let click_for_tracker = click.clone();
             tracker.connect_event(move |controller, event| {
                 if let Some(board) = board_weak.upgrade() {
-                    board.on_quad_touch_event(&card_id, controller, event, card_drag.as_ref(), &claimers);
+                    board.on_quad_touch_event(&card_id, controller, event, card_drag.as_ref(), &click_for_tracker, &claimers);
                 }
                 glib::Propagation::Proceed
             });
