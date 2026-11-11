@@ -101,19 +101,6 @@
 - `serde` - Serialization
 - `fluent` - Localization
 
-## Domain Notes
-
-- The map anchor is the physical Eiffel tower tangible (`eifelturm-gross`
-  profile); `rotation_rad` is correspondence-anchored to the profile pin
-  frame (robofigure-rs >= bc109b8) - `heading_offset` calibrates map north.
-- Corbeau secrecy: no unrevealed Corbeau position may enter public
-  renderable state - the public view is `corbeau_public_view` only.
-- Map dataset water rules (enforced in `GameMap::from_str`): the
-  `bridge` station kind marks water crossings; every `batobus` pier
-  must be a `bridge`; `taxi`/`bus` edges may only cross a
-  `backdrop.water` polyline with a `bridge` endpoint; `metro`/
-  `underground` edges are exempt (tunnels).
-
 ---
 
 *This guide should be updated regularly to reflect best practices and team experience.*
