@@ -54,7 +54,6 @@ pub use domain::CardPlacement;
 pub use domain::CardPosition;
 pub use domain::DragHandle;
 pub use domain::MinVisible;
-pub use domain::Rect;
 pub use domain::ScaleBounds;
 pub use domain::ScaleFactor;
 pub use domain::SequenceNumber;

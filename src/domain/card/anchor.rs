@@ -1,5 +1,6 @@
 use crate::domain::CardPosition;
-use crate::domain::Rect;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Rect;
 
 /// Default margin in pixels between a card's footprint and the board edge
 /// when an edge/corner anchor is used. Cards override it via
@@ -64,7 +65,7 @@ impl CardAnchor {
     /// size (already accounting for rotation and scale). Edge anchors place
     /// the footprint `margin` pixels inside the bounds;
     /// [`CardAnchor::Explicit`] returns its position unchanged.
-    pub fn resolve(&self, bounds: &Rect, footprint_width: f64, footprint_height: f64, margin: f64) -> CardPosition {
+    pub fn resolve(&self, bounds: &Rect<Pixels>, footprint_width: f64, footprint_height: f64, margin: f64) -> CardPosition {
         if let Self::Explicit(position) = self {
             return *position;
         }
@@ -72,8 +73,8 @@ impl CardAnchor {
         let vertical = self.vertical_weight().unwrap_or(0.5);
         let inset_x = margin + footprint_width / 2.0;
         let inset_y = margin + footprint_height / 2.0;
-        let x = bounds.x + inset_x + (bounds.width - 2.0 * inset_x).max(0.0) * horizontal;
-        let y = bounds.y + inset_y + (bounds.height - 2.0 * inset_y).max(0.0) * vertical;
+        let x = bounds.min.x + inset_x + (bounds.size.x - 2.0 * inset_x).max(0.0) * horizontal;
+        let y = bounds.min.y + inset_y + (bounds.size.y - 2.0 * inset_y).max(0.0) * vertical;
         CardPosition::new(x, y)
     }
 }
@@ -90,12 +91,7 @@ mod tests {
         assert_eq!(CardAnchor::Explicit(CardPosition::new(1.0, 2.0)).horizontal_weight(), None);
     }
 
-    const BOUNDS: Rect = Rect {
-        x: 0.0,
-        y: 0.0,
-        width: 1000.0,
-        height: 800.0,
-    };
+    const BOUNDS: Rect<Pixels> = Rect::from_xywh(0.0, 0.0, 1000.0, 800.0);
 
     #[test]
     fn center_anchor_centers_card() {
@@ -123,7 +119,7 @@ mod tests {
 
     #[test]
     fn tiny_board_stays_inside() {
-        let bounds = Rect::new(0.0, 0.0, 100.0, 80.0);
+        let bounds = Rect::<Pixels>::from_xywh(0.0, 0.0, 100.0, 80.0);
         let position = CardAnchor::BottomRight.resolve(&bounds, 400.0, 300.0, ANCHOR_MARGIN);
         assert_eq!(position, CardPosition::new(ANCHOR_MARGIN + 200.0, ANCHOR_MARGIN + 150.0));
     }

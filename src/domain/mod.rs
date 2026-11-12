@@ -1,10 +1,9 @@
 //! Pure, GTK-free domain core: card identity/geometry, board layout and
-//! bounds math, and shared geometry primitives. Everything in this module
-//! is serializable or pure value/method code and free of `gtk4` imports.
+//! bounds math. Everything in this module is serializable or pure
+//! value/method code and free of `gtk4` imports.
 
 pub(crate) mod board;
 pub(crate) mod card;
-pub(crate) mod geometry;
 
 pub use board::BoardError;
 pub use board::BoardLayout;
@@ -20,4 +19,3 @@ pub use card::DragHandle;
 pub use card::MinVisible;
 pub use card::ScaleBounds;
 pub use card::ScaleFactor;
-pub use geometry::Rect;

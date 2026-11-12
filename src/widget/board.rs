@@ -6,7 +6,6 @@ use crate::domain::CardGeometry;
 use crate::domain::CardId;
 use crate::domain::CardPlacement;
 use crate::domain::CardPosition;
-use crate::domain::Rect;
 use crate::domain::ScaleFactor;
 use crate::widget::board_signal::BoardSignal;
 use crate::widget::card::Card;
@@ -44,6 +43,7 @@ use gtk4::prelude::LayoutManagerExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
 use smearor_wrot_rotation::RotationControlHandler;
@@ -323,7 +323,7 @@ impl FloatingBoard {
     pub(crate) fn set_card_rotation_animated(&self, id: &CardId, rotation: SmearorRotation) {
         let rotation_widget = self.imp().cards.borrow().get(id).map(|entry| entry.rotation_widget.clone());
         if let Some(rotation_widget) = rotation_widget {
-            rotation_widget.set_rotation_with_animation(rotation.to_degrees() as f64);
+            rotation_widget.set_rotation_with_animation(rotation.into());
         }
     }
 
@@ -373,7 +373,7 @@ impl FloatingBoard {
                 }
                 anchor => {
                     let bounds = self.board_bounds();
-                    if bounds.is_empty() {
+                    if bounds.is_degenerate() {
                         entry.pending_anchor.replace(Some(anchor));
                     } else {
                         entry.pending_anchor.borrow_mut().take();
@@ -481,13 +481,13 @@ impl FloatingBoard {
         let (_, natural_width, _, _) = entry.card.measure(Orientation::Horizontal, -1);
         let (_, natural_height, _, _) = entry.card.measure(Orientation::Vertical, -1);
         let scale = entry.scale.get().value();
-        let degrees = entry.rotation_widget.rotation() as f64;
+        let rotation = entry.rotation_widget.rotation();
         let position = entry.position.get();
         let center_x = position.x().round() as i32;
         let center_y = position.y().round() as i32;
         let region = Region::create();
-        for (y, x_start, x_end) in Rect::new(0.0, 0.0, natural_width as f64 * scale, natural_height as f64 * scale).rotated_region_scanlines(degrees) {
-            let strip = RectangleInt::new(center_x + x_start, center_y + y, x_end - x_start, 1);
+        for strip in Rect::<Pixels>::from_xywh(0.0, 0.0, natural_width as f64 * scale, natural_height as f64 * scale).rotated_region_scanlines(rotation) {
+            let strip = RectangleInt::new(center_x + strip.x_start, center_y + strip.y, strip.width(), 1);
             if let Err(error) = region.union_rectangle(&strip) {
                 warn!(%error, "failed to union footprint strip");
             }
@@ -514,7 +514,7 @@ impl FloatingBoard {
     /// re-clamps all cards against the new bounds.
     pub(crate) fn on_board_allocated(&self) {
         let bounds = self.board_bounds();
-        if bounds.is_empty() {
+        if bounds.is_degenerate() {
             return;
         }
         let mut resolved = false;
@@ -831,11 +831,11 @@ impl FloatingBoard {
             return;
         }
         let (moved, rotated, scaled) = previous.map(|b| (b.moved, b.rotated, b.scaled)).unwrap_or_default();
-        info!(points = ?points, position = ?entry.position.get(), scale = entry.scale.get().value(), rotation_deg = entry.rotation_widget.rotation() as f64, "quad baseline snapshot");
+        info!(points = ?points, position = ?entry.position.get(), scale = entry.scale.get().value(), rotation_deg = entry.rotation_widget.rotation().to_degrees(), "quad baseline snapshot");
         entry.quad_baseline.replace(Some(QuadBaseline {
             position: entry.position.get(),
             scale: entry.scale.get().value(),
-            rotation: RotationRad::from_degrees(entry.rotation_widget.rotation() as f64),
+            rotation: entry.rotation_widget.rotation(),
             centroid: Vec2::centroid(&points),
             points,
             moved,
@@ -924,7 +924,7 @@ impl FloatingBoard {
         }
         if entry.config.rotatable {
             let rotation = (baseline.rotation.to_degrees() + angle_deg) as f32;
-            if (rotation - entry.rotation_widget.rotation()).abs() > 0.01 {
+            if (rotation as f64 - entry.rotation_widget.rotation().to_degrees()).abs() > 0.01 {
                 baseline.rotated = true;
                 entry.rotation_widget.set_rotation(SmearorRotation::new(rotation));
             }
@@ -1018,9 +1018,9 @@ impl FloatingBoard {
         if let (Some(now), Some(grab)) = (self.pointer_in_layer(gesture), entry.drag_grab.get()) {
             return (now.x - grab.x, now.y - grab.y);
         }
-        let degrees = entry.rotation_widget.rotation() as f64;
+        let rotation = entry.rotation_widget.rotation();
         let scale = entry.scale.get().value();
-        let delta = Vec2::<Pixels>::new(offset_x, offset_y).rotated(RotationRad::from_degrees(degrees));
+        let delta = Vec2::<Pixels>::new(offset_x, offset_y).rotated(rotation);
         (delta.x * scale, delta.y * scale)
     }
 
@@ -1139,9 +1139,9 @@ impl FloatingBoard {
         self.imp().card_layer.get().cloned()
     }
 
-    fn board_bounds(&self) -> Rect {
+    fn board_bounds(&self) -> Rect<Pixels> {
         match self.card_layer() {
-            Some(layer) => Rect::new(0.0, 0.0, layer.width() as f64, layer.height() as f64),
+            Some(layer) => Rect::from_xywh(0.0, 0.0, layer.width() as f64, layer.height() as f64),
             None => Rect::default(),
         }
     }
@@ -1168,17 +1168,18 @@ impl FloatingBoard {
     /// their whole footprint pulled back.
     fn clamp_entry(&self, entry: &CardEntry) {
         let bounds = self.board_bounds();
-        if bounds.is_empty() {
+        if bounds.is_degenerate() {
             return;
         }
         let (width, height) = self.displayed_size(entry);
-        let footprint = Rect::centered(entry.position.get(), width, height);
-        let (dx, dy) = match entry.config.bounds_mode {
-            BoundsMode::Loose => footprint.clamp_offset(&bounds, entry.config.min_visible),
+        let position = entry.position.get();
+        let footprint = Rect::centered(Vec2::<Pixels>::new(position.x(), position.y()), Vec2::new(width, height));
+        let delta = match entry.config.bounds_mode {
+            BoundsMode::Loose => footprint.clamp_offset(&bounds, Pixels::new(entry.config.min_visible.value())),
             BoundsMode::Contained => footprint.contain_offset(&bounds),
         };
-        if dx != 0.0 || dy != 0.0 {
-            entry.position.set(entry.position.get().translated(dx, dy));
+        if delta.x != 0.0 || delta.y != 0.0 {
+            entry.position.set(entry.position.get().translated(delta.x, delta.y));
             self.apply_position(entry);
         }
     }
@@ -1209,14 +1210,15 @@ impl FloatingBoard {
         let (_, natural_width, _, _) = entry.card.measure(Orientation::Horizontal, -1);
         let (_, natural_height, _, _) = entry.card.measure(Orientation::Vertical, -1);
         let scale = entry.scale.get().value();
-        let degrees = entry.rotation_widget.rotation() as f64;
-        Rect::new(0.0, 0.0, natural_width as f64 * scale, natural_height as f64 * scale).rotated_bounds(degrees)
+        let rotation = entry.rotation_widget.rotation();
+        let bounds = Rect::<Pixels>::from_xywh(0.0, 0.0, natural_width as f64 * scale, natural_height as f64 * scale).rotated_bounds(rotation);
+        (bounds.x, bounds.y)
     }
 
     fn entry_geometry(&self, entry: &CardEntry) -> CardGeometry {
         CardGeometry {
             position: entry.position.get(),
-            rotation: SmearorRotation::new(entry.rotation_widget.rotation()),
+            rotation: SmearorRotation::from(entry.rotation_widget.rotation()),
             scale: entry.scale.get(),
         }
     }
