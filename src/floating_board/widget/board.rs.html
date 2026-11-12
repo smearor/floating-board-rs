@@ -148,7 +148,7 @@
 <a href=#148 id=148 data-nosnippet>148</a>        };
 <a href=#149 id=149 data-nosnippet>149</a>
 <a href=#150 id=150 data-nosnippet>150</a>        <span class="kw">let </span>card = Card::build(<span class="kw-2">&amp;</span>id, content.upcast_ref(), <span class="self">self</span>, <span class="kw-2">&amp;</span>config);
-<a href=#151 id=151 data-nosnippet>151</a>        <span class="kw">let </span>rotation_widget = RotationWidget::new(SmearorRotation::Deg0)
+<a href=#151 id=151 data-nosnippet>151</a>        <span class="kw">let </span>rotation_widget = RotationWidget::new(SmearorRotation::DEG_0)
 <a href=#152 id=152 data-nosnippet>152</a>            <span class="comment">// Rotation comes from the board's own quad transform gesture;
 <a href=#153 id=153 data-nosnippet>153</a>            // smearor's built-in rotate gesture stays off.
 <a href=#154 id=154 data-nosnippet>154</a>            </span>.with_gesture_rotation_enabled(<span class="bool-val">false</span>)
@@ -359,7 +359,7 @@
 <a href=#359 id=359 data-nosnippet>359</a>            entry.scale.set(ScaleFactor::default());
 <a href=#360 id=360 data-nosnippet>360</a>            (entry.rotation_widget.clone(), entry.scaling.clone())
 <a href=#361 id=361 data-nosnippet>361</a>        };
-<a href=#362 id=362 data-nosnippet>362</a>        rotation_widget.set_rotation(SmearorRotation::Deg0);
+<a href=#362 id=362 data-nosnippet>362</a>        rotation_widget.set_rotation(SmearorRotation::DEG_0);
 <a href=#363 id=363 data-nosnippet>363</a>        scaling.set_scale(<span class="number">1.0</span>);
 <a href=#364 id=364 data-nosnippet>364</a>        {
 <a href=#365 id=365 data-nosnippet>365</a>            <span class="kw">let </span>cards = <span class="self">self</span>.imp().cards.borrow();
