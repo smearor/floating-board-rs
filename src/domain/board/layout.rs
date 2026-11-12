@@ -59,6 +59,7 @@ mod tests {
     use crate::domain::CardId;
     use crate::domain::CardPosition;
     use crate::domain::ScaleFactor;
+    use smearor_commons_geometry::Vec2;
     use smearor_wrot_rotation::SmearorRotation;
 
     #[test]
@@ -77,7 +78,7 @@ scale = 1.0
         assert_eq!(layout.len(), 1);
         let placement = &layout.cards[0];
         assert_eq!(placement.id, CardId::new("controls"));
-        assert_eq!(placement.geometry.position, CardPosition::new(480.0, 660.0));
+        assert_eq!(placement.geometry.position, CardPosition::from(Vec2::new(480.0, 660.0)));
         assert_eq!(placement.geometry.rotation.to_degrees(), 180.0);
         assert_eq!(placement.geometry.scale, ScaleFactor::new(1.0));
 
@@ -92,7 +93,7 @@ scale = 1.0
         let layout = BoardLayout::new(vec![CardPlacement::new(
             CardId::new("a"),
             CardGeometry {
-                position: CardPosition::new(1.0, 2.0),
+                position: CardPosition::from(Vec2::new(1.0, 2.0)),
                 rotation: SmearorRotation::Deg90,
                 scale: ScaleFactor::new(1.5),
             },

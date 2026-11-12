@@ -7,6 +7,7 @@ use crate::widget::card_config::CardConfig;
 use crate::widget::imp::quad_baseline::QuadBaseline;
 use crate::widget::imp::tracked_touch::TrackedTouch;
 use crate::widget::scaling::ScalingWidget;
+use gtk4::gdk::EventSequence;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Vec2;
 use smearor_wrot_rotation::RotationWidget;
@@ -56,7 +57,7 @@ pub(crate) struct CardEntry {
     /// is only a touch-slot id and is reused for the next press on
     /// the same slot, so marks expire after the stale window -
     /// afterwards the phantom would die on the stale check anyway.
-    pub claimed: RefCell<HashMap<gtk4::gdk::EventSequence, Instant>>,
+    pub claimed: RefCell<HashMap<EventSequence, Instant>>,
     /// Gesture object addresses already carrying a
     /// `sequence-state-changed` watcher, so the lazy walk connects
     /// each controller only once.

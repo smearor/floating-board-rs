@@ -11,6 +11,8 @@ use floating_board::SmearorRotation;
 use gtk4::glib::closure_local;
 use gtk4::prelude::*;
 use gtk4::{Align, Button, Label, Orientation, Scale};
+use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Vec2;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -115,7 +117,7 @@ fn build_ui(application: &gtk4::Application) {
             &controls,
             CardConfig {
                 title: Some("Controls".to_string()),
-                position: CardAnchor::Explicit(CardPosition::new(300.0, 420.0)),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(300.0, 420.0))),
                 foldable: true,
                 closable: true,
                 scale_limits: ScaleBounds::new(0.75, 4.0),
@@ -134,7 +136,7 @@ fn build_ui(application: &gtk4::Application) {
             &info,
             CardConfig {
                 title: Some("Info".to_string()),
-                position: CardAnchor::Explicit(CardPosition::new(540.0, 420.0)),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(540.0, 420.0))),
                 drag_handle: DragHandle::Handle,
                 min_visible: MinVisible::new(60.0),
                 ..Default::default()
@@ -155,7 +157,7 @@ fn build_ui(application: &gtk4::Application) {
             CardConfig {
                 title: None,
                 headerless: true,
-                position: CardAnchor::Explicit(CardPosition::new(770.0, 420.0)),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(770.0, 420.0))),
                 drag_handle: DragHandle::WholeCard,
                 ..Default::default()
             },
@@ -173,7 +175,7 @@ fn build_ui(application: &gtk4::Application) {
             &parameters,
             CardConfig {
                 title: Some("Parameters".to_string()),
-                position: CardAnchor::Explicit(CardPosition::new(1000.0, 420.0)),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(1000.0, 420.0))),
                 foldable: true,
                 max_width: Some(300),
                 ..Default::default()

@@ -1,7 +1,8 @@
 use crate::domain::CardId;
+use thiserror::Error;
 
 /// Error type of the floating board.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum BoardError {
     /// The given card id does not exist on the board.
     #[error("Unknown card: {0}")]

@@ -39,6 +39,7 @@ mod tests {
     use super::*;
     use crate::domain::CardPosition;
     use crate::domain::ScaleFactor;
+    use smearor_commons_geometry::Vec2;
     use smearor_wrot_rotation::SmearorRotation;
 
     #[test]
@@ -46,7 +47,7 @@ mod tests {
         let placement = CardPlacement::new(
             CardId::new("controls"),
             CardGeometry {
-                position: CardPosition::new(480.0, 660.0),
+                position: CardPosition::from(Vec2::new(480.0, 660.0)),
                 rotation: SmearorRotation::Deg180,
                 scale: ScaleFactor::new(1.0),
             },

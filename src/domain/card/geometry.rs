@@ -52,6 +52,7 @@ mod rotation_degrees {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use smearor_commons_geometry::Vec2;
 
     #[test]
     fn geometry_default() {
@@ -64,7 +65,7 @@ mod tests {
     #[test]
     fn geometry_serializes_rotation_as_degrees() {
         let geometry = CardGeometry {
-            position: CardPosition::new(480.0, 660.0),
+            position: CardPosition::from(Vec2::new(480.0, 660.0)),
             rotation: SmearorRotation::Deg180,
             scale: ScaleFactor::new(1.0),
         };

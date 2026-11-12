@@ -5,6 +5,7 @@ use crate::domain::DragHandle;
 use crate::domain::MinVisible;
 use crate::domain::ScaleBounds;
 use crate::widget::card_close_action::CardCloseAction;
+use smearor_commons_geometry::Pixels;
 
 /// Placement and interaction configuration of a card.
 ///
@@ -40,7 +41,7 @@ pub struct CardConfig {
     /// footprint and the board edge; default `ANCHOR_MARGIN` (24 px).
     /// Ignored for `Center` and `Explicit` placements.
     #[cfg_attr(feature = "serde", serde(default = "default_anchor_margin"))]
-    pub anchor_margin: f64,
+    pub anchor_margin: Pixels,
     /// Inclusive scale limits for the pinch gesture; default `0.5 - 2.0`.
     pub scale_limits: ScaleBounds,
     /// Minimum overlap in pixels a card must keep inside the board bounds.
@@ -93,7 +94,7 @@ impl Default for CardConfig {
 }
 
 #[cfg(feature = "serde")]
-fn default_anchor_margin() -> f64 {
+fn default_anchor_margin() -> Pixels {
     ANCHOR_MARGIN
 }
 

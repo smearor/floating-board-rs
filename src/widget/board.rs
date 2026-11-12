@@ -377,8 +377,8 @@ impl FloatingBoard {
                         entry.pending_anchor.replace(Some(anchor));
                     } else {
                         entry.pending_anchor.borrow_mut().take();
-                        let (width, height) = self.predicted_size(entry);
-                        entry.position.set(anchor.resolve(&bounds, width, height, entry.config.anchor_margin));
+                        let footprint = self.predicted_size(entry);
+                        entry.position.set(anchor.resolve(&bounds, footprint, entry.config.anchor_margin));
                     }
                 }
             }
@@ -399,10 +399,10 @@ impl FloatingBoard {
             let Some(entry) = cards.get(id) else {
                 return;
             };
-            let (width, height) = self.displayed_size(entry);
+            let size = self.displayed_size(entry);
             let position = entry.position.get();
             layer.remove(&entry.scaling);
-            layer.put(&entry.scaling, position.x() - width / 2.0, position.y() - height / 2.0);
+            layer.put(&entry.scaling, position.x().as_f64() - size.x / 2.0, position.y().as_f64() - size.y / 2.0);
             entry.card.clone()
         };
         card.emit_card_raised();
@@ -483,8 +483,8 @@ impl FloatingBoard {
         let scale = entry.scale.get().value();
         let rotation = entry.rotation_widget.rotation();
         let position = entry.position.get();
-        let center_x = position.x().round() as i32;
-        let center_y = position.y().round() as i32;
+        let center_x = position.x().as_f64().round() as i32;
+        let center_y = position.y().as_f64().round() as i32;
         let region = Region::create();
         for strip in Rect::<Pixels>::from_xywh(0.0, 0.0, natural_width as f64 * scale, natural_height as f64 * scale).rotated_region_scanlines(rotation) {
             let strip = RectangleInt::new(center_x + strip.x_start, center_y + strip.y, strip.width(), 1);
@@ -522,8 +522,8 @@ impl FloatingBoard {
             let cards = self.imp().cards.borrow();
             for entry in cards.values() {
                 if let Some(anchor) = entry.pending_anchor.borrow_mut().take() {
-                    let (width, height) = self.predicted_size(entry);
-                    entry.position.set(anchor.resolve(&bounds, width, height, entry.config.anchor_margin));
+                    let footprint = self.predicted_size(entry);
+                    entry.position.set(anchor.resolve(&bounds, footprint, entry.config.anchor_margin));
                     resolved = true;
                 }
                 // Reconcile render state with position state on every
@@ -914,9 +914,9 @@ impl FloatingBoard {
         );
         let applied_ratio = scale.value() / baseline.scale.max(f64::EPSILON);
         if entry.config.draggable {
-            let rel = Vec2::<Pixels>::new(baseline.position.x() - centroid_start.x, baseline.position.y() - centroid_start.y);
+            let rel = Vec2::<Pixels>::new(baseline.position.x().as_f64() - centroid_start.x, baseline.position.y().as_f64() - centroid_start.y);
             let rot = rel.rotated(RotationRad::from_degrees(angle_deg));
-            let position = CardPosition::new(centroid_now.x + rot.x * applied_ratio, centroid_now.y + rot.y * applied_ratio);
+            let position = CardPosition::from(centroid_now + rot * applied_ratio);
             if position != entry.position.get() {
                 baseline.moved = true;
                 entry.position.set(position);
@@ -968,8 +968,8 @@ impl FloatingBoard {
                 return;
             };
             let delta = self.drag_delta(gesture, offset_x, offset_y, entry);
-            let position = entry.drag_start.get().translated(delta.0, delta.1);
-            debug!(card = %id, delta = ?delta, position = ?(position.x(), position.y()), "drag update");
+            let position = entry.drag_start.get().translated(Vec2::<Pixels>::new(delta.0, delta.1));
+            debug!(card = %id, delta = ?delta, position = ?(position.x().as_f64(), position.y().as_f64()), "drag update");
             entry.position.set(position);
             self.apply_position(entry);
             if entry.config.bounds_mode == BoundsMode::Contained {
@@ -1033,10 +1033,10 @@ impl FloatingBoard {
         let mut ordered: Vec<&CardEntry> = cards.values().collect();
         ordered.sort_by_key(|entry| (entry.config.z_index.unwrap_or(i32::MAX), entry.sequence));
         for entry in ordered {
-            let (width, height) = self.displayed_size(entry);
+            let size = self.displayed_size(entry);
             let position = entry.position.get();
             layer.remove(&entry.scaling);
-            layer.put(&entry.scaling, position.x() - width / 2.0, position.y() - height / 2.0);
+            layer.put(&entry.scaling, position.x().as_f64() - size.x / 2.0, position.y().as_f64() - size.y / 2.0);
         }
     }
 
@@ -1153,10 +1153,10 @@ impl FloatingBoard {
         let Some(layer) = self.card_layer() else {
             return;
         };
-        let (width, height) = self.displayed_size(entry);
+        let size = self.displayed_size(entry);
         let position = entry.position.get();
-        let target_x = position.x() - width / 2.0;
-        let target_y = position.y() - height / 2.0;
+        let target_x = position.x().as_f64() - size.x / 2.0;
+        let target_y = position.y().as_f64() - size.y / 2.0;
         let (current_x, current_y) = layer.child_position(&entry.scaling);
         if (current_x - target_x).abs() > 0.5 || (current_y - target_y).abs() > 0.5 {
             layer.move_(&entry.scaling, target_x, target_y);
@@ -1171,15 +1171,15 @@ impl FloatingBoard {
         if bounds.is_degenerate() {
             return;
         }
-        let (width, height) = self.displayed_size(entry);
+        let size = self.displayed_size(entry);
         let position = entry.position.get();
-        let footprint = Rect::centered(Vec2::<Pixels>::new(position.x(), position.y()), Vec2::new(width, height));
+        let footprint = Rect::centered(position.into(), size);
         let delta = match entry.config.bounds_mode {
             BoundsMode::Loose => footprint.clamp_offset(&bounds, Pixels::new(entry.config.min_visible.value())),
             BoundsMode::Contained => footprint.contain_offset(&bounds),
         };
         if delta.x != 0.0 || delta.y != 0.0 {
-            entry.position.set(entry.position.get().translated(delta.x, delta.y));
+            entry.position.set(entry.position.get().translated(delta));
             self.apply_position(entry);
         }
     }
@@ -1195,24 +1195,23 @@ impl FloatingBoard {
     /// (what `gtk4::Fixed` will allocate next, reflecting pending rotation and
     /// scale changes), falling back to the allocated size before measuring is
     /// possible.
-    fn displayed_size(&self, entry: &CardEntry) -> (f64, f64) {
-        let (width, height) = self.predicted_size(entry);
-        if width > 0.0 && height > 0.0 {
-            (width, height)
+    fn displayed_size(&self, entry: &CardEntry) -> Vec2<Pixels> {
+        let size = self.predicted_size(entry);
+        if size.x > 0.0 && size.y > 0.0 {
+            size
         } else {
-            (entry.scaling.width() as f64, entry.scaling.height() as f64)
+            Vec2::new(entry.scaling.width() as f64, entry.scaling.height() as f64)
         }
     }
 
     /// Predicted displayed size: rotated bounding box of the card's natural
     /// size, times the scale factor.
-    fn predicted_size(&self, entry: &CardEntry) -> (f64, f64) {
+    fn predicted_size(&self, entry: &CardEntry) -> Vec2<Pixels> {
         let (_, natural_width, _, _) = entry.card.measure(Orientation::Horizontal, -1);
         let (_, natural_height, _, _) = entry.card.measure(Orientation::Vertical, -1);
         let scale = entry.scale.get().value();
         let rotation = entry.rotation_widget.rotation();
-        let bounds = Rect::<Pixels>::from_xywh(0.0, 0.0, natural_width as f64 * scale, natural_height as f64 * scale).rotated_bounds(rotation);
-        (bounds.x, bounds.y)
+        Rect::<Pixels>::from_xywh(0.0, 0.0, natural_width as f64 * scale, natural_height as f64 * scale).rotated_bounds(rotation)
     }
 
     fn entry_geometry(&self, entry: &CardEntry) -> CardGeometry {

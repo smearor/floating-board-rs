@@ -1,11 +1,12 @@
 use crate::domain::CardPosition;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
+use smearor_commons_geometry::Vec2;
 
 /// Default margin in pixels between a card's footprint and the board edge
 /// when an edge/corner anchor is used. Cards override it via
 /// `CardConfig::anchor_margin`.
-pub const ANCHOR_MARGIN: f64 = 24.0;
+pub const ANCHOR_MARGIN: Pixels = Pixels::new(24.0);
 
 /// Declarative initial placement of a card on the board.
 ///
@@ -65,17 +66,14 @@ impl CardAnchor {
     /// size (already accounting for rotation and scale). Edge anchors place
     /// the footprint `margin` pixels inside the bounds;
     /// [`CardAnchor::Explicit`] returns its position unchanged.
-    pub fn resolve(&self, bounds: &Rect<Pixels>, footprint_width: f64, footprint_height: f64, margin: f64) -> CardPosition {
+    pub fn resolve(&self, bounds: &Rect<Pixels>, footprint: Vec2<Pixels>, margin: Pixels) -> CardPosition {
         if let Self::Explicit(position) = self {
             return *position;
         }
-        let horizontal = self.horizontal_weight().unwrap_or(0.5);
-        let vertical = self.vertical_weight().unwrap_or(0.5);
-        let inset_x = margin + footprint_width / 2.0;
-        let inset_y = margin + footprint_height / 2.0;
-        let x = bounds.min.x + inset_x + (bounds.size.x - 2.0 * inset_x).max(0.0) * horizontal;
-        let y = bounds.min.y + inset_y + (bounds.size.y - 2.0 * inset_y).max(0.0) * vertical;
-        CardPosition::new(x, y)
+        let weights = Vec2::new(self.horizontal_weight().unwrap_or(0.5), self.vertical_weight().unwrap_or(0.5));
+        let inset = footprint * 0.5 + Vec2::splat(margin);
+        let span = (bounds.size - inset * 2.0).map(|c| c.max(0.0));
+        CardPosition::from(bounds.min + inset + span.component_mul(&weights))
     }
 }
 
@@ -88,39 +86,39 @@ mod tests {
         assert_eq!(CardAnchor::BottomRight.horizontal_weight(), Some(1.0));
         assert_eq!(CardAnchor::BottomRight.vertical_weight(), Some(1.0));
         assert_eq!(CardAnchor::Center.horizontal_weight(), Some(0.5));
-        assert_eq!(CardAnchor::Explicit(CardPosition::new(1.0, 2.0)).horizontal_weight(), None);
+        assert_eq!(CardAnchor::Explicit(CardPosition::from(Vec2::new(1.0, 2.0))).horizontal_weight(), None);
     }
 
     const BOUNDS: Rect<Pixels> = Rect::from_xywh(0.0, 0.0, 1000.0, 800.0);
 
     #[test]
     fn center_anchor_centers_card() {
-        let position = CardAnchor::Center.resolve(&BOUNDS, 200.0, 100.0, ANCHOR_MARGIN);
-        assert_eq!(position, CardPosition::new(500.0, 400.0));
+        let position = CardAnchor::Center.resolve(&BOUNDS, Vec2::new(200.0, 100.0), ANCHOR_MARGIN);
+        assert_eq!(position, CardPosition::from(Vec2::new(500.0, 400.0)));
     }
 
     #[test]
     fn bottom_center_anchor_insets_from_bottom() {
-        let position = CardAnchor::BottomCenter.resolve(&BOUNDS, 200.0, 100.0, ANCHOR_MARGIN);
-        assert_eq!(position, CardPosition::new(500.0, 800.0 - ANCHOR_MARGIN - 50.0));
+        let position = CardAnchor::BottomCenter.resolve(&BOUNDS, Vec2::new(200.0, 100.0), ANCHOR_MARGIN);
+        assert_eq!(position, CardPosition::from(Vec2::new(500.0, 800.0 - ANCHOR_MARGIN.as_f64() - 50.0)));
     }
 
     #[test]
     fn top_left_anchor_insets_both_axes() {
-        let position = CardAnchor::TopLeft.resolve(&BOUNDS, 200.0, 100.0, ANCHOR_MARGIN);
-        assert_eq!(position, CardPosition::new(ANCHOR_MARGIN + 100.0, ANCHOR_MARGIN + 50.0));
+        let position = CardAnchor::TopLeft.resolve(&BOUNDS, Vec2::new(200.0, 100.0), ANCHOR_MARGIN);
+        assert_eq!(position, CardPosition::from(Vec2::new(ANCHOR_MARGIN.as_f64() + 100.0, ANCHOR_MARGIN.as_f64() + 50.0)));
     }
 
     #[test]
     fn explicit_anchor_passthrough() {
-        let explicit = CardPosition::new(123.0, 456.0);
-        assert_eq!(CardAnchor::Explicit(explicit).resolve(&BOUNDS, 200.0, 100.0, ANCHOR_MARGIN), explicit);
+        let explicit = CardPosition::from(Vec2::new(123.0, 456.0));
+        assert_eq!(CardAnchor::Explicit(explicit).resolve(&BOUNDS, Vec2::new(200.0, 100.0), ANCHOR_MARGIN), explicit);
     }
 
     #[test]
     fn tiny_board_stays_inside() {
         let bounds = Rect::<Pixels>::from_xywh(0.0, 0.0, 100.0, 80.0);
-        let position = CardAnchor::BottomRight.resolve(&bounds, 400.0, 300.0, ANCHOR_MARGIN);
-        assert_eq!(position, CardPosition::new(ANCHOR_MARGIN + 200.0, ANCHOR_MARGIN + 150.0));
+        let position = CardAnchor::BottomRight.resolve(&bounds, Vec2::new(400.0, 300.0), ANCHOR_MARGIN);
+        assert_eq!(position, CardPosition::from(Vec2::new(ANCHOR_MARGIN.as_f64() + 200.0, ANCHOR_MARGIN.as_f64() + 150.0)));
     }
 }
