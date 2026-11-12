@@ -763,7 +763,7 @@ checksum = "149309498a5f7334b12ddae0cad8aba81ce785fe91755068867e017cf98fee46"
 [[package]]
 name = "smearor-commons-geometry"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#0efeb283f89d22404c29e727a6914211594edc9d"
+source = "git+https://github.com/smearor/smearor-commons.git#7cc007d9e063dc5fb1e9b33dd6c947b4fbcee0ad"
 dependencies = [
  "serde",
  "thiserror",

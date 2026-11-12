@@ -1,12 +1,14 @@
 use crate::domain::ScaleBounds;
+use smearor_commons_geometry::ScaleFactor as GeometryScaleFactor;
 
 /// Scale factor of a card (`1.0` = natural size).
 ///
 /// The factor is always strictly positive; clamping against per-card limits
-/// happens via [`ScaleBounds`].
+/// happens via [`ScaleBounds`]. Wraps the technical
+/// [`GeometryScaleFactor`] primitive with card-domain validation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(transparent))]
-pub struct ScaleFactor(f64);
+pub struct ScaleFactor(GeometryScaleFactor);
 
 /// Smallest positive scale to avoid degenerate zero-sized cards.
 const MIN_SCALE: f64 = 0.01;
@@ -14,23 +16,27 @@ const MIN_SCALE: f64 = 0.01;
 impl ScaleFactor {
     /// Creates a scale factor, clamped to a strictly positive value.
     pub fn new(value: f64) -> Self {
-        if value.is_finite() { Self(value.max(MIN_SCALE)) } else { Self::default() }
+        if value.is_finite() {
+            Self(GeometryScaleFactor::new(value.max(MIN_SCALE)))
+        } else {
+            Self::default()
+        }
     }
 
     /// Returns the raw factor (`1.0` = natural size).
     pub fn value(&self) -> f64 {
-        self.0
+        self.0.as_f64()
     }
 
     /// Returns the factor clamped into the given bounds.
     pub fn clamped(&self, bounds: &ScaleBounds) -> Self {
-        Self::new(bounds.clamp(self.0))
+        Self::new(bounds.clamp(self.value()))
     }
 }
 
 impl Default for ScaleFactor {
     fn default() -> Self {
-        Self(1.0)
+        Self(GeometryScaleFactor::ONE)
     }
 }
 
@@ -42,7 +48,7 @@ impl From<f64> for ScaleFactor {
 
 impl From<ScaleFactor> for f64 {
     fn from(value: ScaleFactor) -> Self {
-        value.0
+        value.0.as_f64()
     }
 }
 
