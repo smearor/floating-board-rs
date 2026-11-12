@@ -144,7 +144,7 @@ fn build_ui(application: &gtk4::Application) {
         )
         .unwrap_or_else(|_| CardId::new("info"));
     if let Ok(card) = board.card(&info_id) {
-        card.set_rotation(SmearorRotation::Deg90);
+        card.set_rotation(SmearorRotation::DEG_90);
     }
 
     // Card 3: "display" - pure view, headerless; the whole card is the drag
@@ -214,7 +214,7 @@ fn build_ui(application: &gtk4::Application) {
         rotate_button.connect_clicked(move |_| {
             for card in board.cards() {
                 let next = card.rotation().to_degrees() + 90.0;
-                card.set_rotation_with_animation(SmearorRotation::Deg(next));
+                card.set_rotation_with_animation(SmearorRotation::free(next));
             }
         });
     }

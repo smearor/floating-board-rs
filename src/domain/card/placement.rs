@@ -48,7 +48,7 @@ mod tests {
             CardId::new("controls"),
             CardGeometry {
                 position: CardPosition::from(Vec2::new(480.0, 660.0)),
-                rotation: SmearorRotation::Deg180,
+                rotation: SmearorRotation::DEG_180,
                 scale: ScaleFactor::new(1.0),
             },
             false,

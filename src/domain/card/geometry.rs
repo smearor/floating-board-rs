@@ -22,7 +22,7 @@ impl Default for CardGeometry {
     fn default() -> Self {
         Self {
             position: CardPosition::default(),
-            rotation: SmearorRotation::Deg0,
+            rotation: SmearorRotation::DEG_0,
             scale: ScaleFactor::default(),
         }
     }
@@ -66,7 +66,7 @@ mod tests {
     fn geometry_serializes_rotation_as_degrees() {
         let geometry = CardGeometry {
             position: CardPosition::from(Vec2::new(480.0, 660.0)),
-            rotation: SmearorRotation::Deg180,
+            rotation: SmearorRotation::DEG_180,
             scale: ScaleFactor::new(1.0),
         };
         let json = serde_json::to_value(geometry).unwrap();

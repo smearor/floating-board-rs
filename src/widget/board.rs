@@ -148,7 +148,7 @@ impl FloatingBoard {
         };
 
         let card = Card::build(&id, content.upcast_ref(), self, &config);
-        let rotation_widget = RotationWidget::new(SmearorRotation::Deg0)
+        let rotation_widget = RotationWidget::new(SmearorRotation::DEG_0)
             // Rotation comes from the board's own quad transform gesture;
             // smearor's built-in rotate gesture stays off.
             .with_gesture_rotation_enabled(false)
@@ -359,7 +359,7 @@ impl FloatingBoard {
             entry.scale.set(ScaleFactor::default());
             (entry.rotation_widget.clone(), entry.scaling.clone())
         };
-        rotation_widget.set_rotation(SmearorRotation::Deg0);
+        rotation_widget.set_rotation(SmearorRotation::DEG_0);
         scaling.set_scale(1.0);
         {
             let cards = self.imp().cards.borrow();

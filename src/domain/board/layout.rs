@@ -94,7 +94,7 @@ scale = 1.0
             CardId::new("a"),
             CardGeometry {
                 position: CardPosition::from(Vec2::new(1.0, 2.0)),
-                rotation: SmearorRotation::Deg90,
+                rotation: SmearorRotation::DEG_90,
                 scale: ScaleFactor::new(1.5),
             },
             true,
