@@ -25,10 +25,8 @@ use gtk4::Buildable;
 use gtk4::ConstraintTarget;
 
 use gtk4::Orientable;
-use gtk4::Orientation;
 use gtk4::Overlay;
 use gtk4::Widget;
-use gtk4::cairo::RectangleInt;
 use gtk4::cairo::Region;
 use gtk4::gdk::EventType;
 use gtk4::gio::prelude::ListModelExtManual;
@@ -46,6 +44,7 @@ use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
+use smearor_commons_geometry::WidgetSizeExt;
 use smearor_wrot_rotation::RotationControlHandler;
 use smearor_wrot_rotation::RotationWidget;
 use smearor_wrot_rotation::SmearorRotation;
@@ -399,10 +398,9 @@ impl FloatingBoard {
             let Some(entry) = cards.get(id) else {
                 return;
             };
-            let size = self.displayed_size(entry);
-            let position = entry.position.get();
+            let top_left = self.displayed_footprint(entry).min;
             layer.remove(&entry.scaling);
-            layer.put(&entry.scaling, position.x().as_f64() - size.x / 2.0, position.y().as_f64() - size.y / 2.0);
+            layer.put(&entry.scaling, top_left.x, top_left.y);
             entry.card.clone()
         };
         card.emit_card_raised();
@@ -478,21 +476,14 @@ impl FloatingBoard {
     /// Rotated footprint rasterized from the card's natural size, scale and
     /// rotation, centered on its board position.
     fn entry_footprint(&self, entry: &CardEntry) -> Region {
-        let (_, natural_width, _, _) = entry.card.measure(Orientation::Horizontal, -1);
-        let (_, natural_height, _, _) = entry.card.measure(Orientation::Vertical, -1);
+        let (_, natural) = entry.card.measure_size();
         let scale = entry.scale.get().value();
         let rotation = entry.rotation_widget.rotation();
-        let position = entry.position.get();
-        let center_x = position.x().as_f64().round() as i32;
-        let center_y = position.y().as_f64().round() as i32;
-        let region = Region::create();
-        for strip in Rect::<Pixels>::from_xywh(0.0, 0.0, natural_width as f64 * scale, natural_height as f64 * scale).rotated_region_scanlines(rotation) {
-            let strip = RectangleInt::new(center_x + strip.x_start, center_y + strip.y, strip.width(), 1);
-            if let Err(error) = region.union_rectangle(&strip) {
-                warn!(%error, "failed to union footprint strip");
-            }
-        }
-        region
+        let footprint = Rect::<Pixels>::centered(entry.position.get().into(), natural.to_f64().with_unit::<Pixels>() * scale);
+        footprint.rotated_region(rotation).unwrap_or_else(|error| {
+            warn!(%error, "failed to build card footprint region");
+            Region::create()
+        })
     }
 
     /// Whether an external consumer manages the surface input region.
@@ -1033,10 +1024,9 @@ impl FloatingBoard {
         let mut ordered: Vec<&CardEntry> = cards.values().collect();
         ordered.sort_by_key(|entry| (entry.config.z_index.unwrap_or(i32::MAX), entry.sequence));
         for entry in ordered {
-            let size = self.displayed_size(entry);
-            let position = entry.position.get();
+            let top_left = self.displayed_footprint(entry).min;
             layer.remove(&entry.scaling);
-            layer.put(&entry.scaling, position.x().as_f64() - size.x / 2.0, position.y().as_f64() - size.y / 2.0);
+            layer.put(&entry.scaling, top_left.x, top_left.y);
         }
     }
 
@@ -1141,9 +1131,18 @@ impl FloatingBoard {
 
     fn board_bounds(&self) -> Rect<Pixels> {
         match self.card_layer() {
-            Some(layer) => Rect::from_xywh(0.0, 0.0, layer.width() as f64, layer.height() as f64),
+            Some(layer) => {
+                let size = layer.allocated_size().to_f64().with_unit::<Pixels>();
+                Rect::from_xywh(0.0, 0.0, size.x, size.y)
+            }
             None => Rect::default(),
         }
+    }
+
+    /// Footprint rectangle of the transform stack in board coordinates: the
+    /// displayed size centered on the card's stored position.
+    fn displayed_footprint(&self, entry: &CardEntry) -> Rect<Pixels> {
+        Rect::centered(entry.position.get().into(), self.displayed_size(entry))
     }
 
     /// Positions the transform stack so its displayed center matches
@@ -1153,13 +1152,10 @@ impl FloatingBoard {
         let Some(layer) = self.card_layer() else {
             return;
         };
-        let size = self.displayed_size(entry);
-        let position = entry.position.get();
-        let target_x = position.x().as_f64() - size.x / 2.0;
-        let target_y = position.y().as_f64() - size.y / 2.0;
+        let target = self.displayed_footprint(entry).min;
         let (current_x, current_y) = layer.child_position(&entry.scaling);
-        if (current_x - target_x).abs() > 0.5 || (current_y - target_y).abs() > 0.5 {
-            layer.move_(&entry.scaling, target_x, target_y);
+        if (current_x - target.x).abs() > 0.5 || (current_y - target.y).abs() > 0.5 {
+            layer.move_(&entry.scaling, target.x, target.y);
         }
     }
 
@@ -1171,9 +1167,7 @@ impl FloatingBoard {
         if bounds.is_degenerate() {
             return;
         }
-        let size = self.displayed_size(entry);
-        let position = entry.position.get();
-        let footprint = Rect::centered(position.into(), size);
+        let footprint = self.displayed_footprint(entry);
         let delta = match entry.config.bounds_mode {
             BoundsMode::Loose => footprint.clamp_offset(&bounds, Pixels::new(entry.config.min_visible.value())),
             BoundsMode::Contained => footprint.contain_offset(&bounds),
@@ -1207,11 +1201,10 @@ impl FloatingBoard {
     /// Predicted displayed size: rotated bounding box of the card's natural
     /// size, times the scale factor.
     fn predicted_size(&self, entry: &CardEntry) -> Vec2<Pixels> {
-        let (_, natural_width, _, _) = entry.card.measure(Orientation::Horizontal, -1);
-        let (_, natural_height, _, _) = entry.card.measure(Orientation::Vertical, -1);
+        let (_, natural) = entry.card.measure_size();
         let scale = entry.scale.get().value();
         let rotation = entry.rotation_widget.rotation();
-        Rect::<Pixels>::from_xywh(0.0, 0.0, natural_width as f64 * scale, natural_height as f64 * scale).rotated_bounds(rotation)
+        (natural.to_f64().with_unit::<Pixels>() * scale).rotated_bounds(rotation)
     }
 
     fn entry_geometry(&self, entry: &CardEntry) -> CardGeometry {

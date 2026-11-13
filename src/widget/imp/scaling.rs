@@ -4,13 +4,17 @@ use glib::subclass::prelude::ObjectImpl;
 use glib::subclass::prelude::ObjectSubclass;
 use gtk4::Orientation;
 use gtk4::glib::Properties;
-use gtk4::graphene::Point;
 use gtk4::gsk::Transform;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::layout_manager::LayoutManagerImpl;
 use gtk4::subclass::prelude::DerivedObjectProperties;
 use gtk4::subclass::prelude::WidgetClassExt;
 use gtk4::subclass::prelude::WidgetImpl;
+use smearor_commons_geometry::CenteredTransform;
+use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::ScaleFactor;
+use smearor_commons_geometry::Size;
+use smearor_commons_geometry::WidgetSizeExt;
 use std::cell::Cell;
 use std::cell::RefCell;
 
@@ -79,13 +83,11 @@ impl ObjectSubclass for ScalingLayoutImpl {
 impl ObjectImpl for ScalingLayoutImpl {}
 
 impl ScalingLayoutImpl {
-    fn natural_child_size(&self, widget: &gtk4::Widget) -> (i32, i32) {
+    fn natural_child_size(&self, widget: &gtk4::Widget) -> Size<i32> {
         let Some(child) = widget.first_child() else {
-            return (0, 0);
+            return Size::new(0, 0);
         };
-        let (_, natural_width, _, _) = child.measure(Orientation::Horizontal, -1);
-        let (_, natural_height, _, _) = child.measure(Orientation::Vertical, -1);
-        (natural_width, natural_height)
+        child.measure_size().1
     }
 }
 
@@ -104,15 +106,16 @@ impl LayoutManagerImpl for ScalingLayoutImpl {
         let Some(child) = widget.first_child() else {
             return;
         };
-        let scale = self.scale.get() as f32;
-        let (natural_width, natural_height) = self.natural_child_size(widget);
-        let child_width = if natural_width > 0 { natural_width } else { width };
-        let child_height = if natural_height > 0 { natural_height } else { height };
+        let allocated = Size::new(width, height);
+        let natural = self.natural_child_size(widget);
+        let child_size = Size::new(if natural.x > 0 { natural.x } else { allocated.x }, if natural.y > 0 { natural.y } else { allocated.y });
         // Center the unscaled child in the allocation, then scale around the center.
-        let transform = Transform::new()
-            .translate(&Point::new(width as f32 / 2.0, height as f32 / 2.0))
-            .scale(scale, scale)
-            .translate(&Point::new(child_width as f32 / -2.0, child_height as f32 / -2.0));
-        child.allocate(child_width, child_height, baseline, Some(transform));
+        let transform = Transform::from(CenteredTransform::new(
+            allocated.to_f32().half(),
+            child_size.to_f32(),
+            RotationRad::ZERO,
+            ScaleFactor::new(self.scale.get()),
+        ));
+        child.allocate(child_size.x, child_size.y, baseline, Some(transform));
     }
 }

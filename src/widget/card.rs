@@ -17,7 +17,6 @@ use gtk4::Accessible;
 use gtk4::Buildable;
 use gtk4::ConstraintTarget;
 use gtk4::Orientable;
-use gtk4::Orientation;
 use gtk4::Widget;
 use gtk4::cairo::Region;
 use gtk4::glib;
@@ -25,6 +24,7 @@ use gtk4::prelude::BoxExt;
 use gtk4::prelude::ButtonExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use smearor_commons_geometry::WidgetSizeExt;
 use smearor_wrot_rotation::SmearorRotation;
 use tracing::debug;
 
@@ -205,8 +205,8 @@ impl Card {
                 // Pin the card width while folded: without the content the
                 // natural width shrinks to the header alone and the fold
                 // button would end up outside the shrunken header.
-                let (_, natural_width, _, _) = self.measure(Orientation::Horizontal, -1);
-                self.set_size_request(natural_width, -1);
+                let (_, natural) = self.measure_size();
+                self.set_size_request(natural.x, -1);
             } else {
                 self.set_size_request(-1, -1);
             }
