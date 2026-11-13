@@ -14,8 +14,6 @@ pub(crate) struct QuadBaseline {
     pub scale: ScaleFactor,
     /// Rotation at baseline.
     pub rotation: RotationRad,
-    /// Centroid of `points` (board coordinates).
-    pub centroid: Vec2<Pixels>,
     /// Board-space point per active quad slot at baseline.
     pub points: Vec<Vec2<Pixels>>,
     /// Whether the transform already changed the position.

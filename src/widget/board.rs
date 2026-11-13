@@ -48,6 +48,7 @@ use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::SimilarityTransform;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
 use smearor_wrot_rotation::RotationControlHandler;
@@ -832,7 +833,6 @@ impl FloatingBoard {
             position: entry.position.get(),
             scale: entry.scale.get(),
             rotation: entry.rotation_widget.rotation(),
-            centroid: Vec2::centroid(&points),
             points,
             moved,
             rotated,
@@ -850,55 +850,38 @@ impl FloatingBoard {
         let Some(baseline) = baseline_ref.as_mut() else {
             return;
         };
-        if current.len() != baseline.points.len() || baseline.points.is_empty() {
+        let Some(fit) = SimilarityTransform::fit(&baseline.points, &current) else {
             return;
-        }
-        let centroid_now = Vec2::centroid(&current);
-        let centroid_start = baseline.centroid;
-        let (mut numerator, mut denominator, mut radius_now, mut radius_start): (f64, f64, f64, f64) = (0.0, 0.0, 0.0, 0.0);
-        for (cur, base) in current.iter().zip(&baseline.points) {
-            let current_offset = *cur - centroid_now;
-            let baseline_offset = *base - centroid_start;
-            numerator += current_offset.cross::<f64>(&baseline_offset);
-            denominator += current_offset.dot::<f64>(&baseline_offset);
-            radius_now += current_offset.dot::<f64>(&current_offset);
-            radius_start += baseline_offset.dot::<f64>(&baseline_offset);
-        }
-        let raw_angle = RotationRad::new(numerator.atan2(denominator));
+        };
         // Finger crossings through the centroid flip the point-cloud angle
         // by ~180° in a single update - far faster than a real hand can
         // rotate. Re-baseline on such jumps instead of applying them.
-        if baseline.applied_angle.signed_delta_to(raw_angle).abs() > QUAD_ANGLE_JUMP {
+        if baseline.applied_angle.signed_delta_to(fit.rotation).abs() > QUAD_ANGLE_JUMP {
             drop(baseline_ref);
             self.refresh_quad_baseline(entry);
             return;
         }
-        let raw_ratio = if radius_start > f64::EPSILON {
-            (radius_now / radius_start).sqrt()
-        } else {
-            1.0
-        };
-        // The Procrustes angle is computed in y-down screen coordinates;
-        // negating converts it to the rotation the widget actually renders.
-        baseline.applied_angle = raw_angle;
-        let angle = if entry.config.rotatable { -raw_angle } else { RotationRad::ZERO };
-        let scale = if entry.config.scalable && radius_start > f64::EPSILON {
-            ScaleFactor::new(baseline.scale.value() * raw_ratio).clamped(&entry.config.scale_limits)
+        baseline.applied_angle = fit.rotation;
+        let angle = if entry.config.rotatable { fit.rotation } else { RotationRad::ZERO };
+        let scale = if entry.config.scalable {
+            ScaleFactor::new(baseline.scale.value() * fit.scale.as_f64()).clamped(&entry.config.scale_limits)
         } else {
             baseline.scale
         };
         debug!(
-            raw_angle_deg = raw_angle.to_degrees(),
-            raw_ratio,
+            fitted_angle_deg = fit.rotation.to_degrees(),
+            fitted_scale = fit.scale.as_f64(),
             applied_angle_deg = angle.to_degrees(),
             applied_scale = scale.value(),
-            centroid_now = ?centroid_now,
+            centroid_now = ?fit.current_centroid,
             "quad transform computed"
         );
         let applied_ratio = scale / baseline.scale;
         if entry.config.draggable {
-            let rel = baseline.position.0 - centroid_start;
-            let position = CardPosition::from(centroid_now + rel.rotated(angle) * f64::from(applied_ratio));
+            // The center follows the gated/clamped transform, not the raw
+            // fit, so `apply` is recomputed with the effective angle/ratio.
+            let rel = baseline.position.0 - fit.baseline_centroid;
+            let position = CardPosition::from(fit.current_centroid + rel.rotated(angle) * f64::from(applied_ratio));
             if position != entry.position.get() {
                 baseline.moved = true;
                 entry.position.set(position);
