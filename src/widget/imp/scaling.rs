@@ -95,8 +95,8 @@ impl LayoutManagerImpl for ScalingLayoutImpl {
     fn measure(&self, widget: &gtk4::Widget, orientation: Orientation, for_size: i32) -> (i32, i32, i32, i32) {
         let scale = self.scale.get();
         if let Some(child) = widget.first_child() {
-            let (minimum, natural, _, _) = child.measure(orientation, for_size);
-            ((minimum as f64 * scale).ceil() as i32, (natural as f64 * scale).ceil() as i32, -1, -1)
+            let extent = (child.measure_axis(orientation, for_size).to_f64() * scale).to_i32_ceil();
+            (extent.x, extent.y, -1, -1)
         } else {
             (0, 0, -1, -1)
         }
