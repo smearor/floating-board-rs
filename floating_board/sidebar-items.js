@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["domain","widget"],"struct":["SmearorRotation"]};
+window.SIDEBAR_ITEMS = {"mod":["domain","widget"]};
