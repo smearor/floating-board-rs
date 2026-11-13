@@ -807,15 +807,15 @@ impl FloatingBoard {
     /// in surface space; it is mapped into the controller widget's
     /// coordinate space through the native's `compute_point` and then down
     /// the transform stack into layer (board) space.
-    fn event_point_in_layer(&self, controller: &gtk4::EventControllerLegacy, event: &gtk4::gdk::Event) -> Option<Vec2<Pixels>> {
-        let (px, py) = event.position()?;
+    fn event_point_in_layer(&self, controller: &EventControllerLegacy, event: &gtk4::gdk::Event) -> Option<Vec2<Pixels>> {
+        let position = Vec2::<Pixels>::from(event.position()?);
         let widget = controller.widget()?;
         let native = widget.native()?;
-        let surface_point = Point::new(px as f32, py as f32);
+        let surface_point = Point::from(position.to_f32());
         let widget_point = native.compute_point(&widget, &surface_point)?;
         let layer = self.card_layer()?;
         let point = widget.compute_point(&layer, &widget_point)?;
-        Some(Vec2::<Pixels>::new(point.x() as f64, point.y() as f64))
+        Some(Vec2::<Pixels, f32>::from(point).to_f64())
     }
 
     /// Takes a fresh baseline: current geometry plus the live quad points.
@@ -967,12 +967,12 @@ impl FloatingBoard {
     /// motion, and always fresh at signal emission time (unlike
     /// `current_event`, which can lag one touch event behind).
     fn pointer_in_layer(&self, gesture: &GestureDrag) -> Option<Vec2<Pixels>> {
-        let (sx, sy) = gesture.start_point()?;
-        let (ox, oy) = gesture.offset()?;
+        let start = Vec2::<Pixels>::from(gesture.start_point()?);
+        let offset = Vec2::<Pixels>::from(gesture.offset()?);
         let widget = gesture.widget()?;
         let layer = self.card_layer()?;
-        let point = widget.compute_point(&layer, &Point::new((sx + ox) as f32, (sy + oy) as f32))?;
-        Some(Vec2::<Pixels>::new(point.x() as f64, point.y() as f64))
+        let point = widget.compute_point(&layer, &Point::from((start + offset).to_f32()))?;
+        Some(Vec2::<Pixels, f32>::from(point).to_f64())
     }
 
     /// Drag delta in board coordinates: current pointer position minus the
