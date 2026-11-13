@@ -24,8 +24,8 @@ use gtk4::prelude::BoxExt;
 use gtk4::prelude::ButtonExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::WidgetSizeExt;
-use smearor_wrot_rotation::SmearorRotation;
 use tracing::debug;
 
 glib::wrapper! {
@@ -130,19 +130,19 @@ impl Card {
     }
 
     /// Current rotation.
-    pub fn rotation(&self) -> SmearorRotation {
+    pub fn rotation(&self) -> Rotation {
         self.geometry().rotation
     }
 
     /// Sets the rotation immediately (no animation).
-    pub fn set_rotation(&self, rotation: SmearorRotation) {
+    pub fn set_rotation(&self, rotation: Rotation) {
         if let Some(board) = self.board() {
             board.set_card_rotation(&self.id(), rotation);
         }
     }
 
     /// Sets the rotation with the zoom-snap transition of `RotationWidget`.
-    pub fn set_rotation_with_animation(&self, rotation: SmearorRotation) {
+    pub fn set_rotation_with_animation(&self, rotation: Rotation) {
         if let Some(board) = self.board() {
             board.set_card_rotation_animated(&self.id(), rotation);
         }

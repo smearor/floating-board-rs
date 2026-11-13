@@ -59,8 +59,8 @@ mod tests {
     use crate::domain::CardId;
     use crate::domain::CardPosition;
     use crate::domain::ScaleFactor;
+    use smearor_commons_geometry::Rotation;
     use smearor_commons_geometry::Vec2;
-    use smearor_wrot_rotation::SmearorRotation;
 
     #[test]
     fn layout_toml_roundtrip_matches_concept_format() {
@@ -79,13 +79,13 @@ scale = 1.0
         let placement = &layout.cards[0];
         assert_eq!(placement.id, CardId::new("controls"));
         assert_eq!(placement.geometry.position, CardPosition::from(Vec2::new(480.0, 660.0)));
-        assert_eq!(placement.geometry.rotation.to_degrees(), 180.0);
+        assert_eq!(placement.geometry.rotation.degrees(), 180.0);
         assert_eq!(placement.geometry.scale, ScaleFactor::new(1.0));
 
         let serialized = toml::to_string_pretty(&layout).unwrap();
         let reparsed: BoardLayout = toml::from_str(&serialized).unwrap();
         assert_eq!(reparsed.len(), layout.len());
-        assert_eq!(reparsed.cards[0].geometry.rotation.to_degrees(), 180.0);
+        assert_eq!(reparsed.cards[0].geometry.rotation.degrees(), 180.0);
     }
 
     #[test]
@@ -94,7 +94,7 @@ scale = 1.0
             CardId::new("a"),
             CardGeometry {
                 position: CardPosition::from(Vec2::new(1.0, 2.0)),
-                rotation: SmearorRotation::DEG_90,
+                rotation: Rotation::from_degrees(90.0),
                 scale: ScaleFactor::new(1.5),
             },
             true,

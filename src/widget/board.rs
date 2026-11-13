@@ -17,13 +17,17 @@ use crate::widget::imp::card_entry::CardEntry;
 use crate::widget::imp::quad_baseline::QuadBaseline;
 use crate::widget::imp::tracked_touch::TrackedTouch;
 use crate::widget::scaling::ScalingWidget;
+use glib::Propagation;
 use glib::object::Cast;
 use glib::object::IsA;
 use glib::prelude::ObjectExt;
 use gtk4::Accessible;
 use gtk4::Buildable;
 use gtk4::ConstraintTarget;
-
+use gtk4::EventControllerLegacy;
+use gtk4::EventSequenceState;
+use gtk4::GestureClick;
+use gtk4::GestureDrag;
 use gtk4::Orientable;
 use gtk4::Overlay;
 use gtk4::Widget;
@@ -42,6 +46,7 @@ use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
+use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
@@ -75,9 +80,9 @@ glib::wrapper! {
 /// stays a plain touch and never moves the card.
 const QUAD_MIN_POINTS: usize = 2;
 
-/// Frame-to-frame angle jump treated as a degenerate finger crossing
+/// Frame-to-frame angle jump (60°) treated as a degenerate finger crossing
 /// (~180° flips when points cross the centroid) rather than real rotation.
-const QUAD_ANGLE_JUMP_DEG: f64 = 60.0;
+const QUAD_ANGLE_JUMP: RotationRad = RotationRad::new(std::f64::consts::PI / 3.0);
 
 /// How long a tracked touch may stay silent before it counts as dead - its
 /// `TouchEnd` was routed to a claiming gesture or lost on the wire. Real
@@ -89,7 +94,7 @@ const QUAD_STALE_MS: u64 = 1500;
 /// variant is deprecated since GTK 4.10). The gesture stops receiving updates
 /// and its `end`/`cancel` handlers run.
 fn deny_gesture(gesture: &impl IsA<gtk4::Gesture>) {
-    gesture.set_state(gtk4::EventSequenceState::Denied);
+    gesture.set_state(EventSequenceState::Denied);
 }
 
 impl FloatingBoard {
@@ -265,7 +270,7 @@ impl FloatingBoard {
             };
             // Notify handlers re-borrow the card map, so widget calls happen
             // outside of it.
-            rotation_widget.set_rotation(placement.geometry.rotation);
+            rotation_widget.set_rotation(SmearorRotation(placement.geometry.rotation));
             scaling.set_scale(placement.geometry.scale.value());
             card.set_folded(placement.folded);
             let cards = self.imp().cards.borrow();
@@ -297,7 +302,7 @@ impl FloatingBoard {
                 None => return,
             }
         };
-        rotation_widget.set_rotation(geometry.rotation);
+        rotation_widget.set_rotation(SmearorRotation(geometry.rotation));
         scaling.set_scale(scale.value());
         let cards = self.imp().cards.borrow();
         if let Some(entry) = cards.get(id) {
@@ -309,20 +314,20 @@ impl FloatingBoard {
     }
 
     /// Sets the card rotation immediately (no animation).
-    pub(crate) fn set_card_rotation(&self, id: &CardId, rotation: SmearorRotation) {
+    pub(crate) fn set_card_rotation(&self, id: &CardId, rotation: Rotation) {
         let rotation_widget = self.imp().cards.borrow().get(id).map(|entry| entry.rotation_widget.clone());
         if let Some(rotation_widget) = rotation_widget {
             // The notify::rotation handler performs re-centering, clamping and
             // signal emission.
-            rotation_widget.set_rotation(rotation);
+            rotation_widget.set_rotation(SmearorRotation(rotation));
         }
     }
 
     /// Sets the card rotation with the zoom-snap animation.
-    pub(crate) fn set_card_rotation_animated(&self, id: &CardId, rotation: SmearorRotation) {
+    pub(crate) fn set_card_rotation_animated(&self, id: &CardId, rotation: Rotation) {
         let rotation_widget = self.imp().cards.borrow().get(id).map(|entry| entry.rotation_widget.clone());
         if let Some(rotation_widget) = rotation_widget {
-            rotation_widget.set_rotation_with_animation(rotation.into());
+            rotation_widget.set_rotation_with_animation(rotation.to_rotation_rad());
         }
     }
 
@@ -650,7 +655,7 @@ impl FloatingBoard {
                 let board_weak = self.downgrade();
                 let card_id = card_id.clone();
                 gesture.connect_sequence_state_changed(move |_, sequence, state| {
-                    if state != gtk4::EventSequenceState::Claimed {
+                    if state != EventSequenceState::Claimed {
                         return;
                     }
                     if let (Some(board), Some(sequence)) = (board_weak.upgrade(), sequence) {
@@ -825,14 +830,14 @@ impl FloatingBoard {
         info!(points = ?points, position = ?entry.position.get(), scale = entry.scale.get().value(), rotation_deg = entry.rotation_widget.rotation().to_degrees(), "quad baseline snapshot");
         entry.quad_baseline.replace(Some(QuadBaseline {
             position: entry.position.get(),
-            scale: entry.scale.get().value(),
+            scale: entry.scale.get(),
             rotation: entry.rotation_widget.rotation(),
             centroid: Vec2::centroid(&points),
             points,
             moved,
             rotated,
             scaled,
-            applied_angle_deg: 0.0,
+            applied_angle: RotationRad::ZERO,
         }));
     }
 
@@ -849,38 +854,25 @@ impl FloatingBoard {
             return;
         }
         let centroid_now = Vec2::centroid(&current);
+        let centroid_start = baseline.centroid;
+        let (mut numerator, mut denominator, mut radius_now, mut radius_start): (f64, f64, f64, f64) = (0.0, 0.0, 0.0, 0.0);
+        for (cur, base) in current.iter().zip(&baseline.points) {
+            let current_offset = *cur - centroid_now;
+            let baseline_offset = *base - centroid_start;
+            numerator += current_offset.cross::<f64>(&baseline_offset);
+            denominator += current_offset.dot::<f64>(&baseline_offset);
+            radius_now += current_offset.dot::<f64>(&current_offset);
+            radius_start += baseline_offset.dot::<f64>(&baseline_offset);
+        }
+        let raw_angle = RotationRad::new(numerator.atan2(denominator));
         // Finger crossings through the centroid flip the point-cloud angle
         // by ~180° in a single update - far faster than a real hand can
         // rotate. Re-baseline on such jumps instead of applying them.
-        {
-            let preview_numerator = current
-                .iter()
-                .zip(&baseline.points)
-                .map(|(cur, base)| (cur.x - centroid_now.x) * (base.y - baseline.centroid.y) - (cur.y - centroid_now.y) * (base.x - baseline.centroid.x))
-                .sum::<f64>();
-            let preview_denominator = current
-                .iter()
-                .zip(&baseline.points)
-                .map(|(cur, base)| (cur.x - centroid_now.x) * (base.x - baseline.centroid.x) + (cur.y - centroid_now.y) * (base.y - baseline.centroid.y))
-                .sum::<f64>();
-            let preview_angle = preview_numerator.atan2(preview_denominator).to_degrees();
-            if (preview_angle - baseline.applied_angle_deg).abs() > QUAD_ANGLE_JUMP_DEG {
-                drop(baseline_ref);
-                self.refresh_quad_baseline(entry);
-                return;
-            }
+        if baseline.applied_angle.signed_delta_to(raw_angle).abs() > QUAD_ANGLE_JUMP {
+            drop(baseline_ref);
+            self.refresh_quad_baseline(entry);
+            return;
         }
-        let centroid_start = baseline.centroid;
-        let (mut numerator, mut denominator, mut radius_now, mut radius_start) = (0.0, 0.0, 0.0, 0.0);
-        for (cur, base) in current.iter().zip(&baseline.points) {
-            let (wx, wy) = (cur.x - centroid_now.x, cur.y - centroid_now.y);
-            let (ux, uy) = (base.x - centroid_start.x, base.y - centroid_start.y);
-            numerator += wx * uy - wy * ux;
-            denominator += wx * ux + wy * uy;
-            radius_now += wx * wx + wy * wy;
-            radius_start += ux * ux + uy * uy;
-        }
-        let raw_angle_deg = numerator.atan2(denominator).to_degrees();
         let raw_ratio = if radius_start > f64::EPSILON {
             (radius_now / radius_start).sqrt()
         } else {
@@ -888,36 +880,35 @@ impl FloatingBoard {
         };
         // The Procrustes angle is computed in y-down screen coordinates;
         // negating converts it to the rotation the widget actually renders.
-        baseline.applied_angle_deg = raw_angle_deg;
-        let angle_deg = if entry.config.rotatable { -raw_angle_deg } else { 0.0 };
+        baseline.applied_angle = raw_angle;
+        let angle = if entry.config.rotatable { -raw_angle } else { RotationRad::ZERO };
         let scale = if entry.config.scalable && radius_start > f64::EPSILON {
-            ScaleFactor::new(baseline.scale * raw_ratio).clamped(&entry.config.scale_limits)
+            ScaleFactor::new(baseline.scale.value() * raw_ratio).clamped(&entry.config.scale_limits)
         } else {
-            ScaleFactor::new(baseline.scale)
+            baseline.scale
         };
         debug!(
-            raw_angle_deg,
+            raw_angle_deg = raw_angle.to_degrees(),
             raw_ratio,
-            applied_angle_deg = angle_deg,
+            applied_angle_deg = angle.to_degrees(),
             applied_scale = scale.value(),
             centroid_now = ?centroid_now,
             "quad transform computed"
         );
-        let applied_ratio = scale.value() / baseline.scale.max(f64::EPSILON);
+        let applied_ratio = scale / baseline.scale;
         if entry.config.draggable {
-            let rel = Vec2::<Pixels>::new(baseline.position.x().as_f64() - centroid_start.x, baseline.position.y().as_f64() - centroid_start.y);
-            let rot = rel.rotated(RotationRad::from_degrees(angle_deg));
-            let position = CardPosition::from(centroid_now + rot * applied_ratio);
+            let rel = baseline.position.0 - centroid_start;
+            let position = CardPosition::from(centroid_now + rel.rotated(angle) * f64::from(applied_ratio));
             if position != entry.position.get() {
                 baseline.moved = true;
                 entry.position.set(position);
             }
         }
         if entry.config.rotatable {
-            let rotation = (baseline.rotation.to_degrees() + angle_deg) as f32;
-            if (rotation as f64 - entry.rotation_widget.rotation().to_degrees()).abs() > 0.01 {
+            let rotation = baseline.rotation + angle;
+            if rotation.signed_delta_to(entry.rotation_widget.rotation()).abs() > RotationRad::from_degrees(0.01) {
                 baseline.rotated = true;
-                entry.rotation_widget.set_rotation(SmearorRotation::new(rotation));
+                entry.rotation_widget.set_rotation(SmearorRotation::from(rotation));
             }
         }
         if entry.config.scalable && scale != entry.scale.get() {
@@ -935,7 +926,7 @@ impl FloatingBoard {
     /// Records the card position and the pointer's board coordinates at drag
     /// begin; the update delta is measured between two board-space pointer
     /// samples, which stays stable while the card follows the pointer.
-    fn on_card_drag_begin(&self, id: &CardId, gesture: &gtk4::GestureDrag) {
+    fn on_card_drag_begin(&self, id: &CardId, gesture: &GestureDrag) {
         if let Some(entry) = self.imp().cards.borrow().get(id) {
             entry.drag_start.set(entry.position.get());
             entry.drag_grab.set(self.pointer_in_layer(gesture));
@@ -952,14 +943,14 @@ impl FloatingBoard {
     /// roughly half pointer speed. Instead, the pointer's board position is
     /// taken straight from the event's surface coordinates, which are
     /// independent of the widget's own transform.
-    fn on_card_drag_update(&self, id: &CardId, gesture: &gtk4::GestureDrag, offset_x: f64, offset_y: f64) {
+    fn on_card_drag_update(&self, id: &CardId, gesture: &GestureDrag, offset: Vec2<Pixels>) {
         {
             let cards = self.imp().cards.borrow();
             let Some(entry) = cards.get(id) else {
                 return;
             };
-            let delta = self.drag_delta(gesture, offset_x, offset_y, entry);
-            let position = entry.drag_start.get().translated(Vec2::<Pixels>::new(delta.0, delta.1));
+            let delta = self.drag_delta(gesture, offset, entry);
+            let position = entry.drag_start.get().translated(delta);
             debug!(card = %id, delta = ?delta, position = ?(position.x().as_f64(), position.y().as_f64()), "drag update");
             entry.position.set(position);
             self.apply_position(entry);
@@ -970,8 +961,8 @@ impl FloatingBoard {
         self.emit_geometry_changed();
     }
 
-    fn on_card_drag_end(&self, id: &CardId, gesture: &gtk4::GestureDrag, offset_x: f64, offset_y: f64) {
-        self.on_card_drag_update(id, gesture, offset_x, offset_y);
+    fn on_card_drag_end(&self, id: &CardId, gesture: &GestureDrag, offset: Vec2<Pixels>) {
+        self.on_card_drag_update(id, gesture, offset);
         let card = {
             let cards = self.imp().cards.borrow();
             let Some(entry) = cards.get(id) else {
@@ -992,7 +983,7 @@ impl FloatingBoard {
     /// transform returns the surface point - independent of the card's own
     /// motion, and always fresh at signal emission time (unlike
     /// `current_event`, which can lag one touch event behind).
-    fn pointer_in_layer(&self, gesture: &gtk4::GestureDrag) -> Option<Vec2<Pixels>> {
+    fn pointer_in_layer(&self, gesture: &GestureDrag) -> Option<Vec2<Pixels>> {
         let (sx, sy) = gesture.start_point()?;
         let (ox, oy) = gesture.offset()?;
         let widget = gesture.widget()?;
@@ -1005,14 +996,13 @@ impl FloatingBoard {
     /// pointer position captured at drag begin. Falls back to undoing the
     /// inverse `rotate . scale` on the widget-space offset before the first
     /// allocation, when no surface mapping is available yet.
-    fn drag_delta(&self, gesture: &gtk4::GestureDrag, offset_x: f64, offset_y: f64, entry: &CardEntry) -> (f64, f64) {
+    fn drag_delta(&self, gesture: &GestureDrag, offset: Vec2<Pixels>, entry: &CardEntry) -> Vec2<Pixels> {
         if let (Some(now), Some(grab)) = (self.pointer_in_layer(gesture), entry.drag_grab.get()) {
-            return (now.x - grab.x, now.y - grab.y);
+            return now - grab;
         }
         let rotation = entry.rotation_widget.rotation();
         let scale = entry.scale.get().value();
-        let delta = Vec2::<Pixels>::new(offset_x, offset_y).rotated(rotation);
-        (delta.x * scale, delta.y * scale)
+        offset.rotated(rotation) * scale
     }
 
     /// Reorders the card layer by `z_index` (stable by insertion sequence).
@@ -1055,7 +1045,7 @@ impl FloatingBoard {
 
         // Raise on release: a click raises the card, and a finished drag ends
         // raised too. Raising on press would cancel the in-flight sequence.
-        let click = gtk4::GestureClick::new();
+        let click = GestureClick::new();
         click.set_button(0);
         let board_weak = self.downgrade();
         let card_id = id.clone();
@@ -1066,9 +1056,9 @@ impl FloatingBoard {
         });
         scaling.add_controller(click.clone());
 
-        let mut card_drag: Option<gtk4::GestureDrag> = None;
+        let mut card_drag: Option<GestureDrag> = None;
         if config.draggable {
-            let drag = gtk4::GestureDrag::new();
+            let drag = GestureDrag::new();
             drag.set_button(0);
             let board_weak = self.downgrade();
             let card_id = id.clone();
@@ -1081,14 +1071,14 @@ impl FloatingBoard {
             let card_id = id.clone();
             drag.connect_drag_update(move |gesture, offset_x, offset_y| {
                 if let Some(board) = board_weak.upgrade() {
-                    board.on_card_drag_update(&card_id, gesture, offset_x, offset_y);
+                    board.on_card_drag_update(&card_id, gesture, Vec2::new(offset_x, offset_y));
                 }
             });
             let board_weak = self.downgrade();
             let card_id = id.clone();
             drag.connect_drag_end(move |gesture, offset_x, offset_y| {
                 if let Some(board) = board_weak.upgrade() {
-                    board.on_card_drag_end(&card_id, gesture, offset_x, offset_y);
+                    board.on_card_drag_end(&card_id, gesture, Vec2::new(offset_x, offset_y));
                 }
             });
             card.drag_source(config.drag_handle).add_controller(drag.clone());
@@ -1106,7 +1096,7 @@ impl FloatingBoard {
         // A/B testing.
         let quad_enabled = std::env::var_os("FBD_NO_QUAD").is_none() && (config.draggable || config.rotatable || config.scalable);
         if quad_enabled {
-            let tracker = gtk4::EventControllerLegacy::new();
+            let tracker = EventControllerLegacy::new();
             let board_weak = self.downgrade();
             let card_id = id.clone();
             let click_for_tracker = click.clone();
@@ -1114,7 +1104,7 @@ impl FloatingBoard {
                 if let Some(board) = board_weak.upgrade() {
                     board.on_quad_touch_event(&card_id, controller, event, card_drag.as_ref(), &click_for_tracker);
                 }
-                glib::Propagation::Proceed
+                Propagation::Proceed
             });
             scaling.add_controller(tracker);
         }
@@ -1130,13 +1120,9 @@ impl FloatingBoard {
     }
 
     fn board_bounds(&self) -> Rect<Pixels> {
-        match self.card_layer() {
-            Some(layer) => {
-                let size = layer.allocated_size().to_f64().with_unit::<Pixels>();
-                Rect::from_xywh(0.0, 0.0, size.x, size.y)
-            }
-            None => Rect::default(),
-        }
+        self.card_layer()
+            .map(|layer| Rect::new(Vec2::ZERO, layer.allocated_size().to_f64().with_unit()))
+            .unwrap_or_default()
     }
 
     /// Footprint rectangle of the transform stack in board coordinates: the
@@ -1153,8 +1139,9 @@ impl FloatingBoard {
             return;
         };
         let target = self.displayed_footprint(entry).min;
-        let (current_x, current_y) = layer.child_position(&entry.scaling);
-        if (current_x - target.x).abs() > 0.5 || (current_y - target.y).abs() > 0.5 {
+        let current = Vec2::<Pixels>::from(layer.child_position(&entry.scaling));
+        let delta = current - target;
+        if delta.x.abs() > 0.5 || delta.y.abs() > 0.5 {
             layer.move_(&entry.scaling, target.x, target.y);
         }
     }
@@ -1169,10 +1156,10 @@ impl FloatingBoard {
         }
         let footprint = self.displayed_footprint(entry);
         let delta = match entry.config.bounds_mode {
-            BoundsMode::Loose => footprint.clamp_offset(&bounds, Pixels::new(entry.config.min_visible.value())),
+            BoundsMode::Loose => footprint.clamp_offset(&bounds, entry.config.min_visible.value()),
             BoundsMode::Contained => footprint.contain_offset(&bounds),
         };
-        if delta.x != 0.0 || delta.y != 0.0 {
+        if delta != Vec2::ZERO {
             entry.position.set(entry.position.get().translated(delta));
             self.apply_position(entry);
         }
@@ -1194,7 +1181,7 @@ impl FloatingBoard {
         if size.x > 0.0 && size.y > 0.0 {
             size
         } else {
-            Vec2::new(entry.scaling.width() as f64, entry.scaling.height() as f64)
+            entry.scaling.allocated_size().to_f64().with_unit::<Pixels>()
         }
     }
 
@@ -1202,15 +1189,13 @@ impl FloatingBoard {
     /// size, times the scale factor.
     fn predicted_size(&self, entry: &CardEntry) -> Vec2<Pixels> {
         let (_, natural) = entry.card.measure_size();
-        let scale = entry.scale.get().value();
-        let rotation = entry.rotation_widget.rotation();
-        (natural.to_f64().with_unit::<Pixels>() * scale).rotated_bounds(rotation)
+        (natural.to_f64().with_unit::<Pixels>() * entry.scale.get().value()).rotated_bounds(entry.rotation_widget.rotation())
     }
 
     fn entry_geometry(&self, entry: &CardEntry) -> CardGeometry {
         CardGeometry {
             position: entry.position.get(),
-            rotation: SmearorRotation::from(entry.rotation_widget.rotation()),
+            rotation: Rotation::quantized(entry.rotation_widget.rotation()),
             scale: entry.scale.get(),
         }
     }

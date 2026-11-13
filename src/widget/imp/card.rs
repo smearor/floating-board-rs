@@ -8,6 +8,8 @@ use crate::widget::css::CLASS_HANDLE;
 use crate::widget::css::CLASS_HEADER;
 use glib::WeakRef;
 use glib::subclass::Signal;
+use gtk4::Button;
+use gtk4::Label;
 use gtk4::Orientation;
 use gtk4::glib;
 use gtk4::prelude::BoxExt;
@@ -20,6 +22,7 @@ use gtk4::subclass::prelude::ObjectSubclass;
 use gtk4::subclass::prelude::ObjectSubclassExt;
 use gtk4::subclass::prelude::WidgetImpl;
 use gtk4::subclass::prelude::WidgetImplExt;
+use smearor_commons_geometry::Pixels;
 use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
@@ -39,19 +42,19 @@ pub struct CardImpl {
     /// Container for the consumer's content widget.
     pub content_holder: OnceCell<gtk4::Box>,
     /// Title label inside the header.
-    pub title_label: OnceCell<gtk4::Label>,
+    pub title_label: OnceCell<Label>,
     /// Grip icon used in `DragHandle::Handle` mode.
-    pub handle_label: OnceCell<gtk4::Label>,
+    pub handle_label: OnceCell<Label>,
     /// Fold toggle button (visible when `CardConfig::foldable`).
-    pub fold_button: OnceCell<gtk4::Button>,
+    pub fold_button: OnceCell<Button>,
     /// Close button (visible when `CardConfig::closable`).
-    pub close_button: OnceCell<gtk4::Button>,
+    pub close_button: OnceCell<Button>,
     /// Whether the card is currently folded to its header.
     pub folded: Cell<bool>,
     /// Upper bound on the reported width (`CardConfig::max_width`).
-    pub max_width: Cell<Option<i32>>,
+    pub max_width: Cell<Option<Pixels>>,
     /// Upper bound on the reported height (`CardConfig::max_height`).
-    pub max_height: Cell<Option<i32>>,
+    pub max_height: Cell<Option<Pixels>>,
 }
 
 impl Default for CardImpl {
@@ -94,23 +97,23 @@ impl ObjectImpl for CardImpl {
         header.add_css_class(CLASS_HEADER);
         header.set_hexpand(true);
 
-        let handle_label = gtk4::Label::new(Some("\u{2261}"));
+        let handle_label = Label::new(Some("\u{2261}"));
         handle_label.add_css_class(CLASS_HANDLE);
         handle_label.set_visible(false);
         header.append(&handle_label);
 
-        let title_label = gtk4::Label::new(None);
+        let title_label = Label::new(None);
         title_label.set_hexpand(true);
         title_label.set_halign(gtk4::Align::Start);
         title_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
         header.append(&title_label);
 
-        let fold_button = gtk4::Button::from_icon_name("go-down-symbolic");
+        let fold_button = Button::from_icon_name("go-down-symbolic");
         fold_button.add_css_class("flat");
         fold_button.set_visible(false);
         header.append(&fold_button);
 
-        let close_button = gtk4::Button::from_icon_name("window-close-symbolic");
+        let close_button = Button::from_icon_name("window-close-symbolic");
         close_button.add_css_class("flat");
         close_button.set_visible(false);
         header.append(&close_button);
@@ -148,7 +151,11 @@ impl WidgetImpl for CardImpl {
             _ => None,
         };
         match limit {
-            Some(cap) => (minimum.min(cap), natural.min(cap), -1, -1),
+            // Fractional caps floor so the reported size never exceeds the bound.
+            Some(cap) => {
+                let cap = cap.as_f64() as i32;
+                (minimum.min(cap), natural.min(cap), -1, -1)
+            }
             None => (minimum, natural, minimum_baseline, natural_baseline),
         }
     }

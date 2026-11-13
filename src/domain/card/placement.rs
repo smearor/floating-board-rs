@@ -39,8 +39,8 @@ mod tests {
     use super::*;
     use crate::domain::CardPosition;
     use crate::domain::ScaleFactor;
+    use smearor_commons_geometry::Rotation;
     use smearor_commons_geometry::Vec2;
-    use smearor_wrot_rotation::SmearorRotation;
 
     #[test]
     fn placement_serializes_flat() {
@@ -48,7 +48,7 @@ mod tests {
             CardId::new("controls"),
             CardGeometry {
                 position: CardPosition::from(Vec2::new(480.0, 660.0)),
-                rotation: SmearorRotation::DEG_180,
+                rotation: Rotation::from_degrees(180.0),
                 scale: ScaleFactor::new(1.0),
             },
             false,

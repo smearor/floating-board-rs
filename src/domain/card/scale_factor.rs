@@ -1,5 +1,7 @@
 use crate::domain::ScaleBounds;
+use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::ScaleFactor as GeometryScaleFactor;
+use std::ops::Div;
 
 /// Scale factor of a card (`1.0` = natural size).
 ///
@@ -37,6 +39,15 @@ impl ScaleFactor {
 impl Default for ScaleFactor {
     fn default() -> Self {
         Self(GeometryScaleFactor::ONE)
+    }
+}
+
+impl Div for ScaleFactor {
+    type Output = Fraction;
+
+    /// The dimensionless ratio of two card scales.
+    fn div(self, other: ScaleFactor) -> Fraction {
+        self.0 / other.0
     }
 }
 

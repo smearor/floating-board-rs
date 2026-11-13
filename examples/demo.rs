@@ -7,11 +7,16 @@ use floating_board::DragHandle;
 use floating_board::FloatingBoard;
 use floating_board::MinVisible;
 use floating_board::ScaleBounds;
-use floating_board::SmearorRotation;
+use gtk4::Align;
+use gtk4::Button;
+use gtk4::Label;
+use gtk4::Orientation;
+use gtk4::Scale;
 use gtk4::glib::closure_local;
 use gtk4::prelude::*;
-use gtk4::{Align, Button, Label, Orientation, Scale};
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Rotation;
+use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -144,7 +149,7 @@ fn build_ui(application: &gtk4::Application) {
         )
         .unwrap_or_else(|_| CardId::new("info"));
     if let Ok(card) = board.card(&info_id) {
-        card.set_rotation(SmearorRotation::DEG_90);
+        card.set_rotation(Rotation::from_degrees(90.0));
     }
 
     // Card 3: "display" - pure view, headerless; the whole card is the drag
@@ -166,8 +171,8 @@ fn build_ui(application: &gtk4::Application) {
 
     // Card 4: "parameters" - second foldable card for multi-user testing.
     let parameters = gtk4::Box::new(Orientation::Vertical, 8);
-    parameters.append(&gtk4::Label::new(Some("Edge margin")));
-    parameters.append(&gtk4::Scale::with_range(gtk4::Orientation::Horizontal, 0.0, 40.0, 1.0));
+    parameters.append(&Label::new(Some("Edge margin")));
+    parameters.append(&Scale::with_range(Orientation::Horizontal, 0.0, 40.0, 1.0));
     parameters.append(&gtk4::CheckButton::with_label("Legacy mode"));
     let parameters_id = board
         .add_card_with_id(
@@ -177,7 +182,7 @@ fn build_ui(application: &gtk4::Application) {
                 title: Some("Parameters".to_string()),
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(1000.0, 420.0))),
                 foldable: true,
-                max_width: Some(300),
+                max_width: Some(Pixels::new(300.0)),
                 ..Default::default()
             },
         )
@@ -190,9 +195,9 @@ fn build_ui(application: &gtk4::Application) {
         add_button.connect_clicked(move |_| {
             let number = counter.get() + 1;
             counter.set(number);
-            let body = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
-            body.append(&gtk4::Label::new(Some(&format!("Dynamic card {number}"))));
-            body.append(&gtk4::Button::with_label("Click me"));
+            let body = gtk4::Box::new(Orientation::Vertical, 4);
+            body.append(&Label::new(Some(&format!("Dynamic card {number}"))));
+            body.append(&Button::with_label("Click me"));
             let id = board.add_card(
                 &body,
                 CardConfig {
@@ -213,8 +218,8 @@ fn build_ui(application: &gtk4::Application) {
         let board = board.clone();
         rotate_button.connect_clicked(move |_| {
             for card in board.cards() {
-                let next = card.rotation().to_degrees() + 90.0;
-                card.set_rotation_with_animation(SmearorRotation::free(next));
+                let next = card.rotation().degrees() + 90.0;
+                card.set_rotation_with_animation(Rotation::Free(RotationRad::from_degrees(next)));
             }
         });
     }

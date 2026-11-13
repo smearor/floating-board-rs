@@ -1,4 +1,5 @@
 use crate::domain::CardPosition;
+use crate::domain::ScaleFactor;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
@@ -10,7 +11,7 @@ pub(crate) struct QuadBaseline {
     /// Card center when the baseline was taken (board coordinates).
     pub position: CardPosition,
     /// Scale factor at baseline.
-    pub scale: f64,
+    pub scale: ScaleFactor,
     /// Rotation at baseline.
     pub rotation: RotationRad,
     /// Centroid of `points` (board coordinates).
@@ -25,5 +26,5 @@ pub(crate) struct QuadBaseline {
     pub scaled: bool,
     /// The angle applied by the most recent transform update, used to
     /// detect degenerate finger crossings (~180° flips between frames).
-    pub applied_angle_deg: f64,
+    pub applied_angle: RotationRad,
 }

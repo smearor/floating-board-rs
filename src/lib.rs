@@ -57,7 +57,6 @@ pub use domain::MinVisible;
 pub use domain::ScaleBounds;
 pub use domain::ScaleFactor;
 pub use domain::SequenceNumber;
-pub use smearor_wrot_rotation::SmearorRotation;
 pub use widget::Card;
 pub use widget::CardCloseAction;
 pub use widget::CardConfig;
