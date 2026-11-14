@@ -19,27 +19,29 @@
 <a href=#19 id=19 data-nosnippet>19</a></span><span class="kw">pub const </span>CLASS_HANDLE: <span class="kw-2">&amp;</span>str = <span class="string">"floating-card-handle"</span>;
 <a href=#20 id=20 data-nosnippet>20</a><span class="doccomment">/// CSS class applied while a card is folded.
 <a href=#21 id=21 data-nosnippet>21</a></span><span class="kw">pub const </span>CLASS_FOLDED: <span class="kw-2">&amp;</span>str = <span class="string">"floating-card-folded"</span>;
-<a href=#22 id=22 data-nosnippet>22</a>
-<a href=#23 id=23 data-nosnippet>23</a><span class="kw">const </span>DEFAULT_CSS: <span class="kw-2">&amp;</span>str = <span class="macro">include_str!</span>(<span class="string">"default.css"</span>);
+<a href=#22 id=22 data-nosnippet>22</a><span class="doccomment">/// CSS class of the bottom-right resize grip (`CardConfig::resizable`).
+<a href=#23 id=23 data-nosnippet>23</a></span><span class="kw">pub const </span>CLASS_RESIZE_GRIP: <span class="kw-2">&amp;</span>str = <span class="string">"floating-card-resize-grip"</span>;
 <a href=#24 id=24 data-nosnippet>24</a>
-<a href=#25 id=25 data-nosnippet>25</a><span class="kw">static </span>CSS_LOADED: AtomicBool = AtomicBool::new(<span class="bool-val">false</span>);
+<a href=#25 id=25 data-nosnippet>25</a><span class="kw">const </span>DEFAULT_CSS: <span class="kw-2">&amp;</span>str = <span class="macro">include_str!</span>(<span class="string">"default.css"</span>);
 <a href=#26 id=26 data-nosnippet>26</a>
-<a href=#27 id=27 data-nosnippet>27</a><span class="doccomment">/// Installs the crate's default stylesheet on the default display.
-<a href=#28 id=28 data-nosnippet>28</a>///
-<a href=#29 id=29 data-nosnippet>29</a>/// The provider is registered with `STYLE_PROVIDER_PRIORITY_FALLBACK`, so
-<a href=#30 id=30 data-nosnippet>30</a>/// consumer themes and additional providers always win over these defaults.
-<a href=#31 id=31 data-nosnippet>31</a>/// Called lazily from `FloatingBoard` construction - before a display exists
-<a href=#32 id=32 data-nosnippet>32</a>/// the registration is skipped and retried on the next board.
-<a href=#33 id=33 data-nosnippet>33</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>ensure_default_css() {
-<a href=#34 id=34 data-nosnippet>34</a>    <span class="kw">if </span>CSS_LOADED.load(Ordering::Acquire) {
-<a href=#35 id=35 data-nosnippet>35</a>        <span class="kw">return</span>;
-<a href=#36 id=36 data-nosnippet>36</a>    }
-<a href=#37 id=37 data-nosnippet>37</a>    <span class="kw">let </span><span class="prelude-val">Some</span>(display) = Display::default() <span class="kw">else </span>{
-<a href=#38 id=38 data-nosnippet>38</a>        <span class="kw">return</span>;
-<a href=#39 id=39 data-nosnippet>39</a>    };
-<a href=#40 id=40 data-nosnippet>40</a>    <span class="kw">let </span>provider = CssProvider::new();
-<a href=#41 id=41 data-nosnippet>41</a>    provider.load_from_string(DEFAULT_CSS);
-<a href=#42 id=42 data-nosnippet>42</a>    gtk4::style_context_add_provider_for_display(<span class="kw-2">&amp;</span>display, <span class="kw-2">&amp;</span>provider, gtk4::STYLE_PROVIDER_PRIORITY_FALLBACK);
-<a href=#43 id=43 data-nosnippet>43</a>    CSS_LOADED.store(<span class="bool-val">true</span>, Ordering::Release);
-<a href=#44 id=44 data-nosnippet>44</a>}
+<a href=#27 id=27 data-nosnippet>27</a><span class="kw">static </span>CSS_LOADED: AtomicBool = AtomicBool::new(<span class="bool-val">false</span>);
+<a href=#28 id=28 data-nosnippet>28</a>
+<a href=#29 id=29 data-nosnippet>29</a><span class="doccomment">/// Installs the crate's default stylesheet on the default display.
+<a href=#30 id=30 data-nosnippet>30</a>///
+<a href=#31 id=31 data-nosnippet>31</a>/// The provider is registered with `STYLE_PROVIDER_PRIORITY_FALLBACK`, so
+<a href=#32 id=32 data-nosnippet>32</a>/// consumer themes and additional providers always win over these defaults.
+<a href=#33 id=33 data-nosnippet>33</a>/// Called lazily from `FloatingBoard` construction - before a display exists
+<a href=#34 id=34 data-nosnippet>34</a>/// the registration is skipped and retried on the next board.
+<a href=#35 id=35 data-nosnippet>35</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>ensure_default_css() {
+<a href=#36 id=36 data-nosnippet>36</a>    <span class="kw">if </span>CSS_LOADED.load(Ordering::Acquire) {
+<a href=#37 id=37 data-nosnippet>37</a>        <span class="kw">return</span>;
+<a href=#38 id=38 data-nosnippet>38</a>    }
+<a href=#39 id=39 data-nosnippet>39</a>    <span class="kw">let </span><span class="prelude-val">Some</span>(display) = Display::default() <span class="kw">else </span>{
+<a href=#40 id=40 data-nosnippet>40</a>        <span class="kw">return</span>;
+<a href=#41 id=41 data-nosnippet>41</a>    };
+<a href=#42 id=42 data-nosnippet>42</a>    <span class="kw">let </span>provider = CssProvider::new();
+<a href=#43 id=43 data-nosnippet>43</a>    provider.load_from_string(DEFAULT_CSS);
+<a href=#44 id=44 data-nosnippet>44</a>    gtk4::style_context_add_provider_for_display(<span class="kw-2">&amp;</span>display, <span class="kw-2">&amp;</span>provider, gtk4::STYLE_PROVIDER_PRIORITY_FALLBACK);
+<a href=#45 id=45 data-nosnippet>45</a>    CSS_LOADED.store(<span class="bool-val">true</span>, Ordering::Release);
+<a href=#46 id=46 data-nosnippet>46</a>}
 </code></pre></div></section></main></body></html>
