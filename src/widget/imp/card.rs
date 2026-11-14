@@ -6,13 +6,22 @@ use crate::widget::css::CLASS_CARD;
 use crate::widget::css::CLASS_CONTENT;
 use crate::widget::css::CLASS_HANDLE;
 use crate::widget::css::CLASS_HEADER;
+use crate::widget::css::CLASS_RESIZE_GRIP;
 use glib::WeakRef;
 use glib::subclass::Signal;
+use gtk4::Align;
 use gtk4::Button;
+use gtk4::DrawingArea;
 use gtk4::Label;
 use gtk4::Orientation;
+use gtk4::Overflow;
+use gtk4::Overlay;
+use gtk4::cairo::LineCap;
 use gtk4::glib;
+use gtk4::pango::EllipsizeMode;
 use gtk4::prelude::BoxExt;
+use gtk4::prelude::DrawingAreaExt;
+use gtk4::prelude::DrawingAreaExtManual;
 use gtk4::prelude::OrientableExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::BoxImpl;
@@ -49,6 +58,12 @@ pub struct CardImpl {
     pub fold_button: OnceCell<Button>,
     /// Close button (visible when `CardConfig::closable`).
     pub close_button: OnceCell<Button>,
+    /// Bottom-right resize grip (`CardConfig::resizable`) - hidden by
+    /// default, shown from `Card::build` and while unfolded.
+    pub resize_grip: OnceCell<DrawingArea>,
+    /// Whether the card offers the resize grip - kept so `set_folded`
+    /// can gate the grip's visibility on the fold state.
+    pub resizable: Cell<bool>,
     /// Whether the card is currently folded to its header.
     pub folded: Cell<bool>,
     /// Upper bound on the reported width (`CardConfig::max_width`).
@@ -68,6 +83,8 @@ impl Default for CardImpl {
             handle_label: OnceCell::new(),
             fold_button: OnceCell::new(),
             close_button: OnceCell::new(),
+            resize_grip: OnceCell::new(),
+            resizable: Cell::new(false),
             folded: Cell::new(false),
             max_width: Cell::new(None),
             max_height: Cell::new(None),
@@ -90,7 +107,7 @@ impl ObjectImpl for CardImpl {
         card.set_spacing(0);
         // Clips content that exceeds a `max_width`/`max_height` cap and keeps
         // it inside the rounded corners (GTK CSS has no `overflow` property).
-        card.set_overflow(gtk4::Overflow::Hidden);
+        card.set_overflow(Overflow::Hidden);
         card.add_css_class(CLASS_CARD);
 
         let header = gtk4::Box::new(Orientation::Horizontal, 6);
@@ -104,8 +121,8 @@ impl ObjectImpl for CardImpl {
 
         let title_label = Label::new(None);
         title_label.set_hexpand(true);
-        title_label.set_halign(gtk4::Align::Start);
-        title_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+        title_label.set_halign(Align::Start);
+        title_label.set_ellipsize(EllipsizeMode::End);
         header.append(&title_label);
 
         let fold_button = Button::from_icon_name("go-down-symbolic");
@@ -122,8 +139,15 @@ impl ObjectImpl for CardImpl {
         content_holder.add_css_class(CLASS_CONTENT);
         content_holder.set_vexpand(true);
 
+        // The overlay stacks the resize grip over the content's
+        // bottom-right corner without claiming layout space.
+        let content_overlay = Overlay::new();
+        content_overlay.set_child(Some(&content_holder));
+        let resize_grip = resize_grip();
+        content_overlay.add_overlay(&resize_grip);
+
         card.append(&header);
-        card.append(&content_holder);
+        card.append(&content_overlay);
 
         let _ = self.header.set(header);
         let _ = self.content_holder.set(content_holder);
@@ -131,12 +155,41 @@ impl ObjectImpl for CardImpl {
         let _ = self.handle_label.set(handle_label);
         let _ = self.fold_button.set(fold_button);
         let _ = self.close_button.set(close_button);
+        let _ = self.resize_grip.set(resize_grip);
     }
 
     fn signals() -> &'static [Signal] {
         static SIGNALS: LazyLock<Vec<Signal>> = LazyLock::new(|| CARD_SIGNALS.iter().map(|signal| signal.signal()).collect());
         &SIGNALS
     }
+}
+
+/// Edge length of the resize grip's diagonal strokes (px).
+const RESIZE_GRIP_SIZE: i32 = 18;
+
+/// Builds the bottom-right resize affordance: three diagonal strokes in
+/// the card's foreground color, `nwse-resize` cursor on hover.
+fn resize_grip() -> DrawingArea {
+    let grip = DrawingArea::new();
+    grip.add_css_class(CLASS_RESIZE_GRIP);
+    grip.set_content_width(RESIZE_GRIP_SIZE);
+    grip.set_content_height(RESIZE_GRIP_SIZE);
+    grip.set_cursor_from_name(Some("nwse-resize"));
+    grip.set_visible(false);
+    grip.set_draw_func(|grip, cr, _, _| {
+        let color = grip.color();
+        let width = f64::from(grip.width());
+        let height = f64::from(grip.height());
+        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
+        cr.set_line_width(1.5);
+        cr.set_line_cap(LineCap::Round);
+        for inset in [4.0, 8.0, 12.0] {
+            cr.move_to(width - inset, height - 2.0);
+            cr.line_to(width - 2.0, height - inset);
+            let _ = cr.stroke();
+        }
+    });
+    grip
 }
 
 impl WidgetImpl for CardImpl {

@@ -94,6 +94,11 @@ impl Card {
                 }
             });
         }
+        if let Some(grip) = imp.resize_grip.get() {
+            imp.resizable.set(config.resizable);
+            grip.set_visible(config.resizable);
+            grip.set_tooltip_text(Some(&l10n().message("card-resize")));
+        }
         if let Some(holder) = imp.content_holder.get() {
             holder.append(content);
         }
@@ -212,6 +217,10 @@ impl Card {
             }
             holder.set_visible(!folded);
         }
+        // The grip sits on the content overlay - hide it while folded.
+        if let Some(grip) = imp.resize_grip.get() {
+            grip.set_visible(!folded && imp.resizable.get());
+        }
         if let Some(button) = imp.fold_button.get() {
             button.set_icon_name(if folded { "go-up-symbolic" } else { "go-down-symbolic" });
             button.set_tooltip_text(Some(&l10n().message(if folded { "card-unfold" } else { "card-fold" })));
@@ -267,6 +276,11 @@ impl Card {
     /// Emits `card-raised` (called by the board on raise).
     pub(crate) fn emit_card_raised(&self) {
         self.emit_by_name::<()>(CardSignal::Raised.name(), &[]);
+    }
+
+    /// Widget acting as the bottom-right resize affordance, if built.
+    pub(crate) fn resize_grip(&self) -> Option<Widget> {
+        self.imp().resize_grip.get().cloned().map(|grip| grip.upcast())
     }
 
     /// Widget acting as the drag affordance for the given handle mode.

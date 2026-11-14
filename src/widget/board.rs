@@ -35,8 +35,6 @@ use gtk4::cairo::Region;
 use gtk4::gdk::EventType;
 use gtk4::gio::prelude::ListModelExtManual;
 use gtk4::glib;
-use gtk4::graphene::Point;
-use gtk4::prelude::EventControllerExt;
 use gtk4::prelude::FixedExt;
 use gtk4::prelude::GestureDragExt;
 use gtk4::prelude::GestureExt;
@@ -184,6 +182,8 @@ impl FloatingBoard {
             pending_anchor: RefCell::new(pending_anchor),
             drag_start: Cell::new(CardPosition::default()),
             drag_grab: Cell::new(None),
+            resize_grab: Cell::new(None),
+            resize_scale: Cell::new(ScaleFactor::default()),
             quad_touches: RefCell::new(Vec::new()),
             quad_baseline: RefCell::new(None),
             claimed: RefCell::new(HashMap::new()),
@@ -803,19 +803,10 @@ impl FloatingBoard {
         }
     }
 
-    /// Touch position in board coordinates: the event reports its position
-    /// in surface space; it is mapped into the controller widget's
-    /// coordinate space through the native's `compute_point` and then down
-    /// the transform stack into layer (board) space.
+    /// Touch position of a raw event in board coordinates - delegates to
+    /// the layer, which owns the target coordinate space.
     fn event_point_in_layer(&self, controller: &EventControllerLegacy, event: &gtk4::gdk::Event) -> Option<Vec2<Pixels>> {
-        let position = Vec2::<Pixels>::from(event.position()?);
-        let widget = controller.widget()?;
-        let native = widget.native()?;
-        let surface_point = Point::from(position.to_f32());
-        let widget_point = native.compute_point(&widget, &surface_point)?;
-        let layer = self.card_layer()?;
-        let point = widget.compute_point(&layer, &widget_point)?;
-        Some(Vec2::<Pixels, f32>::from(point).to_f64())
+        self.card_layer()?.event_pointer(controller, event)
     }
 
     /// Takes a fresh baseline: current geometry plus the live quad points.
@@ -958,21 +949,66 @@ impl FloatingBoard {
         self.emit_geometry_changed();
     }
 
-    /// Pointer position in card-layer (board) coordinates, taken from the
-    /// gesture's own point tracking (`start_point + offset` in its widget
-    /// space, mapped through `compute_point`). The round trip through the
-    /// transform stack yields the true board-space position: GTK delivers the
-    /// widget-space point via the inverse transform, so applying the forward
-    /// transform returns the surface point - independent of the card's own
-    /// motion, and always fresh at signal emission time (unlike
-    /// `current_event`, which can lag one touch event behind).
+    /// Captures the pointer's board position and the current scale at
+    /// resize-drag begin. The radial distance card-center to pointer is the
+    /// drag's reference frame - radial distance is rotation-invariant, so a
+    /// rotated card resizes identically to an unrotated one.
+    fn on_card_resize_begin(&self, id: &CardId, gesture: &GestureDrag) {
+        if let Some(entry) = self.imp().cards.borrow().get(id) {
+            entry.resize_grab.set(self.pointer_in_layer(gesture));
+            entry.resize_scale.set(entry.scale.get());
+        }
+    }
+
+    /// Scales the card around its center by the ratio between the pointer's
+    /// current and grab-time radial distance. `entry.position` is never
+    /// touched - the card center stays put while the footprint grows or
+    /// shrinks around it.
+    fn on_card_resize_update(&self, id: &CardId, gesture: &GestureDrag) {
+        {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return;
+            };
+            let Some(scale) = self.resize_scale_for(gesture, entry) else {
+                return;
+            };
+            debug!(card = %id, scale = scale.value(), "resize update");
+            entry.scale.set(scale);
+            entry.scaling.set_scale(scale.value());
+            self.apply_position(entry);
+            if entry.config.bounds_mode == BoundsMode::Contained {
+                self.clamp_entry(entry);
+            }
+        }
+        self.emit_geometry_changed();
+    }
+
+    fn on_card_resize_end(&self, id: &CardId, gesture: &GestureDrag) {
+        self.on_card_resize_update(id, gesture);
+        let card = {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return;
+            };
+            entry.resize_grab.set(None);
+            self.clamp_entry(entry);
+            entry.card.clone()
+        };
+        card.emit_card_scaled();
+        self.emit_geometry_changed();
+    }
+
+    /// The resize drag's scale target at the gesture's current pointer
+    /// position; `None` until the pointer maps into board coordinates.
+    fn resize_scale_for(&self, gesture: &GestureDrag, entry: &CardEntry) -> Option<ScaleFactor> {
+        entry.resize_target(self.pointer_in_layer(gesture)?)
+    }
+
+    /// Pointer position in card-layer (board) coordinates - delegates to
+    /// the layer, which owns the target coordinate space.
     fn pointer_in_layer(&self, gesture: &GestureDrag) -> Option<Vec2<Pixels>> {
-        let start = Vec2::<Pixels>::from(gesture.start_point()?);
-        let offset = Vec2::<Pixels>::from(gesture.offset()?);
-        let widget = gesture.widget()?;
-        let layer = self.card_layer()?;
-        let point = widget.compute_point(&layer, &Point::from((start + offset).to_f32()))?;
-        Some(Vec2::<Pixels, f32>::from(point).to_f64())
+        self.card_layer()?.gesture_pointer(gesture)
     }
 
     /// Drag delta in board coordinates: current pointer position minus the
@@ -1066,6 +1102,55 @@ impl FloatingBoard {
             });
             card.drag_source(config.drag_handle).add_controller(drag.clone());
             card_drag = Some(drag);
+        }
+
+        // Resize grip: a dedicated drag on the card's bottom-right
+        // affordance scales the card around its center. The grip sits deeper
+        // in the bubble chain than the card drag and the `scaling` click, so
+        // its press wins the sequence claim before either can react.
+        if config.resizable
+            && let Some(grip) = card.resize_grip()
+        {
+            let resize = GestureDrag::new();
+            resize.set_button(0);
+            // Mark claimed sequences immediately: the grip drag claims a
+            // press before the quad tracker sees it, and without the mark
+            // the touch would register as a (phantom) transform point.
+            let board_weak = self.downgrade();
+            let card_id = id.clone();
+            resize.connect_sequence_state_changed(move |_, sequence, state| {
+                if state != EventSequenceState::Claimed {
+                    return;
+                }
+                if let (Some(board), Some(sequence)) = (board_weak.upgrade(), sequence) {
+                    let cards = board.imp().cards.borrow();
+                    if let Some(entry) = cards.get(&card_id) {
+                        entry.claimed.borrow_mut().insert(sequence.clone(), Instant::now());
+                    }
+                }
+            });
+            let board_weak = self.downgrade();
+            let card_id = id.clone();
+            resize.connect_drag_begin(move |gesture, _, _| {
+                if let Some(board) = board_weak.upgrade() {
+                    board.on_card_resize_begin(&card_id, gesture);
+                }
+            });
+            let board_weak = self.downgrade();
+            let card_id = id.clone();
+            resize.connect_drag_update(move |gesture, _, _| {
+                if let Some(board) = board_weak.upgrade() {
+                    board.on_card_resize_update(&card_id, gesture);
+                }
+            });
+            let board_weak = self.downgrade();
+            let card_id = id.clone();
+            resize.connect_drag_end(move |gesture, _, _| {
+                if let Some(board) = board_weak.upgrade() {
+                    board.on_card_resize_end(&card_id, gesture);
+                }
+            });
+            grip.add_controller(resize);
         }
 
         // Quad transform tracker: a raw `EventControllerLegacy` observing

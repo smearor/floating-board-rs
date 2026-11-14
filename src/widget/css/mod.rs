@@ -19,6 +19,8 @@ pub const CLASS_CONTENT: &str = "floating-card-content";
 pub const CLASS_HANDLE: &str = "floating-card-handle";
 /// CSS class applied while a card is folded.
 pub const CLASS_FOLDED: &str = "floating-card-folded";
+/// CSS class of the bottom-right resize grip (`CardConfig::resizable`).
+pub const CLASS_RESIZE_GRIP: &str = "floating-card-resize-grip";
 
 const DEFAULT_CSS: &str = include_str!("default.css");
 

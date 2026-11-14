@@ -26,6 +26,9 @@ pub struct CardConfig {
     pub rotatable: bool,
     /// Whether the card can be scaled via the pinch gesture.
     pub scalable: bool,
+    /// Whether the card shows a bottom-right resize grip that scales the
+    /// card around its center when dragged (mouse and touch).
+    pub resizable: bool,
     /// Whether the card can be folded down to its header.
     pub foldable: bool,
     /// Whether the header shows a close button.
@@ -76,6 +79,7 @@ impl Default for CardConfig {
             draggable: true,
             rotatable: true,
             scalable: true,
+            resizable: false,
             foldable: false,
             closable: false,
             close_action: CardCloseAction::Remove,

@@ -24,3 +24,7 @@
     margin-right: 6px;
     opacity: 0.7;
 }
+.floating-card-resize-grip {
+    margin: 4px;
+    opacity: 0.65;
+}

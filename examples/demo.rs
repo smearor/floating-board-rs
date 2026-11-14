@@ -125,6 +125,7 @@ fn build_ui(application: &gtk4::Application) {
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(300.0, 420.0))),
                 foldable: true,
                 closable: true,
+                resizable: true,
                 scale_limits: ScaleBounds::new(0.75, 4.0),
                 ..Default::default()
             },
