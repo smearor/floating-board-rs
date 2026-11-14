@@ -172,6 +172,10 @@ const RESIZE_GRIP_SIZE: i32 = 18;
 fn resize_grip() -> DrawingArea {
     let grip = DrawingArea::new();
     grip.add_css_class(CLASS_RESIZE_GRIP);
+    // Overlay children default to `Align::Fill` - without End
+    // alignment the grip would cover the whole content area.
+    grip.set_halign(Align::End);
+    grip.set_valign(Align::End);
     grip.set_content_width(RESIZE_GRIP_SIZE);
     grip.set_content_height(RESIZE_GRIP_SIZE);
     grip.set_cursor_from_name(Some("nwse-resize"));
