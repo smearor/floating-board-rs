@@ -172,47 +172,51 @@
 <a href=#172 id=172 data-nosnippet>172</a></span><span class="kw">fn </span>resize_grip() -&gt; DrawingArea {
 <a href=#173 id=173 data-nosnippet>173</a>    <span class="kw">let </span>grip = DrawingArea::new();
 <a href=#174 id=174 data-nosnippet>174</a>    grip.add_css_class(CLASS_RESIZE_GRIP);
-<a href=#175 id=175 data-nosnippet>175</a>    grip.set_content_width(RESIZE_GRIP_SIZE);
-<a href=#176 id=176 data-nosnippet>176</a>    grip.set_content_height(RESIZE_GRIP_SIZE);
-<a href=#177 id=177 data-nosnippet>177</a>    grip.set_cursor_from_name(<span class="prelude-val">Some</span>(<span class="string">"nwse-resize"</span>));
-<a href=#178 id=178 data-nosnippet>178</a>    grip.set_visible(<span class="bool-val">false</span>);
-<a href=#179 id=179 data-nosnippet>179</a>    grip.set_draw_func(|grip, cr, <span class="kw">_</span>, <span class="kw">_</span>| {
-<a href=#180 id=180 data-nosnippet>180</a>        <span class="kw">let </span>color = grip.color();
-<a href=#181 id=181 data-nosnippet>181</a>        <span class="kw">let </span>width = f64::from(grip.width());
-<a href=#182 id=182 data-nosnippet>182</a>        <span class="kw">let </span>height = f64::from(grip.height());
-<a href=#183 id=183 data-nosnippet>183</a>        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
-<a href=#184 id=184 data-nosnippet>184</a>        cr.set_line_width(<span class="number">1.5</span>);
-<a href=#185 id=185 data-nosnippet>185</a>        cr.set_line_cap(LineCap::Round);
-<a href=#186 id=186 data-nosnippet>186</a>        <span class="kw">for </span>inset <span class="kw">in </span>[<span class="number">4.0</span>, <span class="number">8.0</span>, <span class="number">12.0</span>] {
-<a href=#187 id=187 data-nosnippet>187</a>            cr.move_to(width - inset, height - <span class="number">2.0</span>);
-<a href=#188 id=188 data-nosnippet>188</a>            cr.line_to(width - <span class="number">2.0</span>, height - inset);
-<a href=#189 id=189 data-nosnippet>189</a>            <span class="kw">let _ </span>= cr.stroke();
-<a href=#190 id=190 data-nosnippet>190</a>        }
-<a href=#191 id=191 data-nosnippet>191</a>    });
-<a href=#192 id=192 data-nosnippet>192</a>    grip
-<a href=#193 id=193 data-nosnippet>193</a>}
-<a href=#194 id=194 data-nosnippet>194</a>
-<a href=#195 id=195 data-nosnippet>195</a><span class="kw">impl </span>WidgetImpl <span class="kw">for </span>CardImpl {
-<a href=#196 id=196 data-nosnippet>196</a>    <span class="comment">// Caps the reported size at `CardConfig::max_width`/`max_height` so the
-<a href=#197 id=197 data-nosnippet>197</a>    // card stops growing when its content grows; the parent layer allocates
-<a href=#198 id=198 data-nosnippet>198</a>    // at most the capped size and the default CSS clips the overflow.
-<a href=#199 id=199 data-nosnippet>199</a>    </span><span class="kw">fn </span>measure(<span class="kw-2">&amp;</span><span class="self">self</span>, orientation: Orientation, for_size: i32) -&gt; (i32, i32, i32, i32) {
-<a href=#200 id=200 data-nosnippet>200</a>        <span class="kw">let </span>(minimum, natural, minimum_baseline, natural_baseline) = <span class="self">self</span>.parent_measure(orientation, for_size);
-<a href=#201 id=201 data-nosnippet>201</a>        <span class="kw">let </span>limit = <span class="kw">match </span>orientation {
-<a href=#202 id=202 data-nosnippet>202</a>            Orientation::Horizontal =&gt; <span class="self">self</span>.max_width.get(),
-<a href=#203 id=203 data-nosnippet>203</a>            Orientation::Vertical =&gt; <span class="self">self</span>.max_height.get(),
-<a href=#204 id=204 data-nosnippet>204</a>            <span class="kw">_ </span>=&gt; <span class="prelude-val">None</span>,
-<a href=#205 id=205 data-nosnippet>205</a>        };
-<a href=#206 id=206 data-nosnippet>206</a>        <span class="kw">match </span>limit {
-<a href=#207 id=207 data-nosnippet>207</a>            <span class="comment">// Fractional caps floor so the reported size never exceeds the bound.
-<a href=#208 id=208 data-nosnippet>208</a>            </span><span class="prelude-val">Some</span>(cap) =&gt; {
-<a href=#209 id=209 data-nosnippet>209</a>                <span class="kw">let </span>cap = cap.as_f64() <span class="kw">as </span>i32;
-<a href=#210 id=210 data-nosnippet>210</a>                (minimum.min(cap), natural.min(cap), -<span class="number">1</span>, -<span class="number">1</span>)
-<a href=#211 id=211 data-nosnippet>211</a>            }
-<a href=#212 id=212 data-nosnippet>212</a>            <span class="prelude-val">None </span>=&gt; (minimum, natural, minimum_baseline, natural_baseline),
-<a href=#213 id=213 data-nosnippet>213</a>        }
-<a href=#214 id=214 data-nosnippet>214</a>    }
-<a href=#215 id=215 data-nosnippet>215</a>}
-<a href=#216 id=216 data-nosnippet>216</a>
-<a href=#217 id=217 data-nosnippet>217</a><span class="kw">impl </span>BoxImpl <span class="kw">for </span>CardImpl {}
+<a href=#175 id=175 data-nosnippet>175</a>    <span class="comment">// Overlay children default to `Align::Fill` - without End
+<a href=#176 id=176 data-nosnippet>176</a>    // alignment the grip would cover the whole content area.
+<a href=#177 id=177 data-nosnippet>177</a>    </span>grip.set_halign(Align::End);
+<a href=#178 id=178 data-nosnippet>178</a>    grip.set_valign(Align::End);
+<a href=#179 id=179 data-nosnippet>179</a>    grip.set_content_width(RESIZE_GRIP_SIZE);
+<a href=#180 id=180 data-nosnippet>180</a>    grip.set_content_height(RESIZE_GRIP_SIZE);
+<a href=#181 id=181 data-nosnippet>181</a>    grip.set_cursor_from_name(<span class="prelude-val">Some</span>(<span class="string">"nwse-resize"</span>));
+<a href=#182 id=182 data-nosnippet>182</a>    grip.set_visible(<span class="bool-val">false</span>);
+<a href=#183 id=183 data-nosnippet>183</a>    grip.set_draw_func(|grip, cr, <span class="kw">_</span>, <span class="kw">_</span>| {
+<a href=#184 id=184 data-nosnippet>184</a>        <span class="kw">let </span>color = grip.color();
+<a href=#185 id=185 data-nosnippet>185</a>        <span class="kw">let </span>width = f64::from(grip.width());
+<a href=#186 id=186 data-nosnippet>186</a>        <span class="kw">let </span>height = f64::from(grip.height());
+<a href=#187 id=187 data-nosnippet>187</a>        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
+<a href=#188 id=188 data-nosnippet>188</a>        cr.set_line_width(<span class="number">1.5</span>);
+<a href=#189 id=189 data-nosnippet>189</a>        cr.set_line_cap(LineCap::Round);
+<a href=#190 id=190 data-nosnippet>190</a>        <span class="kw">for </span>inset <span class="kw">in </span>[<span class="number">4.0</span>, <span class="number">8.0</span>, <span class="number">12.0</span>] {
+<a href=#191 id=191 data-nosnippet>191</a>            cr.move_to(width - inset, height - <span class="number">2.0</span>);
+<a href=#192 id=192 data-nosnippet>192</a>            cr.line_to(width - <span class="number">2.0</span>, height - inset);
+<a href=#193 id=193 data-nosnippet>193</a>            <span class="kw">let _ </span>= cr.stroke();
+<a href=#194 id=194 data-nosnippet>194</a>        }
+<a href=#195 id=195 data-nosnippet>195</a>    });
+<a href=#196 id=196 data-nosnippet>196</a>    grip
+<a href=#197 id=197 data-nosnippet>197</a>}
+<a href=#198 id=198 data-nosnippet>198</a>
+<a href=#199 id=199 data-nosnippet>199</a><span class="kw">impl </span>WidgetImpl <span class="kw">for </span>CardImpl {
+<a href=#200 id=200 data-nosnippet>200</a>    <span class="comment">// Caps the reported size at `CardConfig::max_width`/`max_height` so the
+<a href=#201 id=201 data-nosnippet>201</a>    // card stops growing when its content grows; the parent layer allocates
+<a href=#202 id=202 data-nosnippet>202</a>    // at most the capped size and the default CSS clips the overflow.
+<a href=#203 id=203 data-nosnippet>203</a>    </span><span class="kw">fn </span>measure(<span class="kw-2">&amp;</span><span class="self">self</span>, orientation: Orientation, for_size: i32) -&gt; (i32, i32, i32, i32) {
+<a href=#204 id=204 data-nosnippet>204</a>        <span class="kw">let </span>(minimum, natural, minimum_baseline, natural_baseline) = <span class="self">self</span>.parent_measure(orientation, for_size);
+<a href=#205 id=205 data-nosnippet>205</a>        <span class="kw">let </span>limit = <span class="kw">match </span>orientation {
+<a href=#206 id=206 data-nosnippet>206</a>            Orientation::Horizontal =&gt; <span class="self">self</span>.max_width.get(),
+<a href=#207 id=207 data-nosnippet>207</a>            Orientation::Vertical =&gt; <span class="self">self</span>.max_height.get(),
+<a href=#208 id=208 data-nosnippet>208</a>            <span class="kw">_ </span>=&gt; <span class="prelude-val">None</span>,
+<a href=#209 id=209 data-nosnippet>209</a>        };
+<a href=#210 id=210 data-nosnippet>210</a>        <span class="kw">match </span>limit {
+<a href=#211 id=211 data-nosnippet>211</a>            <span class="comment">// Fractional caps floor so the reported size never exceeds the bound.
+<a href=#212 id=212 data-nosnippet>212</a>            </span><span class="prelude-val">Some</span>(cap) =&gt; {
+<a href=#213 id=213 data-nosnippet>213</a>                <span class="kw">let </span>cap = cap.as_f64() <span class="kw">as </span>i32;
+<a href=#214 id=214 data-nosnippet>214</a>                (minimum.min(cap), natural.min(cap), -<span class="number">1</span>, -<span class="number">1</span>)
+<a href=#215 id=215 data-nosnippet>215</a>            }
+<a href=#216 id=216 data-nosnippet>216</a>            <span class="prelude-val">None </span>=&gt; (minimum, natural, minimum_baseline, natural_baseline),
+<a href=#217 id=217 data-nosnippet>217</a>        }
+<a href=#218 id=218 data-nosnippet>218</a>    }
+<a href=#219 id=219 data-nosnippet>219</a>}
+<a href=#220 id=220 data-nosnippet>220</a>
+<a href=#221 id=221 data-nosnippet>221</a><span class="kw">impl </span>BoxImpl <span class="kw">for </span>CardImpl {}
 </code></pre></div></section></main></body></html>
