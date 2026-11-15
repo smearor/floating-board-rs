@@ -80,6 +80,7 @@ let controls_id = board.add_card_with_id(
 | `min_visible` | `MinVisible` | `40.0` | Pixels that must stay inside the bounds (`Loose` mode) |
 | `bounds_mode` | `BoundsMode` | `Loose` | `Loose` clamps on drag end; `Contained` keeps the whole footprint inside, live |
 | `anchor_margin` | `f64` | `24.0` | Margin edge/corner anchors keep to the board edge |
+| `palette` | `Option<CardPalette>` | `None` | Per-card color scheme (`CardColor::Background`, `Foreground`, `Header`) |
 | `content_padding` | `Pixels` | `10.0` | Space between the card border and the content widget |
 | `max_width` / `max_height` | `Option<i32>` | `None` | Hard cap on the measured size — keeps the card stable when content changes size |
 | `animation_speed_ms` | `u64` | `500` | Duration of rotation animations |

@@ -1,6 +1,7 @@
 use crate::domain::ANCHOR_MARGIN;
 use crate::domain::BoundsMode;
 use crate::domain::CardAnchor;
+use crate::domain::CardPalette;
 use crate::domain::DragHandle;
 use crate::domain::MinVisible;
 use crate::domain::ScaleBounds;
@@ -65,6 +66,11 @@ pub struct CardConfig {
     /// default `Loose` (only `min_visible` is enforced).
     #[cfg_attr(feature = "serde", serde(default))]
     pub bounds_mode: BoundsMode,
+    /// Per-card color scheme: a [`CardPalette`] mapped onto scoped CSS
+    /// at build time. `None` (or a palette with unfilled slots) keeps
+    /// the themed/default-card colors.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub palette: Option<CardPalette>,
     /// Space in pixels between the card border and the content widget;
     /// default `DEFAULT_CONTENT_PADDING` (10 px, the former fixed CSS
     /// value). `0` lets the content sit flush with the card edge.
@@ -107,6 +113,7 @@ impl Default for CardConfig {
             scale_limits: ScaleBounds::default(),
             min_visible: MinVisible::default(),
             bounds_mode: BoundsMode::default(),
+            palette: None,
             content_padding: DEFAULT_CONTENT_PADDING,
             z_index: None,
             max_width: None,

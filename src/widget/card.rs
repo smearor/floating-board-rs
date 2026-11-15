@@ -10,6 +10,7 @@ use crate::widget::card_config::CardConfig;
 use crate::widget::card_signal::CardSignal;
 use crate::widget::css::CLASS_FOLDED;
 use crate::widget::css::CLASS_HEADERLESS;
+use crate::widget::css::install_palette;
 use crate::widget::imp::card::CardImpl;
 use glib::object::Cast;
 use glib::object::ObjectExt;
@@ -55,6 +56,9 @@ impl Card {
 
         if config.headerless {
             card.add_css_class(CLASS_HEADERLESS);
+        }
+        if let Some(palette) = &config.palette {
+            install_palette(&card, palette);
         }
         let title = config.title.clone().unwrap_or_else(|| l10n().message("card-untitled"));
         if let Some(label) = imp.title_label.get() {

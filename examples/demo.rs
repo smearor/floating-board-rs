@@ -1,7 +1,9 @@
 use floating_board::BoardLayout;
 use floating_board::CardAnchor;
+use floating_board::CardColor;
 use floating_board::CardConfig;
 use floating_board::CardId;
+use floating_board::CardPalette;
 use floating_board::CardPosition;
 use floating_board::DragHandle;
 use floating_board::FloatingBoard;
@@ -14,6 +16,7 @@ use gtk4::Orientation;
 use gtk4::Scale;
 use gtk4::glib::closure_local;
 use gtk4::prelude::*;
+use smearor_commons_color::Color;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::RotationRad;
@@ -135,9 +138,14 @@ fn build_ui(application: &gtk4::Application) {
         .unwrap_or_else(|_| CardId::new("controls"));
 
     // Card 2: "info" - readable from the other side of the table (rotated
-    // 90 degrees), dragged by its dedicated grip handle.
+    // 90 degrees), dragged by its dedicated grip handle, light-themed via
+    // a per-card palette.
     let info = gtk4::Box::new(Orientation::Vertical, 4);
     info.append(&Label::new(Some("This card is readable\nfrom the other side\nof the table.")));
+    let mut info_palette = CardPalette::new();
+    info_palette.insert(CardColor::Background, Color::<f64>::new(0.93, 0.94, 0.96));
+    info_palette.insert(CardColor::Foreground, Color::<f64>::new(0.18, 0.20, 0.24));
+    info_palette.insert(CardColor::Header, Color::<f64>::new(0.80, 0.83, 0.88));
     let info_id = board
         .add_card_with_id(
             "info",
@@ -147,6 +155,7 @@ fn build_ui(application: &gtk4::Application) {
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(540.0, 420.0))),
                 drag_handle: DragHandle::Handle,
                 min_visible: MinVisible::new(60.0),
+                palette: Some(info_palette),
                 ..Default::default()
             },
         )

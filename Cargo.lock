@@ -98,6 +98,7 @@ dependencies = [
  "gtk4",
  "serde",
  "serde_json",
+ "smearor-commons-color",
  "smearor-commons-geometry",
  "smearor-wrot-rotation",
  "thiserror",
@@ -768,6 +769,15 @@ dependencies = [
  "gtk4",
  "serde",
  "smearor-commons-geometry",
+]
+
+[[package]]
+name = "smearor-commons-color"
+version = "0.1.0"
+source = "git+https://github.com/smearor/smearor-commons.git#15fbcc7572a7196dfdcce83649a76942583494ba"
+dependencies = [
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
