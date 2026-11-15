@@ -6,6 +6,7 @@ use crate::domain::ScaleFactor;
 use crate::l10n::l10n;
 use crate::widget::board::FloatingBoard;
 use crate::widget::card_config::CardConfig;
+use crate::widget::card_layer::CardLayer;
 use crate::widget::card_signal::CardSignal;
 use crate::widget::css::CLASS_FOLDED;
 use crate::widget::css::CLASS_HEADERLESS;
@@ -21,10 +22,13 @@ use gtk4::Widget;
 use gtk4::cairo::Region;
 use gtk4::glib;
 use gtk4::prelude::BoxExt;
+use gtk4::prelude::FixedExt;
 use gtk4::prelude::ButtonExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rotation;
+use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
 use tracing::debug;
 
@@ -176,6 +180,24 @@ impl Card {
     /// Center position in board coordinates.
     pub fn position(&self) -> CardPosition {
         self.geometry().position
+    }
+
+    /// The transform stack's stored position on the card layer - the
+    /// `(x, y)` the layer was last asked to place it at (`put`). The
+    /// widget chain is card -> rotation -> scaling -> layer, so the
+    /// scaling widget's parent is the layer and `child_position`
+    /// reports the stored spot. `None` while the widget tree is not
+    /// attached yet. Comparing `placed` with the rendered bounds shows
+    /// whether the layer actually moved the stack where
+    /// `apply_position` put it; comparing `placed + size/2` with
+    /// `position` shows whether the board's model and its placement
+    /// agree.
+    pub fn placed_position(&self) -> Option<Vec2<Pixels>> {
+        let scaling = self.parent()?.parent()?;
+        let layer = scaling.parent()?;
+        let layer = layer.downcast::<CardLayer>().ok()?;
+        let (x, y) = layer.child_position(&scaling);
+        Some(Vec2::new(x, y))
     }
 
     /// Moves the card so its center is at `position`, clamped to the bounds.
