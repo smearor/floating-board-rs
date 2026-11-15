@@ -9,6 +9,7 @@ use crate::domain::CardPosition;
 use crate::domain::ScaleFactor;
 use crate::widget::board_signal::BoardSignal;
 use crate::widget::card::Card;
+use crate::widget::card_close_action::CardCloseAction;
 use crate::widget::card_config::CardConfig;
 use crate::widget::card_layer::CardLayer;
 use crate::widget::css::ensure_default_css;
@@ -211,6 +212,24 @@ impl FloatingBoard {
         debug!(card = %id, "card added");
         self.emit_by_name::<()>(BoardSignal::CardAdded.name(), &[&card]);
         Ok(id)
+    }
+
+    /// Performs the card's configured close action: removes it
+    /// (`CardCloseAction::Remove`, the default) or hides it
+    /// (`CardCloseAction::Hide`) - the programmatic counterpart of the
+    /// header's close button, independent of `CardConfig::closable`.
+    pub fn close_card(&self, id: &CardId) -> Result<(), BoardError> {
+        let close_action = {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return Err(BoardError::UnknownCard(id.clone()));
+            };
+            entry.config.close_action
+        };
+        match close_action {
+            CardCloseAction::Remove => self.remove_card(id),
+            CardCloseAction::Hide => self.set_card_visible(id, false),
+        }
     }
 
     /// Removes a card from the board.

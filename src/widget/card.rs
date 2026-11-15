@@ -5,7 +5,6 @@ use crate::domain::DragHandle;
 use crate::domain::ScaleFactor;
 use crate::l10n::l10n;
 use crate::widget::board::FloatingBoard;
-use crate::widget::card_close_action::CardCloseAction;
 use crate::widget::card_config::CardConfig;
 use crate::widget::card_signal::CardSignal;
 use crate::widget::css::CLASS_FOLDED;
@@ -84,17 +83,9 @@ impl Card {
             close_button.set_tooltip_text(Some(&l10n().message("card-close")));
             let board_weak = board.downgrade();
             let id = id.clone();
-            let close_action = config.close_action;
             close_button.connect_clicked(move |_| {
                 if let Some(board) = board_weak.upgrade() {
-                    match close_action {
-                        CardCloseAction::Remove => {
-                            let _ = board.remove_card(&id);
-                        }
-                        CardCloseAction::Hide => {
-                            let _ = board.set_card_visible(&id, false);
-                        }
-                    }
+                    let _ = board.close_card(&id);
                 }
             });
         }
@@ -192,6 +183,15 @@ impl Card {
         let mut geometry = self.geometry();
         geometry.position = position;
         self.set_geometry(&geometry);
+    }
+
+    /// Performs the card's configured close action
+    /// (`CardCloseAction::Remove` or `Hide`) - the programmatic
+    /// equivalent of clicking the header's close button.
+    pub fn close(&self) {
+        if let Some(board) = self.board() {
+            let _ = board.close_card(&self.id());
+        }
     }
 
     /// Moves the card to the top of the card layer.

@@ -107,6 +107,7 @@ card.set_geometry(&CardGeometry { position, rotation, scale });
 card.raise();
 card.set_folded(true);   // or card.fold() to toggle
 let folded = card.folded();
+card.close();            // runs the configured close action (remove or hide)
 
 // The rotated footprint in board coordinates — union of all footprints is
 // the dynamic safe-area of the board.
