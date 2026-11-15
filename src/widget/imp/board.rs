@@ -7,6 +7,7 @@ use crate::widget::css::CLASS_BOARD;
 use crate::widget::css::CLASS_CARD_LAYER;
 use crate::widget::imp::card_entry::CardEntry;
 use glib::subclass::Signal;
+use glib::subclass::types::ObjectSubclassIsExt;
 use gtk4::Orientation;
 use gtk4::glib;
 use gtk4::prelude::BoxExt;
@@ -74,6 +75,7 @@ impl ObjectImpl for FloatingBoardImpl {
         overlay.set_vexpand(true);
 
         let card_layer = CardLayer::new();
+        card_layer.imp().board.replace(Some(board.downgrade()));
         card_layer.add_css_class(CLASS_CARD_LAYER);
         overlay.add_overlay(&card_layer);
 

@@ -433,6 +433,18 @@ impl FloatingBoard {
         card.emit_card_raised();
     }
 
+    /// Re-centers every card on its stored position. Called from the card
+    /// layer's `size_allocate`: child measures are final at that point, so
+    /// cards whose natural size or rotation changed since the last `put`
+    /// get re-positioned in the same pass - `apply_position` no-ops on
+    /// cards that already sit at their target spot.
+    pub(crate) fn reconcile_card_positions(&self) {
+        let cards = self.imp().cards.borrow();
+        for entry in cards.values() {
+            self.apply_position(entry);
+        }
+    }
+
     /// Re-centers the card on its stored position and re-clamps it (called
     /// after size changes like folding).
     pub(crate) fn recenter_card(&self, id: &CardId) {
