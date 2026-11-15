@@ -99,7 +99,20 @@ impl Card {
             grip.set_visible(config.resizable);
             grip.set_tooltip_text(Some(&l10n().message("card-resize")));
         }
+        if let Some(grip) = imp.rotate_grip.get() {
+            imp.rotate_grip_enabled.set(config.rotate_grip);
+            grip.set_visible(config.rotate_grip);
+            grip.set_tooltip_text(Some(&l10n().message("card-rotate")));
+        }
         if let Some(holder) = imp.content_holder.get() {
+            // Configured as margin on our own holder rather than padding on
+            // the consumer widget: the gap shows the card's background and
+            // does not clobber margins the consumer may set on `content`.
+            let padding = config.content_padding.as_f64() as i32;
+            holder.set_margin_top(padding);
+            holder.set_margin_bottom(padding);
+            holder.set_margin_start(padding);
+            holder.set_margin_end(padding);
             holder.append(content);
         }
         card
@@ -217,9 +230,12 @@ impl Card {
             }
             holder.set_visible(!folded);
         }
-        // The grip sits on the content overlay - hide it while folded.
+        // The grips sit on the content overlay - hide them while folded.
         if let Some(grip) = imp.resize_grip.get() {
             grip.set_visible(!folded && imp.resizable.get());
+        }
+        if let Some(grip) = imp.rotate_grip.get() {
+            grip.set_visible(!folded && imp.rotate_grip_enabled.get());
         }
         if let Some(button) = imp.fold_button.get() {
             button.set_icon_name(if folded { "go-up-symbolic" } else { "go-down-symbolic" });
@@ -281,6 +297,11 @@ impl Card {
     /// Widget acting as the bottom-right resize affordance, if built.
     pub(crate) fn resize_grip(&self) -> Option<Widget> {
         self.imp().resize_grip.get().cloned().map(|grip| grip.upcast())
+    }
+
+    /// Widget acting as the bottom-left rotate affordance, if built.
+    pub(crate) fn rotate_grip(&self) -> Option<Widget> {
+        self.imp().rotate_grip.get().cloned().map(|grip| grip.upcast())
     }
 
     /// Widget acting as the drag affordance for the given handle mode.

@@ -7,6 +7,11 @@ use crate::domain::ScaleBounds;
 use crate::widget::card_close_action::CardCloseAction;
 use smearor_commons_geometry::Pixels;
 
+/// Default space between the card border and the content widget (px) -
+/// the value `.floating-card-content` previously carried as fixed CSS
+/// padding.
+pub const DEFAULT_CONTENT_PADDING: Pixels = Pixels::new(10.0);
+
 /// Placement and interaction configuration of a card.
 ///
 /// Passed to `FloatingBoard::add_card`; all fields have defaults so
@@ -29,6 +34,13 @@ pub struct CardConfig {
     /// Whether the card shows a bottom-right resize grip that scales the
     /// card around its center when dragged (mouse and touch).
     pub resizable: bool,
+    /// Whether the card shows a bottom-left rotate grip that steps the
+    /// rotation to the next quarter turn in the swipe direction - one
+    /// quarter turn per drag, no matter how far the swipe goes (mouse
+    /// and touch). Works independently of `rotatable`, which gates the
+    /// free two-finger rotate.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub rotate_grip: bool,
     /// Whether the card can be folded down to its header.
     pub foldable: bool,
     /// Whether the header shows a close button.
@@ -53,6 +65,11 @@ pub struct CardConfig {
     /// default `Loose` (only `min_visible` is enforced).
     #[cfg_attr(feature = "serde", serde(default))]
     pub bounds_mode: BoundsMode,
+    /// Space in pixels between the card border and the content widget;
+    /// default `DEFAULT_CONTENT_PADDING` (10 px, the former fixed CSS
+    /// value). `0` lets the content sit flush with the card edge.
+    #[cfg_attr(feature = "serde", serde(default = "default_content_padding"))]
+    pub content_padding: Pixels,
     /// Optional initial z-ordering; `None` appends the card on top.
     pub z_index: Option<i32>,
     /// Hard upper bound on the card's measured width; `None` lets
@@ -80,6 +97,7 @@ impl Default for CardConfig {
             rotatable: true,
             scalable: true,
             resizable: false,
+            rotate_grip: false,
             foldable: false,
             closable: false,
             close_action: CardCloseAction::Remove,
@@ -89,6 +107,7 @@ impl Default for CardConfig {
             scale_limits: ScaleBounds::default(),
             min_visible: MinVisible::default(),
             bounds_mode: BoundsMode::default(),
+            content_padding: DEFAULT_CONTENT_PADDING,
             z_index: None,
             max_width: None,
             max_height: None,
@@ -105,4 +124,9 @@ fn default_anchor_margin() -> Pixels {
 #[cfg(feature = "serde")]
 fn default_animation_speed_ms() -> u64 {
     500
+}
+
+#[cfg(feature = "serde")]
+fn default_content_padding() -> Pixels {
+    DEFAULT_CONTENT_PADDING
 }

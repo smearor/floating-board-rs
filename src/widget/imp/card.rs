@@ -7,6 +7,7 @@ use crate::widget::css::CLASS_CONTENT;
 use crate::widget::css::CLASS_HANDLE;
 use crate::widget::css::CLASS_HEADER;
 use crate::widget::css::CLASS_RESIZE_GRIP;
+use crate::widget::css::CLASS_ROTATE_GRIP;
 use glib::WeakRef;
 use glib::subclass::Signal;
 use gtk4::Align;
@@ -35,6 +36,7 @@ use smearor_commons_geometry::Pixels;
 use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
+use std::f64::consts::FRAC_PI_2;
 use std::sync::LazyLock;
 
 /// Widget implementation for [`Card`].
@@ -64,6 +66,12 @@ pub struct CardImpl {
     /// Whether the card offers the resize grip - kept so `set_folded`
     /// can gate the grip's visibility on the fold state.
     pub resizable: Cell<bool>,
+    /// Bottom-left rotate grip (`CardConfig::rotate_grip`) - hidden by
+    /// default, shown from `Card::build` and while unfolded.
+    pub rotate_grip: OnceCell<DrawingArea>,
+    /// Whether the card offers the rotate grip - kept so `set_folded`
+    /// can gate the grip's visibility on the fold state.
+    pub rotate_grip_enabled: Cell<bool>,
     /// Whether the card is currently folded to its header.
     pub folded: Cell<bool>,
     /// Upper bound on the reported width (`CardConfig::max_width`).
@@ -85,6 +93,8 @@ impl Default for CardImpl {
             close_button: OnceCell::new(),
             resize_grip: OnceCell::new(),
             resizable: Cell::new(false),
+            rotate_grip: OnceCell::new(),
+            rotate_grip_enabled: Cell::new(false),
             folded: Cell::new(false),
             max_width: Cell::new(None),
             max_height: Cell::new(None),
@@ -145,6 +155,8 @@ impl ObjectImpl for CardImpl {
         content_overlay.set_child(Some(&content_holder));
         let resize_grip = resize_grip();
         content_overlay.add_overlay(&resize_grip);
+        let rotate_grip = rotate_grip();
+        content_overlay.add_overlay(&rotate_grip);
 
         card.append(&header);
         card.append(&content_overlay);
@@ -156,6 +168,7 @@ impl ObjectImpl for CardImpl {
         let _ = self.fold_button.set(fold_button);
         let _ = self.close_button.set(close_button);
         let _ = self.resize_grip.set(resize_grip);
+        let _ = self.rotate_grip.set(rotate_grip);
     }
 
     fn signals() -> &'static [Signal] {
@@ -192,6 +205,50 @@ fn resize_grip() -> DrawingArea {
             cr.line_to(width - 2.0, height - inset);
             let _ = cr.stroke();
         }
+    });
+    grip
+}
+
+/// Edge length of the rotate grip's circular arrow (px).
+const ROTATE_GRIP_SIZE: i32 = 18;
+
+/// Builds the bottom-left rotate affordance: a circular arrow in the
+/// card's foreground color, `grab` cursor on hover.
+fn rotate_grip() -> DrawingArea {
+    let grip = DrawingArea::new();
+    grip.add_css_class(CLASS_ROTATE_GRIP);
+    // Overlay children default to `Align::Fill` - without Start/End
+    // alignment the grip would cover the whole content area.
+    grip.set_halign(Align::Start);
+    grip.set_valign(Align::End);
+    grip.set_content_width(ROTATE_GRIP_SIZE);
+    grip.set_content_height(ROTATE_GRIP_SIZE);
+    grip.set_cursor_from_name(Some("grab"));
+    grip.set_visible(false);
+    grip.set_draw_func(|grip, cr, _, _| {
+        let color = grip.color();
+        let width = f64::from(grip.width());
+        let height = f64::from(grip.height());
+        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
+        cr.set_line_width(1.5);
+        cr.set_line_cap(LineCap::Round);
+        // A three-quarter clockwise arc with an arrowhead on its tip:
+        // the circular arrow suggests turning in either direction.
+        let radius = width.min(height) / 2.0 - 3.0;
+        let center_x = width / 2.0;
+        let center_y = height / 2.0;
+        let start = -FRAC_PI_2 + 0.7;
+        let end = start + 3.0 * FRAC_PI_2;
+        cr.arc(center_x, center_y, radius, start, end);
+        let _ = cr.stroke();
+        let tip_x = center_x + radius * end.cos();
+        let tip_y = center_y + radius * end.sin();
+        let tangent = end + FRAC_PI_2;
+        for spread in [-0.7, 0.7] {
+            cr.move_to(tip_x, tip_y);
+            cr.line_to(tip_x - 4.0 * (tangent + spread).cos(), tip_y - 4.0 * (tangent + spread).sin());
+        }
+        let _ = cr.stroke();
     });
     grip
 }

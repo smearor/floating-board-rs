@@ -126,6 +126,8 @@ fn build_ui(application: &gtk4::Application) {
                 foldable: true,
                 closable: true,
                 resizable: true,
+                rotate_grip: true,
+                content_padding: Pixels::new(16.0),
                 scale_limits: ScaleBounds::new(0.75, 4.0),
                 ..Default::default()
             },

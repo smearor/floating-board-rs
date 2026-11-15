@@ -21,6 +21,8 @@ pub const CLASS_HANDLE: &str = "floating-card-handle";
 pub const CLASS_FOLDED: &str = "floating-card-folded";
 /// CSS class of the bottom-right resize grip (`CardConfig::resizable`).
 pub const CLASS_RESIZE_GRIP: &str = "floating-card-resize-grip";
+/// CSS class of the bottom-left rotate grip (`CardConfig::rotate_grip`).
+pub const CLASS_ROTATE_GRIP: &str = "floating-card-rotate-grip";
 
 const DEFAULT_CSS: &str = include_str!("default.css");
 

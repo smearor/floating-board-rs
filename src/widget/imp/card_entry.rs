@@ -10,6 +10,7 @@ use crate::widget::imp::tracked_touch::TrackedTouch;
 use crate::widget::scaling::ScalingWidget;
 use gtk4::gdk::EventSequence;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
 use smearor_wrot_rotation::RotationWidget;
 use std::cell::Cell;
@@ -47,6 +48,13 @@ pub(crate) struct CardEntry {
     /// Scale factor captured at resize-drag begin; updates apply the
     /// ratio between the current and the grab radial distance.
     pub resize_scale: Cell<ScaleFactor>,
+    /// Pointer position in board coordinates at rotate-drag begin;
+    /// `Some` while a rotate gesture on the card's grip is active.
+    pub rotate_grab: Cell<Option<Vec2<Pixels>>>,
+    /// Whether the active rotate drag already consumed its quarter-turn
+    /// step - the grip performs at most one step per drag, no matter
+    /// how far the swipe continues past the trigger.
+    pub rotate_stepped: Cell<bool>,
     /// Live touch points for the quad transform, one entry per finger
     /// currently on the card. The tracker's `EventControllerLegacy` keeps
     /// this in sync - a plain event observer that sees every sequence
@@ -78,6 +86,16 @@ pub(crate) struct CardEntry {
 /// pointer moves blow up the ratio.
 const RESIZE_MIN_RADIUS: Pixels = Pixels::new(4.0);
 
+/// Angular sweep around the card center that triggers the rotate
+/// grip's quarter-turn step (5 degrees) - above pointer jitter, well
+/// below the quarter turn itself.
+const ROTATE_TRIGGER: RotationRad = RotationRad::new(5.0 * std::f64::consts::PI / 180.0);
+
+/// Smallest pointer-to-center distance for a meaningful swipe
+/// direction - a sample (nearly) on the card center has no stable
+/// angle.
+const ROTATE_MIN_RADIUS: Pixels = Pixels::new(8.0);
+
 impl CardEntry {
     /// Scale target for a resize-drag sample at pointer position `now`
     /// (board coordinates): the grab-time scale multiplied by the
@@ -86,6 +104,28 @@ impl CardEntry {
     pub(crate) fn resize_target(&self, now: Vec2<Pixels>) -> Option<ScaleFactor> {
         let grab = self.resize_grab.get()?;
         Some(resize_scale(grab, now, self.center(), self.resize_scale.get(), &self.config.scale_limits))
+    }
+
+    /// Quarter-turn target for a rotate-drag sample at pointer position
+    /// `now` (board coordinates): once the pointer's angular sweep
+    /// around the card center passes `ROTATE_TRIGGER`, the next 90
+    /// degree boundary in the sweep direction off `current`. `None`
+    /// while no rotate grab is active, while the swipe is still below
+    /// the trigger, or once the drag's single step was taken.
+    pub(crate) fn rotate_target(&self, now: Vec2<Pixels>, current: RotationRad) -> Option<RotationRad> {
+        if self.rotate_stepped.get() {
+            return None;
+        }
+        let grab = self.rotate_grab.get()?;
+        let center = self.center();
+        if grab.distance(&center) < ROTATE_MIN_RADIUS || now.distance(&center) < ROTATE_MIN_RADIUS {
+            return None;
+        }
+        let sweep = (grab - center).direction().signed_delta_to((now - center).direction());
+        if sweep.abs() < ROTATE_TRIGGER {
+            return None;
+        }
+        Some(next_quarter_turn(current, sweep > RotationRad::ZERO))
     }
 
     /// Current center position as a board-coordinate vector.
@@ -108,6 +148,23 @@ fn resize_scale(grab: Vec2<Pixels>, now: Vec2<Pixels>, center: Vec2<Pixels>, sta
     // `Pixels / Pixels` yields the dimensionless same-unit ratio.
     let ratio = now.distance(&center) / grab_radius;
     ScaleFactor::new(start.value() * ratio).clamped(limits)
+}
+
+/// The quarter-turn boundary next in `direction` from `current`: the
+/// smallest 90 degree multiple past `current` when `clockwise`, the
+/// largest below it when not. A `current` already on a boundary steps
+/// a full quarter turn; the epsilon keeps float noise on snapped
+/// angles from staying put.
+fn next_quarter_turn(current: RotationRad, clockwise: bool) -> RotationRad {
+    const QUARTER: f64 = 90.0;
+    const EPSILON: f64 = 1e-6;
+    let turns = current.to_degrees() / QUARTER;
+    let next = if clockwise {
+        (turns + EPSILON).floor() + 1.0
+    } else {
+        (turns - EPSILON).ceil() - 1.0
+    };
+    RotationRad::from_degrees(next * QUARTER)
 }
 
 #[cfg(test)]
@@ -152,5 +209,31 @@ mod tests {
     #[test]
     fn grab_on_the_center_keeps_the_start_scale() {
         assert!((resize((1.0, 0.0), (500.0, 0.0), 1.5) - 1.5).abs() < f64::EPSILON);
+    }
+
+    fn next(current: f64, clockwise: bool) -> f64 {
+        next_quarter_turn(RotationRad::from_degrees(current), clockwise).to_degrees()
+    }
+
+    #[test]
+    fn snapped_rotation_steps_a_full_quarter_turn() {
+        assert_eq!(next(0.0, true), 90.0);
+        assert_eq!(next(90.0, true), 180.0);
+        assert_eq!(next(90.0, false), 0.0);
+        assert_eq!(next(0.0, false), -90.0);
+    }
+
+    #[test]
+    fn free_rotation_lands_on_the_next_boundary() {
+        assert_eq!(next(30.0, true), 90.0);
+        assert_eq!(next(30.0, false), 0.0);
+        assert_eq!(next(-10.0, false), -90.0);
+        assert_eq!(next(269.0, true), 270.0);
+    }
+
+    #[test]
+    fn float_noise_on_a_boundary_still_steps() {
+        assert_eq!(next(90.0 + 1e-9, true), 180.0);
+        assert_eq!(next(90.0 - 1e-9, false), 0.0);
     }
 }

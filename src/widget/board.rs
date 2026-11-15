@@ -184,6 +184,8 @@ impl FloatingBoard {
             drag_grab: Cell::new(None),
             resize_grab: Cell::new(None),
             resize_scale: Cell::new(ScaleFactor::default()),
+            rotate_grab: Cell::new(None),
+            rotate_stepped: Cell::new(false),
             quad_touches: RefCell::new(Vec::new()),
             quad_baseline: RefCell::new(None),
             claimed: RefCell::new(HashMap::new()),
@@ -1005,6 +1007,45 @@ impl FloatingBoard {
         entry.resize_target(self.pointer_in_layer(gesture)?)
     }
 
+    /// Captures the pointer's board position at rotate-drag begin. The
+    /// pointer's angular sweep around the card center is the drag's
+    /// reference frame - it decides the step direction.
+    fn on_card_rotate_begin(&self, id: &CardId, gesture: &GestureDrag) {
+        if let Some(entry) = self.imp().cards.borrow().get(id) {
+            entry.rotate_grab.set(self.pointer_in_layer(gesture));
+            entry.rotate_stepped.set(false);
+        }
+    }
+
+    /// Steps the rotation to the next quarter turn once the pointer's
+    /// angular sweep around the card center passes the trigger. Only one
+    /// step runs per drag - further swiping in the same gesture is
+    /// ignored, the zoom-snap animation carries the card to the target.
+    fn on_card_rotate_update(&self, id: &CardId, gesture: &GestureDrag) {
+        let (rotation_widget, target) = {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return;
+            };
+            let Some(now) = self.pointer_in_layer(gesture) else {
+                return;
+            };
+            let Some(target) = entry.rotate_target(now, entry.rotation_widget.rotation()) else {
+                return;
+            };
+            entry.rotate_stepped.set(true);
+            debug!(card = %id, target_deg = target.to_degrees(), "rotate step");
+            (entry.rotation_widget.clone(), target)
+        };
+        rotation_widget.set_rotation_with_animation(target);
+    }
+
+    fn on_card_rotate_end(&self, id: &CardId, _gesture: &GestureDrag) {
+        if let Some(entry) = self.imp().cards.borrow().get(id) {
+            entry.rotate_grab.set(None);
+        }
+    }
+
     /// Pointer position in card-layer (board) coordinates - delegates to
     /// the layer, which owns the target coordinate space.
     fn pointer_in_layer(&self, gesture: &GestureDrag) -> Option<Vec2<Pixels>> {
@@ -1151,6 +1192,55 @@ impl FloatingBoard {
                 }
             });
             grip.add_controller(resize);
+        }
+
+        // Rotate grip: a dedicated drag on the card's bottom-left
+        // affordance steps the rotation to the next quarter turn in the
+        // swipe direction. Like the resize grip it sits deeper in the
+        // bubble chain than the card drag and the `scaling` click, so
+        // its press wins the sequence claim before either can react.
+        if config.rotate_grip
+            && let Some(grip) = card.rotate_grip()
+        {
+            let rotate = GestureDrag::new();
+            rotate.set_button(0);
+            // Same phantom-touch guard as the resize grip: mark claimed
+            // sequences so the quad tracker never counts them.
+            let board_weak = self.downgrade();
+            let card_id = id.clone();
+            rotate.connect_sequence_state_changed(move |_, sequence, state| {
+                if state != EventSequenceState::Claimed {
+                    return;
+                }
+                if let (Some(board), Some(sequence)) = (board_weak.upgrade(), sequence) {
+                    let cards = board.imp().cards.borrow();
+                    if let Some(entry) = cards.get(&card_id) {
+                        entry.claimed.borrow_mut().insert(sequence.clone(), Instant::now());
+                    }
+                }
+            });
+            let board_weak = self.downgrade();
+            let card_id = id.clone();
+            rotate.connect_drag_begin(move |gesture, _, _| {
+                if let Some(board) = board_weak.upgrade() {
+                    board.on_card_rotate_begin(&card_id, gesture);
+                }
+            });
+            let board_weak = self.downgrade();
+            let card_id = id.clone();
+            rotate.connect_drag_update(move |gesture, _, _| {
+                if let Some(board) = board_weak.upgrade() {
+                    board.on_card_rotate_update(&card_id, gesture);
+                }
+            });
+            let board_weak = self.downgrade();
+            let card_id = id.clone();
+            rotate.connect_drag_end(move |gesture, _, _| {
+                if let Some(board) = board_weak.upgrade() {
+                    board.on_card_rotate_end(&card_id, gesture);
+                }
+            });
+            grip.add_controller(rotate);
         }
 
         // Quad transform tracker: a raw `EventControllerLegacy` observing

@@ -17,14 +17,17 @@
     min-height: 10px;
     padding: 2px 8px;
 }
-.floating-card-content {
-    padding: 10px;
-}
+/* No default padding: `CardConfig::content_padding` supplies it as a
+   margin on the content holder so it is adjustable per card. */
 .floating-card-handle {
     margin-right: 6px;
     opacity: 0.7;
 }
 .floating-card-resize-grip {
+    margin: 4px;
+    opacity: 0.65;
+}
+.floating-card-rotate-grip {
     margin: 4px;
     opacity: 0.65;
 }
