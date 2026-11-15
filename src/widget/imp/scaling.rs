@@ -2,6 +2,7 @@ use crate::widget::scaling::ScalingLayout;
 use crate::widget::scaling::ScalingWidget;
 use glib::subclass::prelude::ObjectImpl;
 use glib::subclass::prelude::ObjectSubclass;
+use glib::subclass::types::ObjectSubclassExt;
 use gtk4::Orientation;
 use gtk4::glib::Properties;
 use gtk4::gsk::Transform;
@@ -48,7 +49,25 @@ impl ObjectImpl for ScalingWidgetImpl {
     }
 }
 
-impl WidgetImpl for ScalingWidgetImpl {}
+impl WidgetImpl for ScalingWidgetImpl {
+    /// Picking must test the *displayed* card, not this widget's
+    /// allocation: the allocation is the rotated card's bounding box,
+    /// so without the override a rotated card claims input in its
+    /// invisible corner areas and starves the cards behind it.
+    /// `compute_point` applies the inverse of every intermediate
+    /// allocation transform (scale and rotation), so delegating to
+    /// the innermost card yields the exact hit region for free.
+    fn contains(&self, x: f64, y: f64) -> bool {
+        let widget = self.obj();
+        let Some(card) = widget.first_child().and_then(|child| child.first_child()) else {
+            return false;
+        };
+        widget
+            .compute_point(&card, &gtk4::graphene::Point::new(x as f32, y as f32))
+            .map(|point| card.contains(f64::from(point.x()), f64::from(point.y())))
+            .unwrap_or_default()
+    }
+}
 
 /// Layout manager that renders the child scaled by `scale` around its center.
 ///
