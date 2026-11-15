@@ -60,6 +60,7 @@ pub use domain::ScaleBounds;
 pub use domain::ScaleFactor;
 pub use domain::SequenceNumber;
 pub use widget::Card;
+pub use widget::CardAlignment;
 pub use widget::CardCloseAction;
 pub use widget::CardConfig;
 pub use widget::FloatingBoard;
