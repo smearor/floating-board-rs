@@ -213,6 +213,27 @@ impl Card {
         Some(Vec2::new(x, y))
     }
 
+    /// Every ancestor of the card up to the root with its widget
+    /// type, its `(0,0)` origin mapped to board coordinates and its
+    /// GTK allocation - the layer-by-layer view that pinpoints which
+    /// level of the card -> rotation -> scaling -> layer chain
+    /// introduces a render-vs-placement offset. Empty while the card
+    /// is not on a board.
+    pub fn ancestor_chain(&self) -> Vec<String> {
+        let Some(board) = self.board() else {
+            return Vec::new();
+        };
+        let mut chain = Vec::new();
+        let mut widget: Option<Widget> = Some(self.clone().upcast());
+        while let Some(current) = widget {
+            let origin = current.compute_point(&board, &gtk4::graphene::Point::new(0.0, 0.0));
+            let bounds = current.compute_bounds(&current);
+            chain.push(format!("{}: origin={:?} alloc={:?}", current.type_().name(), origin, bounds));
+            widget = current.parent();
+        }
+        chain
+    }
+
     /// Moves the card so its center is at `position`, clamped to the bounds.
     pub fn set_position(&self, position: CardPosition) {
         let mut geometry = self.geometry();
