@@ -27,6 +27,7 @@ use gtk4::prelude::FixedExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
@@ -180,6 +181,18 @@ impl Card {
     /// Center position in board coordinates.
     pub fn position(&self) -> CardPosition {
         self.geometry().position
+    }
+
+    /// The card's rendered bounds in board coordinates - the
+    /// axis-aligned box `compute_bounds` reports for the actual widget
+    /// with every rotation and scale of its transform stack applied.
+    /// This is the ground truth of where the card draws; the model
+    /// footprint only matches it when the layout kept the card
+    /// centered on its stored position. `None` while the card is not
+    /// on a board or not realized yet.
+    pub fn rendered_bounds(&self) -> Option<Rect<Pixels>> {
+        let board = self.board()?;
+        self.compute_bounds(&board).map(Rect::from)
     }
 
     /// The transform stack's stored position on the card layer - the
