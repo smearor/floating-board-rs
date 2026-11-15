@@ -9,6 +9,7 @@ use crate::domain::CardPosition;
 use crate::domain::ScaleFactor;
 use crate::widget::board_signal::BoardSignal;
 use crate::widget::card::Card;
+use crate::widget::card_alignment::CardAlignment;
 use crate::widget::card_close_action::CardCloseAction;
 use crate::widget::card_config::CardConfig;
 use crate::widget::card_layer::CardLayer;
@@ -256,6 +257,23 @@ impl FloatingBoard {
     /// All cards currently on the board, ordered by id.
     pub fn cards(&self) -> Vec<Card> {
         self.imp().cards.borrow().values().map(|entry| entry.card.clone()).collect()
+    }
+
+    /// The card's alignment state - model position vs stored layer
+    /// placement vs rendered bounds. Diagnostics API for
+    /// input-region coverage checks: [`CardAlignment::drift`] is the
+    /// violation of the invariant `rendered.center() == position`
+    /// and stays `None` while the card does not render.
+    pub fn card_alignment(&self, card: &Card) -> CardAlignment {
+        let position = card.geometry().position;
+        let rendered = card.rendered_bounds();
+        CardAlignment {
+            card_id: card.id(),
+            position,
+            placed: card.placed_position(),
+            rendered,
+            drift: rendered.map(|bounds| bounds.center() - position.0),
+        }
     }
 
     /// Snapshot of every card's geometry for consumer-side persistence.
