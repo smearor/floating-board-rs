@@ -412,54 +412,46 @@ impl FloatingBoard {
     /// (the common case), slides to `anchor_margin` in front of that
     /// edge. With `move_to_edge = false` it only rotates in place.
     ///
+    /// The step is on table *sides* - use
+    /// [`Self::rotate_to_next_occupied_seat`] to hop between occupied
+    /// seats instead.
+    ///
     /// An explicitly assigned seat is advanced and persisted
     /// (`card-seat-changed`); unassigned cards stay unassigned - the
     /// next pass derives their seat from the rotation again.
     ///
     /// Returns [`BoardError::UnknownCard`] for an id not on the board.
     pub fn rotate_to_next_user(&self, id: &CardId, direction: TurnDirection, move_to_edge: bool) -> Result<(), BoardError> {
-        let (geometry, footprint, target_seat, had_seat, margin) = {
-            let cards = self.imp().cards.borrow();
-            let Some(entry) = cards.get(id) else {
-                return Err(BoardError::UnknownCard(id.clone()));
-            };
-            let geometry = self.entry_geometry(entry);
-            let seat = entry.seat.get().unwrap_or_else(|| Seat::nearest(geometry.rotation.to_rotation_rad()));
-            let target_seat = match direction {
-                TurnDirection::Clockwise => seat.clockwise(),
-                TurnDirection::CounterClockwise => seat.counter_clockwise(),
-            };
-            // The footprint is expressed at the target orientation, so
-            // the placement centers the *rotated* bounding box.
-            let turn = target_seat.side.to_quarter_turn();
-            (
-                geometry,
-                footprint_for(self.displayed_size(entry), geometry.rotation, turn),
-                target_seat,
-                entry.seat.get().is_some(),
-                entry.config.anchor_margin.as_f64(),
-            )
+        let seat = self.card_seat_or_nearest(id)?;
+        let target = match direction {
+            TurnDirection::Clockwise => seat.clockwise(),
+            TurnDirection::CounterClockwise => seat.counter_clockwise(),
         };
+        self.glide_card_to_seat(id, target, move_to_edge)
+    }
 
-        if had_seat {
-            self.set_card_seat(id, Some(target_seat))?;
-        }
-
-        let bounds = self.board_bounds();
-        let placement = target_seat.placement(bounds, footprint, margin);
-        let target = CardGeometry {
-            // Degenerate bounds (unrealized board) fall back to
-            // rotation-in-place, like `clamp_entry` early-returns.
-            position: if move_to_edge && !bounds.is_degenerate() {
-                CardPosition::from(placement.center)
-            } else {
-                geometry.position
-            },
-            rotation: placement.rotation,
-            scale: geometry.scale,
+    /// Passes the card to the next *occupied* seat of `seats`.
+    ///
+    /// Like [`Self::rotate_to_next_user`], but the destination is the
+    /// roster seat with the smallest clockwise (or counter-clockwise)
+    /// distance along the table perimeter: empty sides are skipped and
+    /// several seats on one side are visited in order. This is the
+    /// semantic a consumer's user list carries - "next player", not
+    /// "next edge".
+    ///
+    /// Returns [`BoardError::UnknownCard`] for an id not on the board
+    /// and [`BoardError::NoNextSeat`] when the roster holds no seat
+    /// other than the card's current one (empty rosters included).
+    pub fn rotate_to_next_occupied_seat(&self, id: &CardId, seats: &[Seat], direction: TurnDirection, move_to_edge: bool) -> Result<(), BoardError> {
+        let seat = self.card_seat_or_nearest(id)?;
+        let target = match direction {
+            TurnDirection::Clockwise => seat.next_in(seats),
+            TurnDirection::CounterClockwise => seat.previous_in(seats),
         };
-        self.glide_card_geometry(id, target);
-        Ok(())
+        let Some(target) = target else {
+            return Err(BoardError::NoNextSeat(id.clone()));
+        };
+        self.glide_card_to_seat(id, target, move_to_edge)
     }
 
     /// Current geometry of a card (rotation is read live from the widget).
@@ -1581,6 +1573,61 @@ impl FloatingBoard {
             rotation: Rotation::quantized(entry.rotation_widget.rotation()),
             seat: entry.seat.get(),
         }
+    }
+
+    /// The card's effective seat for passing operations: its explicit
+    /// assignment or the seat nearest its live rotation.
+    fn card_seat_or_nearest(&self, id: &CardId) -> Result<Seat, BoardError> {
+        let cards = self.imp().cards.borrow();
+        let Some(entry) = cards.get(id) else {
+            return Err(BoardError::UnknownCard(id.clone()));
+        };
+        Ok(entry
+            .seat
+            .get()
+            .unwrap_or_else(|| Seat::nearest(self.entry_geometry(entry).rotation.to_rotation_rad())))
+    }
+
+    /// Shared tail of the pass-to-seat operations: computes the target
+    /// placement for `target_seat`, persists an explicitly assigned
+    /// seat (`card-seat-changed`) and glides the card there.
+    fn glide_card_to_seat(&self, id: &CardId, target_seat: Seat, move_to_edge: bool) -> Result<(), BoardError> {
+        let (geometry, footprint, had_seat, margin) = {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return Err(BoardError::UnknownCard(id.clone()));
+            };
+            let geometry = self.entry_geometry(entry);
+            // The footprint is expressed at the target orientation, so
+            // the placement centers the *rotated* bounding box.
+            let turn = target_seat.side.to_quarter_turn();
+            (
+                geometry,
+                footprint_for(self.displayed_size(entry), geometry.rotation, turn),
+                entry.seat.get().is_some(),
+                entry.config.anchor_margin.as_f64(),
+            )
+        };
+
+        if had_seat {
+            self.set_card_seat(id, Some(target_seat))?;
+        }
+
+        let bounds = self.board_bounds();
+        let placement = target_seat.placement(bounds, footprint, margin);
+        let target = CardGeometry {
+            // Degenerate bounds (unrealized board) fall back to
+            // rotation-in-place, like `clamp_entry` early-returns.
+            position: if move_to_edge && !bounds.is_degenerate() {
+                CardPosition::from(placement.center)
+            } else {
+                geometry.position
+            },
+            rotation: placement.rotation,
+            scale: geometry.scale,
+        };
+        self.glide_card_geometry(id, target);
+        Ok(())
     }
 
     /// Glides a card towards `target` on the frame clock. Each tick

@@ -14,4 +14,7 @@ pub enum BoardError {
     /// A layout strategy could not arrange the cards.
     #[error(transparent)]
     Layout(#[from] LayoutError),
+    /// The seat roster holds no seat other than the card's current one.
+    #[error("No next seat in the roster for card: {0}")]
+    NoNextSeat(CardId),
 }

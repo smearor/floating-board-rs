@@ -32,6 +32,24 @@ use std::rc::Rc;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+/// The demo's seat roster: user letter and marker color per seat.
+/// Passing a card hops between these occupied seats, skipping the
+/// empty west edge.
+const USERS: [(Seat, &str, &str); 4] = [
+    (Seat::new(TableSide::Bottom), "A", "#3584e4"),
+    (Seat::new(TableSide::Right), "B", "#33d17a"),
+    (Seat::at(TableSide::Top, Fraction::new(0.25)), "C", "#f6d32d"),
+    (Seat::at(TableSide::Top, Fraction::new(0.75)), "D", "#9141ac"),
+];
+
+/// Markup badge naming the user a seat belongs to (`-` unassigned).
+fn seat_badge_markup(seat: Option<Seat>) -> String {
+    match USERS.iter().find(|(user_seat, _, _)| Some(*user_seat) == seat) {
+        Some((_, letter, color)) => format!("<span background='{color}' foreground='white' weight='bold'> {letter} </span>"),
+        None => "<span foreground='#888'> - </span>".to_string(),
+    }
+}
+
 /// Interactive test application for the floating board.
 ///
 /// Three pre-configured cards plus dynamic cards added at runtime. The toolbar
@@ -99,25 +117,28 @@ fn build_ui(application: &gtk4::Application) {
         }
         let _ = cr.stroke();
 
-        // Table users at the seats the demo cards are assigned to:
-        // A bottom-center, B right-center, C/D pinned along the top
-        // edge. "Pass card" glides a card marker-to-marker.
-        let users = [
-            (0.5 * f64::from(width), f64::from(height) - 24.0, "A"),
-            (f64::from(width) - 24.0, 0.5 * f64::from(height), "B"),
-            (0.25 * f64::from(width), 24.0, "C"),
-            (0.75 * f64::from(width), 24.0, "D"),
+        // Table users at the seats the demo cards are assigned to
+        // (USERS roster; approximated against this area's edges -
+        // the board spans the whole window). "Pass card" glides a card
+        // marker-to-marker.
+        let inset = 24.0;
+        let positions: [(f64, f64); 4] = [
+            (0.5 * f64::from(width), f64::from(height) - inset),
+            (f64::from(width) - inset, 0.5 * f64::from(height)),
+            (0.25 * f64::from(width), inset),
+            (0.75 * f64::from(width), inset),
         ];
         cr.select_font_face("Sans", gtk4::cairo::FontSlant::Normal, gtk4::cairo::FontWeight::Bold);
         cr.set_font_size(12.0);
-        for (x, y, label) in users {
-            cr.arc(x, y, 13.0, 0.0, std::f64::consts::TAU);
-            cr.set_source_rgb(0.29, 0.56, 0.85);
+        for ((x, y), (_, letter, color)) in positions.iter().zip(USERS.iter()) {
+            cr.arc(*x, *y, 13.0, 0.0, std::f64::consts::TAU);
+            let color = color.parse::<Color<f64>>().unwrap_or_else(|_| Color::<f64>::new(0.29, 0.56, 0.85));
+            cr.set_source_rgb(color.r, color.g, color.b);
             let _ = cr.fill();
-            if let Ok(extents) = cr.text_extents(label) {
+            if let Ok(extents) = cr.text_extents(letter) {
                 cr.set_source_rgb(1.0, 1.0, 1.0);
-                cr.move_to(x - extents.width() / 2.0 - extents.x_bearing(), y - extents.height() / 2.0 - extents.y_bearing());
-                let _ = cr.show_text(label);
+                cr.move_to(*x - extents.width() / 2.0 - extents.x_bearing(), *y - extents.height() / 2.0 - extents.y_bearing());
+                let _ = cr.show_text(letter);
             }
         }
     });
@@ -144,6 +165,10 @@ fn build_ui(application: &gtk4::Application) {
     controls.set_margin_end(4);
     controls.append(&Label::new(Some("Volume")));
     controls.append(&Scale::with_range(Orientation::Horizontal, 0.0, 100.0, 1.0));
+    let controls_badge = Label::new(None);
+    controls_badge.set_markup(&seat_badge_markup(Some(USERS[0].0)));
+    controls_badge.set_halign(Align::End);
+    controls.append(&controls_badge);
     let controls_buttons = gtk4::Box::new(Orientation::Horizontal, 8);
     let play_button = Button::with_label("Play");
     play_button.connect_clicked(|_| info!("play clicked"));
@@ -174,6 +199,10 @@ fn build_ui(application: &gtk4::Application) {
     // a per-card palette.
     let info = gtk4::Box::new(Orientation::Vertical, 4);
     info.append(&Label::new(Some("This card is readable\nfrom the other side\nof the table.")));
+    let info_badge = Label::new(None);
+    info_badge.set_markup(&seat_badge_markup(Some(USERS[1].0)));
+    info_badge.set_halign(Align::End);
+    info.append(&info_badge);
     let mut info_palette = CardPalette::new();
     info_palette.insert(CardColor::Background, Color::<f64>::new(0.93, 0.94, 0.96));
     info_palette.insert(CardColor::Foreground, Color::<f64>::new(0.18, 0.20, 0.24));
@@ -199,7 +228,12 @@ fn build_ui(application: &gtk4::Application) {
 
     // Card 3: "display" - pure view, headerless; the whole card is the drag
     // affordance.
-    let display = Label::new(Some("Display card\n(drag anywhere)"));
+    let display = gtk4::Box::new(Orientation::Vertical, 4);
+    display.append(&Label::new(Some("Display card\n(drag anywhere)")));
+    let display_badge = Label::new(None);
+    display_badge.set_markup(&seat_badge_markup(Some(USERS[2].0)));
+    display_badge.set_halign(Align::End);
+    display.append(&display_badge);
     let display_id = board
         .add_card_with_id(
             "display",
@@ -220,6 +254,10 @@ fn build_ui(application: &gtk4::Application) {
     parameters.append(&Label::new(Some("Edge margin")));
     parameters.append(&Scale::with_range(Orientation::Horizontal, 0.0, 40.0, 1.0));
     parameters.append(&gtk4::CheckButton::with_label("Legacy mode"));
+    let parameters_badge = Label::new(None);
+    parameters_badge.set_markup(&seat_badge_markup(Some(USERS[3].0)));
+    parameters_badge.set_halign(Align::End);
+    parameters.append(&parameters_badge);
     let parameters_id = board
         .add_card_with_id(
             "parameters",
@@ -289,7 +327,8 @@ fn build_ui(application: &gtk4::Application) {
         let board = board.clone();
         let status = status.clone();
         let controls_id = controls_id.clone();
-        pass_button.connect_clicked(move |_| match board.rotate_to_next_user(&controls_id, TurnDirection::Clockwise, true) {
+        let roster: Vec<Seat> = USERS.iter().map(|(seat, _, _)| *seat).collect();
+        pass_button.connect_clicked(move |_| match board.rotate_to_next_occupied_seat(&controls_id, &roster, TurnDirection::Clockwise, true) {
             Ok(()) => status.set_text("Passed to next user."),
             Err(error) => status.set_text(&format!("Pass failed: {error}")),
         });
@@ -362,6 +401,22 @@ fn build_ui(application: &gtk4::Application) {
                 status.set_text(&format!("card-removed: {}", card.id()));
             }),
         );
+    }
+    for (id, badge) in [
+        (controls_id.clone(), controls_badge),
+        (info_id.clone(), info_badge),
+        (display_id.clone(), display_badge),
+        (parameters_id.clone(), parameters_badge),
+    ] {
+        if let Ok(card) = board.card(&id) {
+            card.connect_closure(
+                "card-seat-changed",
+                false,
+                closure_local!(move |card: floating_board::Card| {
+                    badge.set_markup(&seat_badge_markup(card.seat()));
+                }),
+            );
+        }
     }
     for id in [controls_id, info_id, display_id, parameters_id] {
         if let Ok(card) = board.card(&id) {
