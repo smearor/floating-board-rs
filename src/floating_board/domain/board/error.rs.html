@@ -14,5 +14,8 @@
 <a href=#14 id=14 data-nosnippet>14</a>    <span class="doccomment">/// A layout strategy could not arrange the cards.
 <a href=#15 id=15 data-nosnippet>15</a>    </span><span class="attr">#[error(transparent)]
 <a href=#16 id=16 data-nosnippet>16</a>    </span>Layout(<span class="attr">#[from] </span>LayoutError),
-<a href=#17 id=17 data-nosnippet>17</a>}
+<a href=#17 id=17 data-nosnippet>17</a>    <span class="doccomment">/// The seat roster holds no seat other than the card's current one.
+<a href=#18 id=18 data-nosnippet>18</a>    </span><span class="attr">#[error(<span class="string">"No next seat in the roster for card: {0}"</span>)]
+<a href=#19 id=19 data-nosnippet>19</a>    </span>NoNextSeat(CardId),
+<a href=#20 id=20 data-nosnippet>20</a>}
 </code></pre></div></section></main></body></html>
