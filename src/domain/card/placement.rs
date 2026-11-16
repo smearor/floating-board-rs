@@ -1,5 +1,6 @@
 use crate::domain::CardGeometry;
 use crate::domain::CardId;
+use smearor_commons_layout::Seat;
 
 /// One entry of a [`crate::domain::BoardLayout`]: card id plus its geometry.
 ///
@@ -25,12 +26,27 @@ pub struct CardPlacement {
     /// unfolded when reading layouts written before the field existed.
     #[cfg_attr(feature = "serde", serde(default))]
     pub folded: bool,
+    /// Seat the card was assigned to when the snapshot was taken.
+    /// Defaults to unassigned when reading layouts written before the
+    /// field existed.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub seat: Option<Seat>,
 }
 
 impl CardPlacement {
     /// Creates a placement from id, geometry and folded state.
     pub fn new(id: CardId, geometry: CardGeometry, folded: bool) -> Self {
-        Self { id, geometry, folded }
+        Self {
+            id,
+            geometry,
+            folded,
+            seat: None,
+        }
+    }
+
+    /// Returns the placement with the given seat assignment.
+    pub fn with_seat(self, seat: Option<Seat>) -> Self {
+        Self { seat, ..self }
     }
 }
 

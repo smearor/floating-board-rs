@@ -59,6 +59,7 @@ use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
 use smearor_commons_layout::LayoutItem;
 use smearor_commons_layout::LayoutStrategy;
+use smearor_commons_layout::Seat;
 use smearor_wrot_rotation::RotationControlHandler;
 use smearor_wrot_rotation::RotationWidget;
 use smearor_wrot_rotation::SmearorRotation;
@@ -292,7 +293,7 @@ impl FloatingBoard {
         BoardLayout::new(
             cards
                 .iter()
-                .map(|(id, entry)| CardPlacement::new(id.clone(), self.entry_geometry(entry), entry.card.folded()))
+                .map(|(id, entry)| CardPlacement::new(id.clone(), self.entry_geometry(entry), entry.card.folded()).with_seat(entry.seat.get()))
                 .collect(),
         )
     }
@@ -323,6 +324,7 @@ impl FloatingBoard {
             rotation_widget.set_rotation(SmearorRotation(placement.geometry.rotation));
             scaling.set_scale(placement.geometry.scale.value());
             card.set_folded(placement.folded);
+            let _ = self.set_card_seat(&placement.id, placement.seat);
             let cards = self.imp().cards.borrow();
             if let Some(entry) = cards.get(&placement.id) {
                 self.apply_position(entry);
@@ -594,6 +596,32 @@ impl FloatingBoard {
         };
         self.emit_by_name::<()>(BoardSignal::CardVisibilityChanged.name(), &[&card]);
         self.emit_geometry_changed();
+        Ok(())
+    }
+
+    /// The seat the card is currently assigned to, if any - the
+    /// explicit `CardConfig::seat` or the seat it was passed to.
+    /// Independent of the card's visual rotation.
+    pub fn card_seat(&self, id: &CardId) -> Option<Seat> {
+        self.imp().cards.borrow().get(id).and_then(|entry| entry.seat.get())
+    }
+
+    /// Assigns the card to a seat (or clears the assignment with
+    /// `None`). Emits `card-seat-changed` on the card when the
+    /// assignment differs; position and rotation are untouched.
+    pub fn set_card_seat(&self, id: &CardId, seat: Option<Seat>) -> Result<(), BoardError> {
+        let card = {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return Err(BoardError::UnknownCard(id.clone()));
+            };
+            if entry.seat.get() == seat {
+                return Ok(());
+            }
+            entry.seat.set(seat);
+            entry.card.clone()
+        };
+        card.emit_card_seat_changed();
         Ok(())
     }
 

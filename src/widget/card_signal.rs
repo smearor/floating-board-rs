@@ -15,6 +15,9 @@ pub(crate) enum CardSignal {
     Raised,
     /// Emitted when the fold state toggles.
     Folded,
+    /// Emitted when the seat assignment changes (explicit
+    /// `set_card_seat` or a pass to the next user).
+    SeatChanged,
 }
 
 /// Every signal of the card, for `ObjectImpl::signals()`.
@@ -24,6 +27,7 @@ pub(crate) const CARD_SIGNALS: &[CardSignal] = &[
     CardSignal::Scaled,
     CardSignal::Raised,
     CardSignal::Folded,
+    CardSignal::SeatChanged,
 ];
 
 impl CardSignal {
@@ -35,6 +39,7 @@ impl CardSignal {
             Self::Scaled => "card-scaled",
             Self::Raised => "card-raised",
             Self::Folded => "card-folded",
+            Self::SeatChanged => "card-seat-changed",
         }
     }
 

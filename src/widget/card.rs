@@ -31,6 +31,7 @@ use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
+use smearor_commons_layout::Seat;
 use tracing::debug;
 
 glib::wrapper! {
@@ -42,7 +43,8 @@ glib::wrapper! {
     ///
     /// # Signals
     ///
-    /// `card-moved`, `card-rotated`, `card-scaled`, `card-raised`, `card-folded`
+    /// `card-moved`, `card-rotated`, `card-scaled`, `card-raised`, `card-folded`,
+    /// `card-seat-changed`
     pub struct Card(ObjectSubclass<CardImpl>)
         @extends Widget, gtk4::Box,
         @implements Accessible, Buildable, ConstraintTarget, Orientable;
@@ -175,6 +177,23 @@ impl Card {
     pub fn set_scale(&self, scale: ScaleFactor) {
         if let Some(board) = self.board() {
             board.set_card_scale(&self.id(), scale);
+        }
+    }
+
+    /// The seat this card is assigned to on the tabletop edge, if any.
+    ///
+    /// The assignment is decoupled from the visual rotation: rotating
+    /// the board or freely spinning the card does not change which user
+    /// owns it. Passing the card to the next user advances the seat.
+    pub fn seat(&self) -> Option<Seat> {
+        self.board().and_then(|board| board.card_seat(&self.id()))
+    }
+
+    /// Assigns the card to a seat (or clears the assignment with
+    /// `None`). Emits `card-seat-changed` when the assignment differs.
+    pub fn set_seat(&self, seat: Option<Seat>) {
+        if let Some(board) = self.board() {
+            let _ = board.set_card_seat(&self.id(), seat);
         }
     }
 
@@ -352,6 +371,12 @@ impl Card {
     /// Emits `card-raised` (called by the board on raise).
     pub(crate) fn emit_card_raised(&self) {
         self.emit_by_name::<()>(CardSignal::Raised.name(), &[]);
+    }
+
+    /// Emits `card-seat-changed` (called by the board when the seat
+    /// assignment changes).
+    pub(crate) fn emit_card_seat_changed(&self) {
+        self.emit_by_name::<()>(CardSignal::SeatChanged.name(), &[]);
     }
 
     /// Widget acting as the bottom-right resize affordance, if built.
