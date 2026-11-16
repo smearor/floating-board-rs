@@ -79,11 +79,12 @@ let controls_id = board.add_card_with_id(
 | `scale_limits` | `ScaleBounds` | `0.5 – 2.0` | Inclusive pinch zoom limits |
 | `min_visible` | `MinVisible` | `40.0` | Pixels that must stay inside the bounds (`Loose` mode) |
 | `bounds_mode` | `BoundsMode` | `Loose` | `Loose` clamps on drag end; `Contained` keeps the whole footprint inside, live |
-| `anchor_margin` | `f64` | `24.0` | Margin edge/corner anchors keep to the board edge |
+| `anchor_margin` | `Pixels` | `24.0` | Margin edge/corner anchors keep to the board edge |
 | `palette` | `Option<CardPalette>` | `None` | Per-card color scheme (`CardColor::Background`, `Foreground`, `Header`) |
 | `content_padding` | `Pixels` | `10.0` | Space between the card border and the content widget |
 | `max_width` / `max_height` | `Option<i32>` | `None` | Hard cap on the measured size — keeps the card stable when content changes size |
-| `animation_speed_ms` | `u64` | `500` | Duration of rotation animations |
+| `animation_speed_ms` | `u64` | `500` | Duration of rotation and layout animations |
+| `seat` | `Option<Seat>` | `None` | Tabletop seat the card is assigned to — independent of its visual rotation |
 | `z_index` | `Option<i32>` | `None` | Initial stacking order; `None` appends on top |
 
 `CardConfig::default()` yields a fully interactive card anchored at the board
@@ -115,6 +116,76 @@ let region: gtk4::cairo::Region = card.footprint();
 
 board.remove_card(&controls_id)?;
 ```
+
+## Layouts and Seats
+
+`smearor-commons-layout` provides the generic machinery — the board only
+adapts card state to and from it.
+
+### Applying a layout strategy
+
+```rust,ignore
+use smearor_commons_layout::FlowLayout;
+
+// Line up all visible cards without overlap, gliding them animatedly:
+board.apply_layout(&FlowLayout::default(), None, true)?;
+
+// Or only a selection of cards:
+board.apply_layout(&FlowLayout::default(), Some(&[id_a, id_b]), false)?;
+
+// Any `LayoutStrategy<Pixels>` works - `SeatLayout`, or your own:
+board.apply_layout(&SeatLayout::default(), None, true)?;
+```
+
+`apply_layout` maps each card to a `LayoutItem` (displayed footprint,
+live rotation, `seat`), calls `arrange` against the board bounds and
+applies every `Placement` through the regular geometry path — clamping,
+scale limits and `geometry-changed` behave like manual manipulation.
+`Placement::size` is the target footprint; cards keep their configured
+scale. A `BoardError::Layout(DoesNotFit)` leaves the board untouched.
+
+### Seats
+
+A `Seat` is a `TableSide` plus an optional `Fraction` offset along the
+edge. It models *which user a card belongs to* — deliberately decoupled
+from the card's rotation, because the board may be rotated and users
+may move:
+
+```rust,ignore
+let config = CardConfig {
+    seat: Some(Seat::new(TableSide::Bottom)),            // assigned, strategy distributes along the edge
+    // seat: Some(Seat::at(TableSide::Top, Fraction::new(0.25))), // pinned position
+    // seat: Some(Seat::center(TableSide::Left)),                // centered on an edge
+    ..Default::default()
+};
+
+let seat = card.seat();            // Option<Seat>
+card.set_seat(Some(Seat::center(TableSide::Right)));  // emits card-seat-changed
+board.set_card_seat(&id, None)?;   // clear via the board
+```
+
+Seats are part of `layout_snapshot()`/`restore_layout()` via
+`CardPlacement::seat`.
+
+### Passing a card to the next user
+
+```rust,ignore
+// Step one table side (Bottom -> Left -> Top -> Right), gliding to the
+// edge and rotating into that side's reading orientation:
+board.rotate_to_next_user(&id, TurnDirection::Clockwise, true)?;
+
+// Or hop between *occupied* seats of a roster — empty sides are
+// skipped, several seats on one side are visited in order:
+let roster = [Seat::new(TableSide::Bottom), Seat::center(TableSide::Top)];
+board.rotate_to_next_occupied_seat(&id, &roster, TurnDirection::Clockwise, true)?;
+```
+
+`move_to_edge` (usually `true`) slides the card in front of the target
+edge at `anchor_margin`; `false` rotates in place. An explicitly
+assigned `seat` advances with the pass and emits `card-seat-changed`;
+unassigned cards derive their starting side from their rotation each
+time. `BoardError::NoNextSeat` is returned when the roster holds no
+seat other than the card's current one.
 
 ## Persistence
 
@@ -176,6 +247,7 @@ card.connect_closure("card-moved", false,
 | `card-scaled` | `Card` | transform end or `set_scale` |
 | `card-raised` | `Card` | raise to top |
 | `card-folded` | `Card` | fold state toggles |
+| `card-seat-changed` | `Card` | seat assignment changes (`set_seat`, pass to user) |
 | `card-added` / `card-removed` | `FloatingBoard` | card lifecycle (carries the `Card`) |
 | `geometry-changed` | `FloatingBoard` | aggregate: any geometry mutation |
 
@@ -205,9 +277,18 @@ All card content is consumer-owned and unaffected.
 cargo run --example demo
 ```
 
-Shows a drawing area as the bottom layer plus four cards: a foldable and
-closable controls card (`Header` drag), a 90°-rotated info card (`Handle`
-drag, `min_visible = 60`), a headerless display card (`WholeCard` drag) and a
-foldable parameters card. The toolbar adds cards at runtime and exercises
-`layout_snapshot`/`restore_layout` (in-memory, JSON is logged); a status line
-shows `geometry-changed`, `card-added` and `card-removed` live.
+Shows four cards on a drawing area inside the board's content area —
+the toolbar and status line sit outside, so cards can never cover them.
+The controls card is foldable/closable (`Header` drag), the info card is
+rotated 90° (`Handle` drag, `min_visible = 60`), the display card is
+headerless (`WholeCard` drag) and the parameters card folds.
+
+Four demo users sit at seats around the table edge — colored markers on
+the background, a matching seat badge on each card. The toolbar adds
+cards at runtime, exercises `layout_snapshot`/`restore_layout` and
+drives the layouting API: "Arrange" flows the visible cards into a
+non-overlapping row, "Pass card →" sends the controls card to the next
+user — hopping the occupied seats when the "Seats" switch is on
+(`rotate_to_next_occupied_seat`), stepping table sides when off. In
+seat mode the markers themselves are draggable along the table edge.
+A status line shows signals live.
