@@ -8,6 +8,7 @@ use crate::domain::CardPlacement;
 use crate::domain::CardPosition;
 use crate::domain::GenerationCounter;
 use crate::domain::ScaleFactor;
+use crate::domain::TurnDirection;
 use crate::widget::board_signal::BoardSignal;
 use crate::widget::card::Card;
 use crate::widget::card_alignment::CardAlignment;
@@ -60,6 +61,7 @@ use smearor_commons_geometry::WidgetSizeExt;
 use smearor_commons_layout::LayoutItem;
 use smearor_commons_layout::LayoutStrategy;
 use smearor_commons_layout::Seat;
+use smearor_commons_layout::footprint_for;
 use smearor_wrot_rotation::RotationControlHandler;
 use smearor_wrot_rotation::RotationWidget;
 use smearor_wrot_rotation::SmearorRotation;
@@ -397,6 +399,66 @@ impl FloatingBoard {
                 self.set_card_geometry(id, &target);
             }
         }
+        Ok(())
+    }
+
+    /// Passes the card to the next user's seat around the table.
+    ///
+    /// The starting seat is the card's explicit `seat` assignment -
+    /// falling back to `Seat::nearest(rotation)` for unassigned cards -
+    /// stepped once in `direction` (the `offset` along the edge is
+    /// preserved). The card glides there animated: it rotates to the
+    /// target side's reading orientation and, with `move_to_edge`
+    /// (the common case), slides to `anchor_margin` in front of that
+    /// edge. With `move_to_edge = false` it only rotates in place.
+    ///
+    /// An explicitly assigned seat is advanced and persisted
+    /// (`card-seat-changed`); unassigned cards stay unassigned - the
+    /// next pass derives their seat from the rotation again.
+    ///
+    /// Returns [`BoardError::UnknownCard`] for an id not on the board.
+    pub fn rotate_to_next_user(&self, id: &CardId, direction: TurnDirection, move_to_edge: bool) -> Result<(), BoardError> {
+        let (geometry, footprint, target_seat, had_seat, margin) = {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return Err(BoardError::UnknownCard(id.clone()));
+            };
+            let geometry = self.entry_geometry(entry);
+            let seat = entry.seat.get().unwrap_or_else(|| Seat::nearest(geometry.rotation.to_rotation_rad()));
+            let target_seat = match direction {
+                TurnDirection::Clockwise => seat.clockwise(),
+                TurnDirection::CounterClockwise => seat.counter_clockwise(),
+            };
+            // The footprint is expressed at the target orientation, so
+            // the placement centers the *rotated* bounding box.
+            let turn = target_seat.side.to_quarter_turn();
+            (
+                geometry,
+                footprint_for(self.displayed_size(entry), geometry.rotation, turn),
+                target_seat,
+                entry.seat.get().is_some(),
+                entry.config.anchor_margin.as_f64(),
+            )
+        };
+
+        if had_seat {
+            self.set_card_seat(id, Some(target_seat))?;
+        }
+
+        let bounds = self.board_bounds();
+        let placement = target_seat.placement(bounds, footprint, margin);
+        let target = CardGeometry {
+            // Degenerate bounds (unrealized board) fall back to
+            // rotation-in-place, like `clamp_entry` early-returns.
+            position: if move_to_edge && !bounds.is_degenerate() {
+                CardPosition::from(placement.center)
+            } else {
+                geometry.position
+            },
+            rotation: placement.rotation,
+            scale: geometry.scale,
+        };
+        self.glide_card_geometry(id, target);
         Ok(())
     }
 

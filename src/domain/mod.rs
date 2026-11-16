@@ -22,3 +22,4 @@ pub use card::DragHandle;
 pub use card::MinVisible;
 pub use card::ScaleBounds;
 pub use card::ScaleFactor;
+pub use card::TurnDirection;

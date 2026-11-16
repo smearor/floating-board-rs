@@ -13,6 +13,7 @@ mod placement;
 mod position;
 mod scale_bounds;
 mod scale_factor;
+mod turn_direction;
 
 pub use anchor::ANCHOR_MARGIN;
 pub use anchor::CardAnchor;
@@ -27,3 +28,4 @@ pub use placement::CardPlacement;
 pub use position::CardPosition;
 pub use scale_bounds::ScaleBounds;
 pub use scale_factor::ScaleFactor;
+pub use turn_direction::TurnDirection;

@@ -9,6 +9,7 @@ use floating_board::DragHandle;
 use floating_board::FloatingBoard;
 use floating_board::MinVisible;
 use floating_board::ScaleBounds;
+use floating_board::TurnDirection;
 use gtk4::Align;
 use gtk4::Button;
 use gtk4::Label;
@@ -17,11 +18,14 @@ use gtk4::Scale;
 use gtk4::glib::closure_local;
 use gtk4::prelude::*;
 use smearor_commons_color::Color;
+use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_layout::FlowLayout;
+use smearor_commons_layout::Seat;
+use smearor_commons_layout::TableSide;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -62,6 +66,7 @@ fn build_ui(application: &gtk4::Application) {
     let add_button = Button::with_label("Add card");
     let rotate_button = Button::with_label("Rotate 90°");
     let arrange_button = Button::with_label("Arrange");
+    let pass_button = Button::with_label("Pass card →");
     let snapshot_button = Button::with_label("Snapshot");
     let restore_button = Button::with_label("Restore");
     restore_button.set_sensitive(false);
@@ -70,6 +75,7 @@ fn build_ui(application: &gtk4::Application) {
     toolbar.append(&add_button);
     toolbar.append(&rotate_button);
     toolbar.append(&arrange_button);
+    toolbar.append(&pass_button);
     toolbar.append(&snapshot_button);
     toolbar.append(&restore_button);
 
@@ -92,6 +98,28 @@ fn build_ui(application: &gtk4::Application) {
             y += 80.0;
         }
         let _ = cr.stroke();
+
+        // Table users at the seats the demo cards are assigned to:
+        // A bottom-center, B right-center, C/D pinned along the top
+        // edge. "Pass card" glides a card marker-to-marker.
+        let users = [
+            (0.5 * f64::from(width), f64::from(height) - 24.0, "A"),
+            (f64::from(width) - 24.0, 0.5 * f64::from(height), "B"),
+            (0.25 * f64::from(width), 24.0, "C"),
+            (0.75 * f64::from(width), 24.0, "D"),
+        ];
+        cr.select_font_face("Sans", gtk4::cairo::FontSlant::Normal, gtk4::cairo::FontWeight::Bold);
+        cr.set_font_size(12.0);
+        for (x, y, label) in users {
+            cr.arc(x, y, 13.0, 0.0, std::f64::consts::TAU);
+            cr.set_source_rgb(0.29, 0.56, 0.85);
+            let _ = cr.fill();
+            if let Ok(extents) = cr.text_extents(label) {
+                cr.set_source_rgb(1.0, 1.0, 1.0);
+                cr.move_to(x - extents.width() / 2.0 - extents.x_bearing(), y - extents.height() / 2.0 - extents.y_bearing());
+                let _ = cr.show_text(label);
+            }
+        }
     });
 
     let status = gtk4::Label::new(Some("Ready. Move a card."));
@@ -135,6 +163,7 @@ fn build_ui(application: &gtk4::Application) {
                 rotate_grip: true,
                 content_padding: Pixels::new(16.0),
                 scale_limits: ScaleBounds::new(0.75, 4.0),
+                seat: Some(Seat::new(TableSide::Bottom)),
                 ..Default::default()
             },
         )
@@ -159,6 +188,7 @@ fn build_ui(application: &gtk4::Application) {
                 drag_handle: DragHandle::Handle,
                 min_visible: MinVisible::new(60.0),
                 palette: Some(info_palette),
+                seat: Some(Seat::new(TableSide::Right)),
                 ..Default::default()
             },
         )
@@ -179,6 +209,7 @@ fn build_ui(application: &gtk4::Application) {
                 headerless: true,
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(770.0, 420.0))),
                 drag_handle: DragHandle::WholeCard,
+                seat: Some(Seat::at(TableSide::Top, Fraction::new(0.25))),
                 ..Default::default()
             },
         )
@@ -198,6 +229,7 @@ fn build_ui(application: &gtk4::Application) {
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(1000.0, 420.0))),
                 foldable: true,
                 max_width: Some(Pixels::new(300.0)),
+                seat: Some(Seat::at(TableSide::Top, Fraction::new(0.75))),
                 ..Default::default()
             },
         )
@@ -247,6 +279,19 @@ fn build_ui(application: &gtk4::Application) {
         arrange_button.connect_clicked(move |_| match board.apply_layout(&FlowLayout::default(), None, true) {
             Ok(()) => status.set_text("Arranged."),
             Err(error) => status.set_text(&format!("Arrange failed: {error}")),
+        });
+    }
+
+    // Passes the controls card to the next user clockwise: it glides in
+    // front of their seat edge and rotates to their reading
+    // orientation; its seat assignment advances with it.
+    {
+        let board = board.clone();
+        let status = status.clone();
+        let controls_id = controls_id.clone();
+        pass_button.connect_clicked(move |_| match board.rotate_to_next_user(&controls_id, TurnDirection::Clockwise, true) {
+            Ok(()) => status.set_text("Passed to next user."),
+            Err(error) => status.set_text(&format!("Pass failed: {error}")),
         });
     }
 

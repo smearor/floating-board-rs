@@ -59,6 +59,7 @@ pub use domain::MinVisible;
 pub use domain::ScaleBounds;
 pub use domain::ScaleFactor;
 pub use domain::SequenceNumber;
+pub use domain::TurnDirection;
 pub use widget::Card;
 pub use widget::CardAlignment;
 pub use widget::CardCloseAction;
