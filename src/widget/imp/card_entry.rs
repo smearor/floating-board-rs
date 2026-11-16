@@ -12,6 +12,7 @@ use gtk4::gdk::EventSequence;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
+use smearor_commons_layout::Seat;
 use smearor_wrot_rotation::RotationWidget;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -79,6 +80,10 @@ pub(crate) struct CardEntry {
     pub watched: RefCell<HashSet<usize>>,
     /// Insertion sequence number for stable z-ordering.
     pub sequence: SequenceNumber,
+    /// Seat the card is assigned to on the tabletop edge -
+    /// `Some` mirrors `config.seat` until a seat-changing operation
+    /// (pass to next user) updates it.
+    pub seat: Cell<Option<Seat>>,
 }
 
 /// Smallest radial grab distance the resize drag accepts as its

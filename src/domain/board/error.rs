@@ -1,4 +1,5 @@
 use crate::domain::CardId;
+use smearor_commons_layout::LayoutError;
 use thiserror::Error;
 
 /// Error type of the floating board.
@@ -10,4 +11,7 @@ pub enum BoardError {
     /// A card with the given id already exists on the board.
     #[error("Duplicate card: {0}")]
     DuplicateCard(CardId),
+    /// A layout strategy could not arrange the cards.
+    #[error(transparent)]
+    Layout(#[from] LayoutError),
 }

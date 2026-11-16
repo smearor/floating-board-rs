@@ -7,6 +7,7 @@ use crate::domain::MinVisible;
 use crate::domain::ScaleBounds;
 use crate::widget::card_close_action::CardCloseAction;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_layout::Seat;
 
 /// Default space between the card border and the content widget (px) -
 /// the value `.floating-card-content` previously carried as fixed CSS
@@ -92,6 +93,14 @@ pub struct CardConfig {
     /// `set_rotation_with_animation`) in milliseconds; default 500.
     #[cfg_attr(feature = "serde", serde(default = "default_animation_speed_ms"))]
     pub animation_speed_ms: u64,
+    /// Optional seat assignment on the tabletop edge the card belongs
+    /// to - decoupled from the card's visual rotation: rotating the
+    /// board or freely spinning the card does not change which user
+    /// owns it. `None` leaves the card unassigned; seat strategies and
+    /// `rotate_to_next_user` fall back to the nearest side of its
+    /// rotation.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub seat: Option<Seat>,
 }
 
 impl Default for CardConfig {
@@ -119,6 +128,7 @@ impl Default for CardConfig {
             max_width: None,
             max_height: None,
             animation_speed_ms: 500,
+            seat: None,
         }
     }
 }

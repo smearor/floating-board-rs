@@ -51,6 +51,8 @@ use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::SimilarityTransform;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
+use smearor_commons_layout::LayoutItem;
+use smearor_commons_layout::LayoutStrategy;
 use smearor_wrot_rotation::RotationControlHandler;
 use smearor_wrot_rotation::RotationWidget;
 use smearor_wrot_rotation::SmearorRotation;
@@ -193,6 +195,7 @@ impl FloatingBoard {
             claimed: RefCell::new(HashMap::new()),
             watched: RefCell::new(HashSet::new()),
             sequence,
+            seat: Cell::new(config.seat),
         };
         self.imp().cards.borrow_mut().insert(id.clone(), entry);
 
@@ -320,6 +323,71 @@ impl FloatingBoard {
             }
         }
         self.emit_geometry_changed();
+    }
+
+    /// Arranges cards with an `smearor-commons-layout` strategy and
+    /// applies the result in one shot (unanimated).
+    ///
+    /// `ids` selects which cards participate: `Some(&[CardId])`
+    /// arranges just those (every id must exist), `None` arranges all
+    /// currently visible cards in insertion order. Each card becomes a
+    /// [`LayoutItem`] carrying its displayed footprint, its live
+    /// rotation and the seat from `CardConfig::seat`; the returned
+    /// placements are applied through the regular geometry path, so
+    /// bounds clamping, scale limits and `geometry-changed` behave
+    /// exactly like a manual manipulation.
+    ///
+    /// `Placement::size` is the target footprint - cards keep their
+    /// configured scale, only position and rotation are applied.
+    ///
+    /// `animated` selects the glide animation towards the placements;
+    /// the animation path lands with the next milestone - `true`
+    /// currently applies immediately (logged).
+    ///
+    /// Returns [`BoardError::Layout`] when the strategy reports that
+    /// the cards do not fit; the board is left untouched then.
+    pub fn apply_layout(&self, strategy: &dyn LayoutStrategy<Pixels>, ids: Option<&[CardId]>, animated: bool) -> Result<(), BoardError> {
+        if animated {
+            warn!("apply_layout: animation is not implemented yet, applying immediately");
+        }
+        let mut selected: Vec<(CardId, ScaleFactor, LayoutItem<Pixels>)> = Vec::new();
+        {
+            let cards = self.imp().cards.borrow();
+            match ids {
+                Some(ids) => {
+                    for id in ids {
+                        let Some(entry) = cards.get(id) else {
+                            return Err(BoardError::UnknownCard(id.clone()));
+                        };
+                        selected.push((id.clone(), entry.scale.get(), self.layout_item(entry)));
+                    }
+                }
+                None => {
+                    let mut visible: Vec<(&CardId, &CardEntry)> = cards.iter().filter(|(_, entry)| entry.scaling.is_visible()).collect();
+                    visible.sort_by_key(|(_, entry)| entry.sequence);
+                    for (id, entry) in visible {
+                        selected.push((id.clone(), entry.scale.get(), self.layout_item(entry)));
+                    }
+                }
+            }
+        }
+
+        let items: Vec<LayoutItem<Pixels>> = selected.iter().map(|(_, _, item)| *item).collect();
+        let placements = strategy.arrange(self.board_bounds(), &items)?;
+
+        for ((id, scale, _), placement) in selected.iter().zip(placements.iter()) {
+            // The placement expresses the target footprint; the card's
+            // configured scale is preserved.
+            self.set_card_geometry(
+                id,
+                &CardGeometry {
+                    position: CardPosition::from(placement.center),
+                    rotation: placement.rotation,
+                    scale: *scale,
+                },
+            );
+        }
+        Ok(())
     }
 
     /// Current geometry of a card (rotation is read live from the widget).
@@ -1404,6 +1472,16 @@ impl FloatingBoard {
             position: entry.position.get(),
             rotation: Rotation::quantized(entry.rotation_widget.rotation()),
             scale: entry.scale.get(),
+        }
+    }
+
+    /// Technical layout input for a card: displayed footprint, live
+    /// rotation and explicit seat assignment.
+    fn layout_item(&self, entry: &CardEntry) -> LayoutItem<Pixels> {
+        LayoutItem {
+            size: self.displayed_size(entry),
+            rotation: Rotation::quantized(entry.rotation_widget.rotation()),
+            seat: entry.seat.get(),
         }
     }
 }

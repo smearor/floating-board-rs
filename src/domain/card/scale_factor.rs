@@ -1,4 +1,5 @@
 use crate::domain::ScaleBounds;
+use smearor_commons_animation::Interpolate;
 use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::ScaleFactor as GeometryScaleFactor;
 use std::ops::Div;
@@ -33,6 +34,15 @@ impl ScaleFactor {
     /// Returns the factor clamped into the given bounds.
     pub fn clamped(&self, bounds: &ScaleBounds) -> Self {
         Self::new(bounds.clamp(self.value()))
+    }
+}
+
+/// Linear interpolation of the scale factor - part of the
+/// component-wise [`CardGeometry`](crate::domain::CardGeometry)
+/// animation.
+impl Interpolate for ScaleFactor {
+    fn interpolate(self, target: Self, t: Fraction) -> Self {
+        Self(self.0.interpolate(target.0, t))
     }
 }
 
