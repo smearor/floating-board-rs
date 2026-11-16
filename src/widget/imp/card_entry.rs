@@ -1,5 +1,6 @@
 use crate::domain::CardAnchor;
 use crate::domain::CardPosition;
+use crate::domain::GenerationCounter;
 use crate::domain::ScaleBounds;
 use crate::domain::ScaleFactor;
 use crate::domain::SequenceNumber;
@@ -84,6 +85,10 @@ pub(crate) struct CardEntry {
     /// `Some` mirrors `config.seat` until a seat-changing operation
     /// (pass to next user) updates it.
     pub seat: Cell<Option<Seat>>,
+    /// Generation counter of the running layout animation - a new
+    /// `apply_layout` call bumps it and stale frame callbacks stop
+    /// themselves instead of fighting the new animation.
+    pub layout_generation: Cell<GenerationCounter>,
 }
 
 /// Smallest radial grab distance the resize drag accepts as its

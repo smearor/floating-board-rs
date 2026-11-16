@@ -21,6 +21,7 @@ use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
+use smearor_commons_layout::FlowLayout;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -60,6 +61,7 @@ fn build_ui(application: &gtk4::Application) {
     let content_button = Button::with_label("Content button (click-through)");
     let add_button = Button::with_label("Add card");
     let rotate_button = Button::with_label("Rotate 90°");
+    let arrange_button = Button::with_label("Arrange");
     let snapshot_button = Button::with_label("Snapshot");
     let restore_button = Button::with_label("Restore");
     restore_button.set_sensitive(false);
@@ -67,6 +69,7 @@ fn build_ui(application: &gtk4::Application) {
     toolbar.append(&content_button);
     toolbar.append(&add_button);
     toolbar.append(&rotate_button);
+    toolbar.append(&arrange_button);
     toolbar.append(&snapshot_button);
     toolbar.append(&restore_button);
 
@@ -233,6 +236,17 @@ fn build_ui(application: &gtk4::Application) {
                 let next = card.rotation().degrees() + 90.0;
                 card.set_rotation_with_animation(Rotation::Free(RotationRad::from_degrees(next)));
             }
+        });
+    }
+
+    // Flows all visible cards into a non-overlapping row layout, gliding
+    // each card on the frame clock (`animation_speed_ms` per card).
+    {
+        let board = board.clone();
+        let status = status.clone();
+        arrange_button.connect_clicked(move |_| match board.apply_layout(&FlowLayout::default(), None, true) {
+            Ok(()) => status.set_text("Arranged."),
+            Err(error) => status.set_text(&format!("Arrange failed: {error}")),
         });
     }
 

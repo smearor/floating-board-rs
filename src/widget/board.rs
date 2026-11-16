@@ -6,6 +6,7 @@ use crate::domain::CardGeometry;
 use crate::domain::CardId;
 use crate::domain::CardPlacement;
 use crate::domain::CardPosition;
+use crate::domain::GenerationCounter;
 use crate::domain::ScaleFactor;
 use crate::widget::board_signal::BoardSignal;
 use crate::widget::card::Card;
@@ -19,6 +20,7 @@ use crate::widget::imp::card_entry::CardEntry;
 use crate::widget::imp::quad_baseline::QuadBaseline;
 use crate::widget::imp::tracked_touch::TrackedTouch;
 use crate::widget::scaling::ScalingWidget;
+use glib::ControlFlow;
 use glib::Propagation;
 use glib::object::Cast;
 use glib::object::IsA;
@@ -44,6 +46,10 @@ use gtk4::prelude::GestureSingleExt;
 use gtk4::prelude::LayoutManagerExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use smearor_commons_animation::EasingFunction;
+use smearor_commons_animation::Span;
+use smearor_commons_animation::TimedAnimation;
+use smearor_commons_animation::drive;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
@@ -196,6 +202,7 @@ impl FloatingBoard {
             watched: RefCell::new(HashSet::new()),
             sequence,
             seat: Cell::new(config.seat),
+            layout_generation: Cell::new(GenerationCounter::default()),
         };
         self.imp().cards.borrow_mut().insert(id.clone(), entry);
 
@@ -340,16 +347,15 @@ impl FloatingBoard {
     /// `Placement::size` is the target footprint - cards keep their
     /// configured scale, only position and rotation are applied.
     ///
-    /// `animated` selects the glide animation towards the placements;
-    /// the animation path lands with the next milestone - `true`
-    /// currently applies immediately (logged).
+    /// `animated` glides each card on the frame clock towards its
+    /// placement (`EaseInOut`, duration from
+    /// `CardConfig::animation_speed_ms`); `false` applies immediately.
+    /// A new call supersedes animations still running on the same
+    /// card.
     ///
     /// Returns [`BoardError::Layout`] when the strategy reports that
     /// the cards do not fit; the board is left untouched then.
     pub fn apply_layout(&self, strategy: &dyn LayoutStrategy<Pixels>, ids: Option<&[CardId]>, animated: bool) -> Result<(), BoardError> {
-        if animated {
-            warn!("apply_layout: animation is not implemented yet, applying immediately");
-        }
         let mut selected: Vec<(CardId, ScaleFactor, LayoutItem<Pixels>)> = Vec::new();
         {
             let cards = self.imp().cards.borrow();
@@ -378,14 +384,16 @@ impl FloatingBoard {
         for ((id, scale, _), placement) in selected.iter().zip(placements.iter()) {
             // The placement expresses the target footprint; the card's
             // configured scale is preserved.
-            self.set_card_geometry(
-                id,
-                &CardGeometry {
-                    position: CardPosition::from(placement.center),
-                    rotation: placement.rotation,
-                    scale: *scale,
-                },
-            );
+            let target = CardGeometry {
+                position: CardPosition::from(placement.center),
+                rotation: placement.rotation,
+                scale: *scale,
+            };
+            if animated {
+                self.glide_card_geometry(id, target);
+            } else {
+                self.set_card_geometry(id, &target);
+            }
         }
         Ok(())
     }
@@ -1483,5 +1491,45 @@ impl FloatingBoard {
             rotation: Rotation::quantized(entry.rotation_widget.rotation()),
             seat: entry.seat.get(),
         }
+    }
+
+    /// Glides a card towards `target` on the frame clock. Each tick
+    /// applies the eased `CardGeometry` through the regular
+    /// `set_card_geometry` path, so re-centering, clamping and signal
+    /// emission stay identical to an instant update.
+    ///
+    /// Starting a new glide bumps the card's `layout_generation`;
+    /// ticks of a superseded animation notice the stale generation and
+    /// stop themselves.
+    fn glide_card_geometry(&self, id: &CardId, target: CardGeometry) {
+        let (scaling, from, duration, generation) = {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return;
+            };
+            let generation = entry.layout_generation.get().incremented();
+            entry.layout_generation.set(generation);
+            (
+                entry.scaling.clone(),
+                self.entry_geometry(entry),
+                Duration::from_millis(entry.config.animation_speed_ms),
+                generation,
+            )
+        };
+        let mut animation = TimedAnimation::new(Span::new(from, target), duration, EasingFunction::EaseInOut);
+        animation.start();
+        let board = self.clone();
+        let id = id.clone();
+        drive(&scaling, animation, move |_, geometry| {
+            {
+                let cards = board.imp().cards.borrow();
+                match cards.get(&id) {
+                    Some(entry) if entry.layout_generation.get() == generation => {}
+                    _ => return ControlFlow::Break,
+                }
+            }
+            board.set_card_geometry(&id, &geometry);
+            ControlFlow::Continue
+        });
     }
 }
