@@ -19,8 +19,10 @@ fluent-bundle = "0.16"
 glib = "0.22"
 gtk4 = { version = "0.11", features = ["v4_20"] }
 serde = { version = "1.0", features = ["derive"], optional = true }
+smearor-commons-animation = { git = "https://github.com/smearor/smearor-commons.git", features = ["gtk4"] }
 smearor-commons-color = { git = "https://github.com/smearor/smearor-commons.git" }
 smearor-commons-geometry = { git = "https://github.com/smearor/smearor-commons.git", features = ["cairo", "gtk4"] }
+smearor-commons-layout = { git = "https://github.com/smearor/smearor-commons.git" }
 smearor-wrot-rotation = { git = "https://github.com/smearor/smearor-wrot-rotation.git", default-features = false }
 thiserror = "2"
 tracing = "0.1"
