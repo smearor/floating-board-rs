@@ -1,7 +1,8 @@
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Vec2;
 
-/// Position of a card's **center point** in board coordinates (pixels).
+/// Position of a card's **center point** in workspace coordinates
+/// (pixels). The board's `View` maps these onto the widget.
 ///
 /// The center is used instead of the top-left corner because it stays stable
 /// under rotation and scaling: rotating or scaling a card never moves its
@@ -10,23 +11,23 @@ use smearor_commons_geometry::Vec2;
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CardPosition(
-    /// Center point in board coordinates.
+    /// Center point in workspace coordinates.
     #[cfg_attr(feature = "serde", serde(with = "smearor_commons_geometry::serde_pair"))]
     pub Vec2<Pixels>,
 );
 
 impl CardPosition {
-    /// Creates a position from a board coordinate.
+    /// Creates a position from a workspace coordinate.
     pub fn new(position: Vec2<Pixels>) -> Self {
         Self(position)
     }
 
-    /// Horizontal board coordinate of the card center.
+    /// Horizontal workspace coordinate of the card center.
     pub fn x(&self) -> Pixels {
         self.0.x_unit()
     }
 
-    /// Vertical board coordinate of the card center.
+    /// Vertical workspace coordinate of the card center.
     pub fn y(&self) -> Pixels {
         self.0.y_unit()
     }

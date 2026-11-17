@@ -1,4 +1,7 @@
 use crate::domain::CardPlacement;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_layout::View;
+use smearor_commons_layout::WorkspaceSize;
 
 /// Serializable snapshot of every card's geometry on the board.
 ///
@@ -6,11 +9,23 @@ use crate::domain::CardPlacement;
 /// value and `FloatingBoard::restore_layout` consumes it; the application
 /// decides where and in which format it is stored (e.g. `gui-cards.toml`).
 /// `version` is reserved for future migrations.
+///
+/// Card positions are workspace coordinates. `workspace` and `view` were
+/// added to the format later and default for older files
+/// (`serde(default)`): `FollowWidget` plus the default view, which is
+/// exactly the pre-workspace behavior.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BoardLayout {
     /// Layout format version; currently `1`.
     pub version: u8,
+    /// Extent mode of the virtual workspace (`FollowWidget` default).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub workspace: WorkspaceSize<Pixels>,
+    /// The configured camera; `None` resolves to the default view
+    /// covering the workspace extent.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub view: Option<View<Pixels>>,
     /// Per-card placements in stable (id-sorted) order.
     pub cards: Vec<CardPlacement>,
 }
@@ -23,6 +38,8 @@ impl BoardLayout {
     pub fn empty() -> Self {
         Self {
             version: LAYOUT_VERSION,
+            workspace: WorkspaceSize::default(),
+            view: None,
             cards: Vec::new(),
         }
     }
@@ -31,6 +48,8 @@ impl BoardLayout {
     pub fn new(cards: Vec<CardPlacement>) -> Self {
         Self {
             version: LAYOUT_VERSION,
+            workspace: WorkspaceSize::default(),
+            view: None,
             cards,
         }
     }
@@ -86,6 +105,36 @@ scale = 1.0
         let reparsed: BoardLayout = toml::from_str(&serialized).unwrap();
         assert_eq!(reparsed.len(), layout.len());
         assert_eq!(reparsed.cards[0].geometry.rotation.degrees(), 180.0);
+    }
+
+    /// Layouts saved before the workspace/view fields existed parse
+    /// with the pre-workspace defaults (`FollowWidget`, default view).
+    #[test]
+    fn legacy_layout_without_workspace_defaults() {
+        let source = r#"
+version = 1
+
+[[cards]]
+id = "controls"
+position = [480.0, 660.0]
+rotation = 180.0
+scale = 1.0
+"#;
+        let layout: BoardLayout = toml::from_str(source).unwrap();
+        assert_eq!(layout.workspace, smearor_commons_layout::WorkspaceSize::FollowWidget);
+        assert_eq!(layout.view, None);
+    }
+
+    /// A stored view round-trips through TOML.
+    #[test]
+    fn layout_view_roundtrip() {
+        let mut layout = BoardLayout::empty();
+        layout.view = Some(smearor_commons_layout::View::covering(smearor_commons_geometry::Rect::new(
+            Vec2::new(10.0, 20.0),
+            Vec2::new(300.0, 200.0),
+        )));
+        let parsed: BoardLayout = toml::from_str(&toml::to_string_pretty(&layout).unwrap()).unwrap();
+        assert_eq!(parsed.view, layout.view);
     }
 
     #[test]

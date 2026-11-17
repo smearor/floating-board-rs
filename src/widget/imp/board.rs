@@ -22,6 +22,9 @@ use gtk4::subclass::prelude::ObjectSubclass;
 use gtk4::subclass::prelude::ObjectSubclassExt;
 use gtk4::subclass::prelude::WidgetImpl;
 use gtk4::subclass::prelude::WidgetImplExt;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_layout::View;
+use smearor_commons_layout::WorkspaceSize;
 use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
@@ -42,6 +45,13 @@ pub struct FloatingBoardImpl {
     /// When `true`, an external consumer manages the surface input region
     /// and `size_allocate` stops resetting it.
     pub input_region_managed: Cell<bool>,
+    /// Extent mode of the virtual workspace the cards live on.
+    pub workspace_size: Cell<WorkspaceSize<Pixels>>,
+    /// The configured camera over the workspace; `None` resolves to the
+    /// default view covering the workspace extent (identity for the
+    /// `FollowWidget` default). An explicit `Some` is pinned and
+    /// survives resizes; `reset_view` clears back to `None`.
+    pub view: RefCell<Option<View<Pixels>>>,
 }
 
 impl Default for FloatingBoardImpl {
@@ -52,6 +62,8 @@ impl Default for FloatingBoardImpl {
             cards: RefCell::new(BTreeMap::new()),
             sequence: Cell::new(SequenceNumber::default()),
             input_region_managed: Cell::new(false),
+            workspace_size: Cell::new(WorkspaceSize::default()),
+            view: RefCell::new(None),
         }
     }
 }

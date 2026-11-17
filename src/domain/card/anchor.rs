@@ -35,7 +35,7 @@ pub enum CardAnchor {
     BottomCenter,
     /// Bottom edge, horizontally flush right.
     BottomRight,
-    /// Explicit center position in board coordinates.
+    /// Explicit center position in workspace coordinates.
     Explicit(CardPosition),
 }
 

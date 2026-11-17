@@ -8,13 +8,13 @@ use smearor_commons_geometry::Vec2;
 /// transform (re-)activates; refreshed whenever the point count changes so
 /// adding or lifting fingers never causes a jump.
 pub(crate) struct QuadBaseline {
-    /// Card center when the baseline was taken (board coordinates).
+    /// Card center when the baseline was taken (workspace coordinates).
     pub position: CardPosition,
     /// Scale factor at baseline.
     pub scale: ScaleFactor,
     /// Rotation at baseline.
     pub rotation: RotationRad,
-    /// Board-space point per active quad slot at baseline.
+    /// Workspace point per active quad slot at baseline.
     pub points: Vec<Vec2<Pixels>>,
     /// Whether the transform already changed the position.
     pub moved: bool,

@@ -197,7 +197,7 @@ impl Card {
         }
     }
 
-    /// Center position in board coordinates.
+    /// Center position in workspace coordinates.
     pub fn position(&self) -> CardPosition {
         self.geometry().position
     }
@@ -338,7 +338,7 @@ impl Card {
         self.imp().folded.get()
     }
 
-    /// Rotated footprint of the card in board coordinates.
+    /// Rotated footprint of the card in widget (rendered) coordinates.
     ///
     /// The union of all card footprints forms the dynamic safe-area of the
     /// board (used e.g. by robofigure to avoid drawing under cards).

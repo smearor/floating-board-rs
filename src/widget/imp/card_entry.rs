@@ -34,23 +34,29 @@ pub(crate) struct CardEntry {
     pub rotation_widget: RotationWidget,
     /// Immutable configuration passed at `add_card`.
     pub config: CardConfig,
-    /// Current center position in board coordinates.
+    /// Current center position in workspace coordinates.
     pub position: Cell<CardPosition>,
-    /// Current scale factor.
+    /// Current rotation in workspace coordinates - the model value.
+    /// The `RotationWidget` carries the rendered rotation
+    /// (`rotation + view.rotation`); `notify::rotation` syncs this
+    /// cell back from the widget.
+    pub rotation: Cell<RotationRad>,
+    /// Current scale factor (card scale; the rendered widget scale is
+    /// `scale x view zoom`).
     pub scale: Cell<ScaleFactor>,
     /// Anchor awaiting resolution at the next board allocation.
     pub pending_anchor: RefCell<Option<CardAnchor>>,
     /// Card center at the start of the active drag gesture.
     pub drag_start: Cell<CardPosition>,
-    /// Pointer position in board coordinates at drag begin.
+    /// Pointer position in workspace coordinates at drag begin.
     pub drag_grab: Cell<Option<Vec2<Pixels>>>,
-    /// Pointer position in board coordinates at resize-drag begin;
+    /// Pointer position in workspace coordinates at resize-drag begin;
     /// `Some` while a resize gesture on the card's grip is active.
     pub resize_grab: Cell<Option<Vec2<Pixels>>>,
     /// Scale factor captured at resize-drag begin; updates apply the
     /// ratio between the current and the grab radial distance.
     pub resize_scale: Cell<ScaleFactor>,
-    /// Pointer position in board coordinates at rotate-drag begin;
+    /// Pointer position in workspace coordinates at rotate-drag begin;
     /// `Some` while a rotate gesture on the card's grip is active.
     pub rotate_grab: Cell<Option<Vec2<Pixels>>>,
     /// Whether the active rotate drag already consumed its quarter-turn
@@ -108,7 +114,7 @@ const ROTATE_MIN_RADIUS: Pixels = Pixels::new(8.0);
 
 impl CardEntry {
     /// Scale target for a resize-drag sample at pointer position `now`
-    /// (board coordinates): the grab-time scale multiplied by the
+    /// (workspace coordinates): the grab-time scale multiplied by the
     /// radial-distance ratio to the card center. `None` while no
     /// resize grab is active.
     pub(crate) fn resize_target(&self, now: Vec2<Pixels>) -> Option<ScaleFactor> {
@@ -117,7 +123,7 @@ impl CardEntry {
     }
 
     /// Quarter-turn target for a rotate-drag sample at pointer position
-    /// `now` (board coordinates): once the pointer's angular sweep
+    /// `now` (workspace coordinates): once the pointer's angular sweep
     /// around the card center passes `ROTATE_TRIGGER`, the next 90
     /// degree boundary in the sweep direction off `current`. `None`
     /// while no rotate grab is active, while the swipe is still below

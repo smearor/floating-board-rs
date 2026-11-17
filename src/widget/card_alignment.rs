@@ -15,12 +15,12 @@ use smearor_commons_geometry::Vec2;
 pub struct CardAlignment {
     /// The card's id.
     pub card_id: CardId,
-    /// Model center position in board coordinates.
+    /// Model center position in workspace coordinates.
     pub position: CardPosition,
     /// Stored `put` spot of the transform stack on the layer - `None`
     /// while the widget tree is not attached yet.
     pub placed: Option<Vec2<Pixels>>,
-    /// Rendered bounds in board coordinates - `None` while the card
+    /// Rendered bounds in widget coordinates - `None` while the card
     /// is not on a board or not realized yet.
     pub rendered: Option<Rect<Pixels>>,
     /// Rendered-center minus model position - the alignment

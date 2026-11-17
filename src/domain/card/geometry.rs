@@ -11,7 +11,7 @@ use smearor_commons_geometry::Rotation;
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CardGeometry {
-    /// Center point of the card in board coordinates.
+    /// Center point of the card in workspace coordinates.
     pub position: CardPosition,
     /// Rotation of the card; serialized as degrees (`rotation = 180.0`).
     #[cfg_attr(feature = "serde", serde(with = "rotation_degrees"))]
