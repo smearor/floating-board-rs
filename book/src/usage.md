@@ -181,11 +181,19 @@ board.rotate_to_next_occupied_seat(&id, &roster, TurnDirection::Clockwise, true)
 ```
 
 `move_to_edge` (usually `true`) slides the card in front of the target
-edge at `anchor_margin`; `false` rotates in place. An explicitly
-assigned `seat` advances with the pass and emits `card-seat-changed`;
+edge at `anchor_margin`; `false` rotates in place.
+`rotate_to_next_occupied_seat` assigns the reached roster seat to the
+card (`card-seat-changed`) — being passed to a user makes it belong to
+their seat, which is what lets repeated passes keep hopping the roster.
+`rotate_to_next_user` only advances an explicitly assigned seat;
 unassigned cards derive their starting side from their rotation each
-time. `BoardError::NoNextSeat` is returned when the roster holds no
-seat other than the card's current one.
+time. A passed card slips into the free spot nearest its seat: it
+fills gaps left by removed cards along the edge, sits beside occupied
+cards without overlap, and may take the lane behind the edge row when
+the queue there reaches farther from the seat than a second row would
+— the edge lane is preferred.
+`BoardError::NoNextSeat` is returned when the roster holds no seat
+other than the card's current one.
 
 ## Persistence
 

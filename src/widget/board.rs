@@ -414,7 +414,10 @@ impl FloatingBoard {
     ///
     /// The step is on table *sides* - use
     /// [`Self::rotate_to_next_occupied_seat`] to hop between occupied
-    /// seats instead.
+    /// seats instead. The passed card slips into the nearest free spot
+    /// at the seat's edge lane (or the lane behind it when the edge
+    /// queue reaches farther than a second row would), never on top of
+    /// another card.
     ///
     /// An explicitly assigned seat is advanced and persisted
     /// (`card-seat-changed`); unassigned cards stay unassigned - the
@@ -427,7 +430,7 @@ impl FloatingBoard {
             TurnDirection::Clockwise => seat.clockwise(),
             TurnDirection::CounterClockwise => seat.counter_clockwise(),
         };
-        self.glide_card_to_seat(id, target, move_to_edge)
+        self.glide_card_to_seat(id, target, move_to_edge, false)
     }
 
     /// Passes the card to the next *occupied* seat of `seats`.
@@ -438,6 +441,17 @@ impl FloatingBoard {
     /// several seats on one side are visited in order. This is the
     /// semantic a consumer's user list carries - "next player", not
     /// "next edge".
+    ///
+    /// Unlike [`Self::rotate_to_next_user`], a reached roster seat is
+    /// always assigned to the card (`card-seat-changed`), including
+    /// previously unassigned cards: being passed to a user makes the
+    /// card belong to their seat, and the persisted position is what
+    /// lets repeated passes keep hopping the roster instead of
+    /// re-deriving a mid-edge starting point.
+    ///
+    /// The passed card slips into the nearest free spot at the seat's
+    /// edge lane (or the lane behind it when the edge queue reaches
+    /// farther than a second row would), never on top of another card.
     ///
     /// Returns [`BoardError::UnknownCard`] for an id not on the board
     /// and [`BoardError::NoNextSeat`] when the roster holds no seat
@@ -451,7 +465,7 @@ impl FloatingBoard {
         let Some(target) = target else {
             return Err(BoardError::NoNextSeat(id.clone()));
         };
-        self.glide_card_to_seat(id, target, move_to_edge)
+        self.glide_card_to_seat(id, target, move_to_edge, true)
     }
 
     /// Current geometry of a card (rotation is read live from the widget).
@@ -1589,9 +1603,11 @@ impl FloatingBoard {
     }
 
     /// Shared tail of the pass-to-seat operations: computes the target
-    /// placement for `target_seat`, persists an explicitly assigned
-    /// seat (`card-seat-changed`) and glides the card there.
-    fn glide_card_to_seat(&self, id: &CardId, target_seat: Seat, move_to_edge: bool) -> Result<(), BoardError> {
+    /// placement for `target_seat`, persists the seat
+    /// (`card-seat-changed`) when the card already had an explicit
+    /// assignment or `assign_seat` asks for it, and glides the card
+    /// there.
+    fn glide_card_to_seat(&self, id: &CardId, target_seat: Seat, move_to_edge: bool, assign_seat: bool) -> Result<(), BoardError> {
         let (geometry, footprint, had_seat, margin) = {
             let cards = self.imp().cards.borrow();
             let Some(entry) = cards.get(id) else {
@@ -1609,12 +1625,27 @@ impl FloatingBoard {
             )
         };
 
-        if had_seat {
+        if had_seat || assign_seat {
             self.set_card_seat(id, Some(target_seat))?;
         }
 
         let bounds = self.board_bounds();
-        let placement = target_seat.placement(bounds, footprint, margin);
+        let placement = if move_to_edge && !bounds.is_degenerate() {
+            // Every other card physically occupies space near the seat:
+            // the fan-out solver slips the passed card into the nearest
+            // free lane slot beside them instead of stacking on top.
+            let taken: Vec<(Vec2<Pixels>, Vec2<Pixels>)> = self
+                .imp()
+                .cards
+                .borrow()
+                .iter()
+                .filter(|(other_id, _)| *other_id != id)
+                .map(|(_, entry)| (self.entry_geometry(entry).position.into(), self.displayed_footprint(entry).size))
+                .collect();
+            target_seat.fanned_placement(bounds, footprint, margin, &taken, margin)
+        } else {
+            target_seat.placement(bounds, footprint, margin)
+        };
         let target = CardGeometry {
             // Degenerate bounds (unrealized board) fall back to
             // rotation-in-place, like `clamp_entry` early-returns.

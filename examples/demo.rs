@@ -42,11 +42,55 @@ use tracing_subscriber::EnvFilter;
 type DemoUser = (Seat, &'static str, &'static str);
 
 const USERS: [DemoUser; 4] = [
-    (Seat::new(TableSide::Bottom), "A", "#3584e4"),
-    (Seat::new(TableSide::Right), "B", "#33d17a"),
-    (Seat::at(TableSide::Top, Fraction::new(0.25)), "C", "#f6d32d"),
-    (Seat::at(TableSide::Top, Fraction::new(0.75)), "D", "#9141ac"),
+    (Seat::new(TableSide::Bottom), USER_LETTERS[0], USER_COLORS[0]),
+    (Seat::new(TableSide::Right), USER_LETTERS[1], USER_COLORS[1]),
+    (Seat::at(TableSide::Top, Fraction::new(0.25)), USER_LETTERS[2], USER_COLORS[2]),
+    (Seat::at(TableSide::Top, Fraction::new(0.75)), USER_LETTERS[3], USER_COLORS[3]),
 ];
+
+/// Marker letters available to demo users.
+const USER_LETTERS: [&str; 26] = [
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+];
+
+/// Marker colors, cycled by letter index.
+const USER_COLORS: [&str; 10] = [
+    "#3584e4", "#33d17a", "#f6d32d", "#9141ac", "#e66100", "#e01b24", "#62a0ea", "#57e389", "#c061cb", "#865e3c",
+];
+
+/// First unused marker letter and its palette color.
+fn next_user(users: &[DemoUser]) -> Option<(&'static str, &'static str)> {
+    USER_LETTERS
+        .iter()
+        .enumerate()
+        .find(|(_, letter)| !users.iter().any(|user| user.1 == **letter))
+        .map(|(index, letter)| (*letter, USER_COLORS[index % USER_COLORS.len()]))
+}
+
+/// Table side holding the fewest users (ties keep `TableSide::ALL` order).
+fn least_crowded_side(users: &[DemoUser]) -> TableSide {
+    TableSide::ALL
+        .into_iter()
+        .min_by_key(|side| users.iter().filter(|user| user.0.side == *side).count())
+        .unwrap_or(TableSide::Bottom)
+}
+
+/// An edge offset on `side` not already taken by another user, so a new
+/// marker never spawns on top of an existing one.
+fn free_edge_offset(users: &[DemoUser], side: TableSide) -> Fraction {
+    const SPREAD: [f64; 9] = [0.5, 0.25, 0.75, 0.125, 0.375, 0.625, 0.875, 0.0625, 0.9375];
+    let used: Vec<f64> = users
+        .iter()
+        .filter(|user| user.0.side == side)
+        .map(|user| user.0.offset.unwrap_or(Fraction::HALF).as_f64())
+        .collect();
+    let offset = SPREAD
+        .iter()
+        .find(|candidate| !used.iter().any(|taken| (taken - *candidate).abs() < 0.02))
+        .copied()
+        .unwrap_or(((used.len() * 37) % 90 + 5) as f64 / 100.0);
+    Fraction::new(offset)
+}
 
 /// Markup badge naming the user a seat belongs to (`-` unassigned).
 fn seat_badge_markup(seat: Option<Seat>, users: &[DemoUser]) -> String {
@@ -139,8 +183,12 @@ fn build_ui(application: &gtk4::Application) {
     let mode_label = Label::new(Some("Seats"));
     mode_label.set_valign(Align::Center);
     toolbar.append(&hint);
+    let add_user_button = Button::with_label("+ user");
+    let remove_user_button = Button::with_label("− user");
     toolbar.append(&mode_label);
     toolbar.append(&mode_switch);
+    toolbar.append(&add_user_button);
+    toolbar.append(&remove_user_button);
     toolbar.append(&add_button);
     toolbar.append(&rotate_button);
     toolbar.append(&arrange_button);
@@ -334,16 +382,48 @@ fn build_ui(application: &gtk4::Application) {
         )
         .unwrap_or_else(|_| CardId::new("parameters"));
 
+    // Shared pass helper used by the toolbar button and the Prev/Next
+    // buttons on dynamic cards: in "Seats" mode the card hops to the
+    // next occupied roster seat, otherwise it steps one table side.
+    let pass_card = {
+        let board = board.clone();
+        let users = users.clone();
+        let mode_switch = mode_switch.clone();
+        let status = status.clone();
+        Rc::new(move |id: &CardId, direction: TurnDirection| {
+            let result = if mode_switch.is_active() {
+                let roster: Vec<Seat> = users.borrow().iter().map(|(seat, _, _)| *seat).collect();
+                board.rotate_to_next_occupied_seat(id, &roster, direction, true)
+            } else {
+                board.rotate_to_next_user(id, direction, true)
+            };
+            match result {
+                Ok(()) => status.set_text("Passed on."),
+                Err(error) => status.set_text(&format!("Pass failed: {error}")),
+            }
+        }) as Rc<dyn Fn(&CardId, TurnDirection)>
+    };
+
     // --- Dynamic cards ------------------------------------------------------
     let counter = Cell::new(0_u32);
     {
         let board = board.clone();
+        let pass_card = pass_card.clone();
+        let users = users.clone();
         add_button.connect_clicked(move |_| {
             let number = counter.get() + 1;
             counter.set(number);
             let body = gtk4::Box::new(Orientation::Vertical, 4);
             body.append(&Label::new(Some(&format!("Dynamic card {number}"))));
-            body.append(&Button::with_label("Click me"));
+            let row = gtk4::Box::new(Orientation::Horizontal, 4);
+            row.set_halign(Align::Center);
+            let prev_button = Button::with_label("Prev →");
+            let next_button = Button::with_label("← Next");
+            let badge = Label::new(None);
+            row.append(&next_button);
+            row.append(&prev_button);
+            row.append(&badge);
+            body.append(&row);
             let id = board.add_card(
                 &body,
                 CardConfig {
@@ -354,6 +434,28 @@ fn build_ui(application: &gtk4::Application) {
                     ..Default::default()
                 },
             );
+            badge.set_markup(&seat_badge_markup(None, &users.borrow()));
+            if let Ok(card) = board.card(&id) {
+                let badge = badge.clone();
+                let users = users.clone();
+                card.connect_closure(
+                    "card-seat-changed",
+                    false,
+                    closure_local!(move |card: floating_board::Card| {
+                        badge.set_markup(&seat_badge_markup(card.seat(), &users.borrow()));
+                    }),
+                );
+            }
+            {
+                let pass_card = pass_card.clone();
+                let id = id.clone();
+                prev_button.connect_clicked(move |_| pass_card(&id, TurnDirection::CounterClockwise));
+            }
+            {
+                let pass_card = pass_card.clone();
+                let id = id.clone();
+                next_button.connect_clicked(move |_| pass_card(&id, TurnDirection::Clockwise));
+            }
             info!(card = %id, "dynamic card added");
         });
     }
@@ -385,23 +487,9 @@ fn build_ui(application: &gtk4::Application) {
     // front of their seat edge and rotates to their reading
     // orientation; its seat assignment advances with it.
     {
-        let board = board.clone();
-        let status = status.clone();
         let controls_id = controls_id.clone();
-        let mode_switch = mode_switch.clone();
-        let users = users.clone();
-        pass_button.connect_clicked(move |_| {
-            let result = if mode_switch.is_active() {
-                let roster: Vec<Seat> = users.borrow().iter().map(|(seat, _, _)| *seat).collect();
-                board.rotate_to_next_occupied_seat(&controls_id, &roster, TurnDirection::Clockwise, true)
-            } else {
-                board.rotate_to_next_user(&controls_id, TurnDirection::Clockwise, true)
-            };
-            match result {
-                Ok(()) => status.set_text("Passed on."),
-                Err(error) => status.set_text(&format!("Pass failed: {error}")),
-            }
-        });
+        let pass_card = pass_card.clone();
+        pass_button.connect_clicked(move |_| pass_card(&controls_id, TurnDirection::Clockwise));
     }
 
     // --- Snapshot / restore (in-memory; persistence is consumer-side) -------
@@ -555,6 +643,47 @@ fn build_ui(application: &gtk4::Application) {
             drag.connect_drag_end(move |_, _, _| dragged.set(None));
         }
         drawing_area.add_controller(drag);
+    }
+
+    // Add/remove demo users. New users take the next free letter on the
+    // least crowded edge at a free offset; removing pops the last added
+    // (LIFO, like "Add card"). An empty roster exercises
+    // BoardError::NoNextSeat on "Pass card".
+    {
+        let users = users.clone();
+        let drawing_area = drawing_area.clone();
+        let refresh_badges = refresh_badges.clone();
+        let status = status.clone();
+        add_user_button.connect_clicked(move |_| {
+            let mut roster = users.borrow_mut();
+            match next_user(&roster) {
+                Some((letter, color)) => {
+                    let side = least_crowded_side(&roster);
+                    let seat = Seat::at(side, free_edge_offset(&roster, side));
+                    roster.push((seat, letter, color));
+                    status.set_text(&format!("User {letter} joined the {side:?} edge."));
+                }
+                None => status.set_text("All 26 user letters are taken."),
+            }
+            drop(roster);
+            drawing_area.queue_draw();
+            refresh_badges();
+        });
+    }
+    {
+        let users = users.clone();
+        let drawing_area = drawing_area.clone();
+        let refresh_badges = refresh_badges.clone();
+        let status = status.clone();
+        remove_user_button.connect_clicked(move |_| {
+            let message = match users.borrow_mut().pop() {
+                Some((_, letter, _)) => format!("User {letter} left."),
+                None => "No users left to remove.".to_string(),
+            };
+            status.set_text(&message);
+            drawing_area.queue_draw();
+            refresh_badges();
+        });
     }
     for id in [controls_id, info_id, display_id, parameters_id] {
         if let Ok(card) = board.card(&id) {
