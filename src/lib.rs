@@ -58,6 +58,7 @@ pub use domain::DragHandle;
 pub use domain::MinVisible;
 pub use domain::ScaleBounds;
 pub use domain::ScaleFactor;
+pub use domain::SeatAnchor;
 pub use domain::SequenceNumber;
 pub use domain::TurnDirection;
 pub use widget::Card;

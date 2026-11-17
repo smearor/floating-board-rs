@@ -8,6 +8,7 @@ pub(crate) mod card;
 pub use board::BoardError;
 pub use board::BoardLayout;
 pub use board::GenerationCounter;
+pub use board::SeatAnchor;
 pub use board::SequenceNumber;
 pub use card::ANCHOR_MARGIN;
 pub use card::BoundsMode;

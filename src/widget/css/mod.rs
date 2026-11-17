@@ -30,6 +30,10 @@ pub const CLASS_RESIZE_GRIP: &str = "floating-card-resize-grip";
 /// CSS class of the bottom-left rotate grip (`CardConfig::rotate_grip`).
 pub const CLASS_ROTATE_GRIP: &str = "floating-card-rotate-grip";
 
+/// CSS class of the board's corner view-control button box
+/// (`FloatingBoard::set_view_buttons`).
+pub const CLASS_VIEW_CONTROLS: &str = "floating-board-view-controls";
+
 /// Sequence number suffixing the per-card palette class, so two
 /// palette cards never share a selector.
 static PALETTE_SEQUENCE: AtomicU64 = AtomicU64::new(0);

@@ -31,3 +31,11 @@
     margin: 4px;
     opacity: 0.65;
 }
+.floating-board-view-controls {
+    padding: 4px;
+}
+.floating-board-view-controls button {
+    min-width: 36px;
+    min-height: 36px;
+    opacity: 0.85;
+}

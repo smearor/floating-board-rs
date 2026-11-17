@@ -5,3 +5,6 @@ card-close = Karte schließen
 card-handle = Karte ziehen
 card-resize = Karte in Größe ändern
 card-rotate = Karte drehen
+view-zoom-in = Ansicht vergrößern
+view-zoom-out = Ansicht verkleinern
+view-reset = Ansicht zurücksetzen

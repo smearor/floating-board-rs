@@ -9,6 +9,7 @@ use floating_board::DragHandle;
 use floating_board::FloatingBoard;
 use floating_board::MinVisible;
 use floating_board::ScaleBounds;
+use floating_board::SeatAnchor;
 use floating_board::TurnDirection;
 use gtk4::Align;
 use gtk4::Button;
@@ -195,6 +196,17 @@ fn build_ui(application: &gtk4::Application) {
     toolbar.append(&pass_button);
     toolbar.append(&snapshot_button);
     toolbar.append(&restore_button);
+    let gestures_check = gtk4::CheckButton::with_label("View gestures");
+    gestures_check.set_valign(Align::Center);
+    let buttons_check = gtk4::CheckButton::with_label("View buttons");
+    buttons_check.set_valign(Align::Center);
+    let seat_anchor_check = gtk4::CheckButton::with_label("Seats @ view");
+    seat_anchor_check.set_valign(Align::Center);
+    seat_anchor_check.set_active(true);
+    seat_anchor_check.set_tooltip_text(Some("On: passes land at the visible edge - Off: seats anchor at the workspace extent"));
+    toolbar.append(&gestures_check);
+    toolbar.append(&buttons_check);
+    toolbar.append(&seat_anchor_check);
 
     let drawing_area = gtk4::DrawingArea::new();
     drawing_area.set_vexpand(true);
@@ -260,6 +272,23 @@ fn build_ui(application: &gtk4::Application) {
     // cover the toolbar or the status line.
     let board = FloatingBoard::new(&board_content);
     board.set_vexpand(true);
+
+    // Opt-in view control: pan/zoom/rotate on empty space, corner
+    // buttons - both off by default, toggled live by the checks.
+    {
+        let board = board.clone();
+        gestures_check.connect_toggled(move |check| board.set_view_gestures(check.is_active()));
+    }
+    {
+        let board = board.clone();
+        buttons_check.connect_toggled(move |check| board.set_view_buttons(check.is_active()));
+    }
+    {
+        let board = board.clone();
+        seat_anchor_check.connect_toggled(move |check| {
+            board.set_seat_anchor(if check.is_active() { SeatAnchor::View } else { SeatAnchor::Workspace });
+        });
+    }
 
     content.append(&toolbar);
     content.append(&board);

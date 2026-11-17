@@ -1,4 +1,5 @@
 use crate::domain::CardPlacement;
+use crate::domain::SeatAnchor;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_layout::View;
 use smearor_commons_layout::WorkspaceSize;
@@ -10,10 +11,11 @@ use smearor_commons_layout::WorkspaceSize;
 /// decides where and in which format it is stored (e.g. `gui-cards.toml`).
 /// `version` is reserved for future migrations.
 ///
-/// Card positions are workspace coordinates. `workspace` and `view` were
-/// added to the format later and default for older files
-/// (`serde(default)`): `FollowWidget` plus the default view, which is
-/// exactly the pre-workspace behavior.
+/// Card positions are workspace coordinates. `workspace`, `view` and
+/// `seat_anchor` were added to the format later and default for older
+/// files (`serde(default)`): `FollowWidget` plus the default view,
+/// which is exactly the pre-workspace behavior, plus view-anchored
+/// seats.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BoardLayout {
@@ -26,6 +28,10 @@ pub struct BoardLayout {
     /// covering the workspace extent.
     #[cfg_attr(feature = "serde", serde(default))]
     pub view: Option<View<Pixels>>,
+    /// Where pass-to-seat operations anchor seat edges (`View`
+    /// default - where the users sit at the screen).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub seat_anchor: SeatAnchor,
     /// Per-card placements in stable (id-sorted) order.
     pub cards: Vec<CardPlacement>,
 }
@@ -40,6 +46,7 @@ impl BoardLayout {
             version: LAYOUT_VERSION,
             workspace: WorkspaceSize::default(),
             view: None,
+            seat_anchor: SeatAnchor::default(),
             cards: Vec::new(),
         }
     }
@@ -50,6 +57,7 @@ impl BoardLayout {
             version: LAYOUT_VERSION,
             workspace: WorkspaceSize::default(),
             view: None,
+            seat_anchor: SeatAnchor::default(),
             cards,
         }
     }
@@ -123,6 +131,7 @@ scale = 1.0
         let layout: BoardLayout = toml::from_str(source).unwrap();
         assert_eq!(layout.workspace, smearor_commons_layout::WorkspaceSize::FollowWidget);
         assert_eq!(layout.view, None);
+        assert_eq!(layout.seat_anchor, SeatAnchor::View);
     }
 
     /// A stored view round-trips through TOML.

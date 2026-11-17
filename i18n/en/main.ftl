@@ -5,3 +5,6 @@ card-close = Close card
 card-handle = Drag card
 card-resize = Resize card
 card-rotate = Rotate card
+view-zoom-in = Zoom view in
+view-zoom-out = Zoom view out
+view-reset = Reset view

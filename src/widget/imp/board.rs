@@ -1,4 +1,5 @@
 use crate::domain::CardId;
+use crate::domain::SeatAnchor;
 use crate::domain::SequenceNumber;
 use crate::widget::board::FloatingBoard;
 use crate::widget::board_signal::BOARD_SIGNALS;
@@ -23,6 +24,9 @@ use gtk4::subclass::prelude::ObjectSubclassExt;
 use gtk4::subclass::prelude::WidgetImpl;
 use gtk4::subclass::prelude::WidgetImplExt;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::ScaleFactor;
+use smearor_commons_geometry::Vec2;
 use smearor_commons_layout::View;
 use smearor_commons_layout::WorkspaceSize;
 use std::cell::Cell;
@@ -52,6 +56,29 @@ pub struct FloatingBoardImpl {
     /// `FollowWidget` default). An explicit `Some` is pinned and
     /// survives resizes; `reset_view` clears back to `None`.
     pub view: RefCell<Option<View<Pixels>>>,
+    /// Empty-space gestures drive the view camera (pan, pinch zoom,
+    /// two-finger rotate) while set - default `false`, see
+    /// `FloatingBoard::set_view_gestures`.
+    pub view_gestures: Cell<bool>,
+    /// The corner view-control button box is visible while set -
+    /// default `false`, see `FloatingBoard::set_view_buttons`.
+    pub view_buttons: Cell<bool>,
+    /// Button box overlaid on the bottom-right corner (zoom in, zoom
+    /// out, reset). Created in `constructed`; visibility follows
+    /// `view_buttons`.
+    pub view_controls: OnceCell<gtk4::Box>,
+    /// Last cumulative offset reported by the view pan drag (layer
+    /// pixels since drag begin) - the workspace delta is computed
+    /// between consecutive offsets so the workspace point stays under
+    /// the finger while the view pans.
+    pub view_pan_offset: Cell<Vec2<Pixels>>,
+    /// Last cumulative scale reported by the view zoom gesture.
+    pub view_zoom_scale: Cell<ScaleFactor>,
+    /// Last cumulative angle delta reported by the view rotate gesture.
+    pub view_rotate_delta: Cell<RotationRad>,
+    /// Where pass-to-seat operations anchor seat edges - default
+    /// `SeatAnchor::View` (the screen edge where users sit).
+    pub seat_anchor: Cell<SeatAnchor>,
 }
 
 impl Default for FloatingBoardImpl {
@@ -64,6 +91,13 @@ impl Default for FloatingBoardImpl {
             input_region_managed: Cell::new(false),
             workspace_size: Cell::new(WorkspaceSize::default()),
             view: RefCell::new(None),
+            view_gestures: Cell::new(false),
+            view_buttons: Cell::new(false),
+            view_controls: OnceCell::new(),
+            view_pan_offset: Cell::new(Vec2::ZERO),
+            view_zoom_scale: Cell::new(ScaleFactor::ONE),
+            view_rotate_delta: Cell::new(RotationRad::ZERO),
+            seat_anchor: Cell::new(SeatAnchor::default()),
         }
     }
 }
@@ -94,6 +128,9 @@ impl ObjectImpl for FloatingBoardImpl {
         board.append(&overlay);
         let _ = self.card_layer.set(card_layer);
         let _ = self.overlay.set(overlay);
+
+        board.wire_view_gestures();
+        board.wire_view_controls();
     }
 
     fn signals() -> &'static [Signal] {

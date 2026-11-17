@@ -1,0 +1,38 @@
+/// Where the pass-to-seat operations anchor a `Seat`'s table edge.
+///
+/// Configured per board via `FloatingBoard::set_seat_anchor` and
+/// persisted in `BoardLayout`. The anchor affects only the seat
+/// placement of `rotate_to_next_user`/`rotate_to_next_occupied_seat`
+/// and the `Seat::nearest` derivation for unassigned cards - generic
+/// `LayoutStrategy` runs keep operating in workspace coordinates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(rename_all = "kebab-case"))]
+pub enum SeatAnchor {
+    /// Seats sit at the edge of the currently shown view region -
+    /// where the users physically sit at the screen. A passed card
+    /// lands at the screen edge even after the view was panned or
+    /// rotated, and `Seat::nearest` derives from the rendered
+    /// (card + view) rotation.
+    ///
+    /// Note: when the view shows space beyond the workspace extent
+    /// (`FollowWidget`/`Fixed` panned outside), a seat target can land
+    /// outside `workspace_bounds` and `clamp_entry` may pull the card
+    /// partially back inside.
+    #[default]
+    View,
+    /// Seats sit at the workspace extent - fixed positions on the
+    /// virtual table, independent of the camera. Passing a card lands
+    /// at the workspace edge wherever the view currently shows it,
+    /// and `Seat::nearest` derives from the workspace rotation.
+    Workspace,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seat_anchor_default_is_view() {
+        assert_eq!(SeatAnchor::default(), SeatAnchor::View);
+    }
+}

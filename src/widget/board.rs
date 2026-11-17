@@ -8,13 +8,16 @@ use crate::domain::CardPlacement;
 use crate::domain::CardPosition;
 use crate::domain::GenerationCounter;
 use crate::domain::ScaleFactor;
+use crate::domain::SeatAnchor;
 use crate::domain::TurnDirection;
+use crate::l10n::l10n;
 use crate::widget::board_signal::BoardSignal;
 use crate::widget::card::Card;
 use crate::widget::card_alignment::CardAlignment;
 use crate::widget::card_close_action::CardCloseAction;
 use crate::widget::card_config::CardConfig;
 use crate::widget::card_layer::CardLayer;
+use crate::widget::css::CLASS_VIEW_CONTROLS;
 use crate::widget::css::ensure_default_css;
 use crate::widget::imp::board::FloatingBoardImpl;
 use crate::widget::imp::card_entry::CardEntry;
@@ -27,12 +30,16 @@ use glib::object::Cast;
 use glib::object::IsA;
 use glib::prelude::ObjectExt;
 use gtk4::Accessible;
+use gtk4::Align;
 use gtk4::Buildable;
+use gtk4::Button;
 use gtk4::ConstraintTarget;
 use gtk4::EventControllerLegacy;
 use gtk4::EventSequenceState;
 use gtk4::GestureClick;
 use gtk4::GestureDrag;
+use gtk4::GestureRotate;
+use gtk4::GestureZoom;
 use gtk4::Orientable;
 use gtk4::Overlay;
 use gtk4::Widget;
@@ -40,6 +47,8 @@ use gtk4::cairo::Region;
 use gtk4::gdk::EventType;
 use gtk4::gio::prelude::ListModelExtManual;
 use gtk4::glib;
+use gtk4::prelude::BoxExt;
+use gtk4::prelude::ButtonExt;
 use gtk4::prelude::FixedExt;
 use gtk4::prelude::GestureDragExt;
 use gtk4::prelude::GestureExt;
@@ -55,6 +64,7 @@ use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::ScaleFactor as ViewScaleFactor;
 use smearor_commons_geometry::SimilarityTransform;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
@@ -102,6 +112,10 @@ const QUAD_ANGLE_JUMP: RotationRad = RotationRad::new(std::f64::consts::PI / 3.0
 /// `TouchEnd` was routed to a claiming gesture or lost on the wire. Real
 /// resting fingers still produce sensor jitter, so they never go silent.
 const QUAD_STALE_MS: u64 = 1500;
+
+/// Zoom factor applied per click of the corner `+` button (`-` uses
+/// its reciprocal).
+const VIEW_BUTTON_ZOOM_STEP: f64 = 1.25;
 
 /// Denies every sequence a gesture currently tracks (`set_state` is like
 /// `set_sequence_state(.., Denied)` on all handled sequences; the per-sequence
@@ -307,6 +321,7 @@ impl FloatingBoard {
         );
         layout.workspace = self.imp().workspace_size.get();
         layout.view = *self.imp().view.borrow();
+        layout.seat_anchor = self.imp().seat_anchor.get();
         layout
     }
 
@@ -318,6 +333,7 @@ impl FloatingBoard {
     pub fn restore_layout(&self, layout: &BoardLayout) {
         self.imp().workspace_size.set(layout.workspace);
         self.imp().view.replace(layout.view);
+        self.imp().seat_anchor.set(layout.seat_anchor);
         self.on_board_allocated();
         for placement in &layout.cards {
             let (card, rotation_widget, scaling) = {
@@ -1592,6 +1608,315 @@ impl FloatingBoard {
         self.on_view_changed();
     }
 
+    /// Whether empty-space gestures may move the camera - default
+    /// `false`. When enabled, a drag on free space pans, a pinch zooms
+    /// around the gesture center and a two-finger twist rotates around
+    /// it. Card gestures keep precedence: they sit deeper in the
+    /// bubble chain and claim sequences before these gestures see
+    /// them, and touches starting on a card are denied up front.
+    pub fn view_gestures(&self) -> bool {
+        self.imp().view_gestures.get()
+    }
+
+    /// Enables or disables the empty-space view gestures.
+    pub fn set_view_gestures(&self, enabled: bool) {
+        self.imp().view_gestures.set(enabled);
+    }
+
+    /// Whether the corner view controls (zoom in, zoom out, reset)
+    /// are overlaid on the board - default `false`. Styling via the
+    /// `floating-board-view-controls` CSS class.
+    pub fn view_buttons(&self) -> bool {
+        self.imp().view_buttons.get()
+    }
+
+    /// Shows or hides the corner view-control buttons.
+    pub fn set_view_buttons(&self, enabled: bool) {
+        self.imp().view_buttons.set(enabled);
+        if let Some(controls) = self.imp().view_controls.get() {
+            controls.set_visible(enabled);
+        }
+    }
+
+    /// Shifts the camera by `delta` workspace pixels (programmatic
+    /// pan). Pins an explicit view - the default view no longer tracks
+    /// the workspace extent afterwards ([`Self::reset_view`] releases
+    /// the pin).
+    pub fn pan_view(&self, delta: Vec2<Pixels>) {
+        self.mutate_view(|view| view.pan(delta));
+    }
+
+    /// Zooms around the workspace `anchor`: a `factor` of 2 brings the
+    /// view twice as close while the anchor keeps its widget position
+    /// (zoom-to-point). Pins an explicit view like [`Self::pan_view`].
+    pub fn zoom_view(&self, anchor: Vec2<Pixels>, factor: ViewScaleFactor) {
+        self.mutate_view(|view| view.zoom_at(anchor, factor));
+    }
+
+    /// Rotates the camera by `delta` around the workspace `pivot`,
+    /// which keeps its widget position. Pins an explicit view like
+    /// [`Self::pan_view`].
+    pub fn rotate_view(&self, pivot: Vec2<Pixels>, delta: RotationRad) {
+        self.mutate_view(|view| view.rotate_around(pivot, delta));
+    }
+
+    /// Where the pass-to-seat operations anchor seat edges - default
+    /// `SeatAnchor::View` (the visible screen edge where users sit).
+    pub fn seat_anchor(&self) -> SeatAnchor {
+        self.imp().seat_anchor.get()
+    }
+
+    /// Sets the seat anchor for `rotate_to_next_user` and
+    /// `rotate_to_next_occupied_seat`. `View` places seat edges along
+    /// the shown view region - a pass lands at the screen edge even
+    /// after panning or rotating the camera; `Workspace` keeps seats
+    /// on the workspace extent (fixed positions on the virtual
+    /// table). Generic `LayoutStrategy` runs are unaffected.
+    ///
+    /// With `View`, a seat edge beyond the workspace extent can land
+    /// outside `workspace_bounds`; `clamp_entry` then pulls the card
+    /// partially back inside.
+    pub fn set_seat_anchor(&self, anchor: SeatAnchor) {
+        self.imp().seat_anchor.set(anchor);
+    }
+
+    /// The bounds seat placements resolve against: the shown view
+    /// region under `SeatAnchor::View`, the workspace extent under
+    /// `SeatAnchor::Workspace`.
+    fn seat_bounds(&self) -> Rect<Pixels> {
+        match self.imp().seat_anchor.get() {
+            SeatAnchor::View => self.view().shown_region(self.widget_bounds().size),
+            SeatAnchor::Workspace => self.workspace_bounds(),
+        }
+    }
+
+    /// Resolves the effective view (the default when unpinned), applies
+    /// `f` and pins the result back as an explicit view.
+    fn mutate_view(&self, f: impl FnOnce(&mut View<Pixels>)) {
+        let mut view = self.view();
+        f(&mut view);
+        self.imp().view.replace(Some(view));
+        self.on_view_changed();
+    }
+
+    /// The workspace point currently shown at the widget center - the
+    /// natural anchor for button-driven zooms.
+    fn view_center(&self) -> Vec2<Pixels> {
+        let widget = self.widget_bounds();
+        self.view().to_workspace(widget.center(), widget)
+    }
+
+    /// `true` when `point` (layer coordinates) lands on empty space -
+    /// outside every visible card's rendered footprint. Conservative:
+    /// the footprint is the rotated bounding box, so at odd angles the
+    /// denied zone is a bit larger than the visible card.
+    fn empty_space_at(&self, point: Vec2<Pixels>) -> bool {
+        let cards = self.imp().cards.borrow();
+        !cards
+            .values()
+            .any(|entry| entry.card.is_visible() && self.rendered_footprint(entry).contains(&point))
+    }
+
+    /// `true` when the drag's start point is on empty space.
+    fn drag_starts_on_empty_space(&self, gesture: &GestureDrag) -> bool {
+        gesture
+            .start_point()
+            .map(|(x, y)| self.empty_space_at(Vec2::<Pixels>::new(x, y)))
+            .unwrap_or(true)
+    }
+
+    /// `true` when every touch point the gesture tracks sits on empty
+    /// space - a pinch or twist straddling a card leaves the camera
+    /// alone (the card's own gestures get the fingers instead).
+    fn gesture_on_empty_space<G: IsA<gtk4::Gesture>>(&self, gesture: &G) -> bool {
+        gesture.sequences().iter().all(|sequence| {
+            gesture
+                .point(Some(sequence))
+                .map(|(x, y)| self.empty_space_at(Vec2::<Pixels>::new(x, y)))
+                .unwrap_or(true)
+        })
+    }
+
+    /// Empty-space view gestures on the overlay: drag pans, pinch
+    /// zooms around the gesture center, two-finger twist rotates
+    /// around it. Attached to the overlay because the card layer
+    /// reports `contains() = false` and is never an event target, so
+    /// events on empty space bubble up from the content through the
+    /// overlay. Each gesture is denied at begin unless `view_gestures`
+    /// is on and all its touch points land on empty space; card
+    /// gestures deeper in the bubble chain also claim card-bound
+    /// sequences first.
+    pub(crate) fn wire_view_gestures(&self) {
+        let Some(overlay) = self.overlay() else { return };
+
+        let pan = GestureDrag::new();
+        pan.set_button(0);
+        let board_weak = self.downgrade();
+        pan.connect_drag_begin(move |gesture, _, _| {
+            if let Some(board) = board_weak.upgrade() {
+                board.on_view_pan_begin(gesture);
+            }
+        });
+        let board_weak = self.downgrade();
+        pan.connect_drag_update(move |gesture, _, _| {
+            if let Some(board) = board_weak.upgrade() {
+                board.on_view_pan_update(gesture);
+            }
+        });
+        overlay.add_controller(pan);
+
+        let zoom = GestureZoom::new();
+        let board_weak = self.downgrade();
+        zoom.connect_begin(move |gesture, _| {
+            if let Some(board) = board_weak.upgrade() {
+                board.on_view_zoom_begin(gesture);
+            }
+        });
+        let board_weak = self.downgrade();
+        zoom.connect_scale_changed(move |gesture, scale| {
+            if let Some(board) = board_weak.upgrade() {
+                board.on_view_zoom_changed(gesture, scale);
+            }
+        });
+        overlay.add_controller(zoom);
+
+        let rotate = GestureRotate::new();
+        let board_weak = self.downgrade();
+        rotate.connect_begin(move |gesture, _| {
+            if let Some(board) = board_weak.upgrade() {
+                board.on_view_rotate_begin(gesture);
+            }
+        });
+        let board_weak = self.downgrade();
+        rotate.connect_angle_changed(move |gesture, _angle, delta| {
+            if let Some(board) = board_weak.upgrade() {
+                board.on_view_rotate_changed(gesture, delta);
+            }
+        });
+        overlay.add_controller(rotate);
+    }
+
+    /// Corner view controls: `+`/`-` zoom around the widget center and
+    /// `⟲` returns to the default view. Overlaid bottom-right and
+    /// visible while `view_buttons` is set.
+    pub(crate) fn wire_view_controls(&self) {
+        let Some(overlay) = self.overlay() else { return };
+        let controls = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+        controls.set_halign(Align::End);
+        controls.set_valign(Align::End);
+        controls.set_margin_end(8);
+        controls.set_margin_bottom(8);
+        controls.add_css_class(CLASS_VIEW_CONTROLS);
+        controls.set_visible(self.imp().view_buttons.get());
+
+        let zoom_in = Button::with_label("+");
+        zoom_in.set_tooltip_text(Some(&l10n().message("view-zoom-in")));
+        let zoom_out = Button::with_label("−");
+        zoom_out.set_tooltip_text(Some(&l10n().message("view-zoom-out")));
+        let reset = Button::with_label("⟲");
+        reset.set_tooltip_text(Some(&l10n().message("view-reset")));
+
+        let board_weak = self.downgrade();
+        zoom_in.connect_clicked(move |_| {
+            if let Some(board) = board_weak.upgrade() {
+                board.zoom_view(board.view_center(), ViewScaleFactor::new(VIEW_BUTTON_ZOOM_STEP));
+            }
+        });
+        let board_weak = self.downgrade();
+        zoom_out.connect_clicked(move |_| {
+            if let Some(board) = board_weak.upgrade() {
+                board.zoom_view(board.view_center(), ViewScaleFactor::new(1.0 / VIEW_BUTTON_ZOOM_STEP));
+            }
+        });
+        let board_weak = self.downgrade();
+        reset.connect_clicked(move |_| {
+            if let Some(board) = board_weak.upgrade() {
+                board.reset_view();
+            }
+        });
+
+        controls.append(&zoom_in);
+        controls.append(&zoom_out);
+        controls.append(&reset);
+        overlay.add_overlay(&controls);
+        let _ = self.imp().view_controls.set(controls);
+    }
+
+    /// Arms a view pan - denied unless `view_gestures` is on and the
+    /// drag began on empty space.
+    fn on_view_pan_begin(&self, gesture: &GestureDrag) {
+        self.imp().view_pan_offset.set(Vec2::ZERO);
+        if !self.imp().view_gestures.get() || !self.drag_starts_on_empty_space(gesture) {
+            deny_gesture(gesture);
+        }
+    }
+
+    /// Pans so the workspace point under the drag start follows the
+    /// finger: the workspace-space delta between consecutive drag
+    /// offsets is applied to the view region.
+    fn on_view_pan_update(&self, gesture: &GestureDrag) {
+        let (Some((start_x, start_y)), Some((dx, dy))) = (gesture.start_point(), gesture.offset()) else {
+            return;
+        };
+        let previous_offset = self.imp().view_pan_offset.get();
+        let offset = Vec2::<Pixels>::new(dx, dy);
+        self.imp().view_pan_offset.set(offset);
+        let start = Vec2::<Pixels>::new(start_x, start_y);
+        let widget = self.widget_bounds();
+        let view = self.view();
+        let previous = view.to_workspace(start + previous_offset, widget);
+        let now = view.to_workspace(start + offset, widget);
+        self.pan_view(previous - now);
+    }
+
+    /// Arms the view zoom tracker - denied unless `view_gestures` is
+    /// on and all touches sit on empty space.
+    fn on_view_zoom_begin(&self, gesture: &GestureZoom) {
+        self.imp().view_zoom_scale.set(ViewScaleFactor::ONE);
+        if !self.imp().view_gestures.get() || !self.gesture_on_empty_space(gesture) {
+            deny_gesture(gesture);
+        }
+    }
+
+    /// Applies the incremental zoom factor around the gesture's
+    /// bounding-box center (zoom-to-point in workspace coordinates).
+    fn on_view_zoom_changed(&self, gesture: &GestureZoom, scale: f64) {
+        let previous = self.imp().view_zoom_scale.get();
+        let scale = ViewScaleFactor::new(scale);
+        self.imp().view_zoom_scale.set(scale);
+        let factor = f64::from(scale / previous);
+        if !factor.is_finite() || factor <= 0.0 || (factor - 1.0).abs() < 1e-9 {
+            return;
+        }
+        let Some((center_x, center_y)) = gesture.bounding_box_center() else { return };
+        let anchor = self.view().to_workspace(Vec2::<Pixels>::new(center_x, center_y), self.widget_bounds());
+        self.zoom_view(anchor, ViewScaleFactor::new(factor));
+    }
+
+    /// Arms the view rotate tracker - denied unless `view_gestures` is
+    /// on and all touches sit on empty space.
+    fn on_view_rotate_begin(&self, gesture: &GestureRotate) {
+        self.imp().view_rotate_delta.set(RotationRad::ZERO);
+        if !self.imp().view_gestures.get() || !self.gesture_on_empty_space(gesture) {
+            deny_gesture(gesture);
+        }
+    }
+
+    /// Applies the incremental twist around the gesture's
+    /// bounding-box center.
+    fn on_view_rotate_changed(&self, gesture: &GestureRotate, delta: f64) {
+        let previous = self.imp().view_rotate_delta.get();
+        let delta = RotationRad::new(delta);
+        self.imp().view_rotate_delta.set(delta);
+        let step = delta - previous;
+        if step.as_f64().abs() < f64::EPSILON {
+            return;
+        }
+        let Some((center_x, center_y)) = gesture.bounding_box_center() else { return };
+        let pivot = self.view().to_workspace(Vec2::<Pixels>::new(center_x, center_y), self.widget_bounds());
+        self.rotate_view(pivot, step);
+    }
+
     /// The workspace extent mode: `FollowWidget` (default - the
     /// historical behavior where the board is exactly the widget),
     /// `Fixed` or `Infinite`.
@@ -1628,7 +1953,14 @@ impl FloatingBoard {
                 self.sync_rendered_transform(entry);
             }
         }
-        self.clamp_all();
+        // An infinite workspace clamps card *operations* against the
+        // view region; re-clamping on view changes would pull
+        // out-of-view cards along with the camera and lock panning to
+        // the card cluster. For `FollowWidget`/`Fixed` the bounds are
+        // view-independent, so this is a cheap no-op.
+        if !matches!(self.imp().workspace_size.get(), WorkspaceSize::Infinite) {
+            self.clamp_all();
+        }
         self.emit_geometry_changed();
     }
 
@@ -1773,10 +2105,15 @@ impl FloatingBoard {
         let Some(entry) = cards.get(id) else {
             return Err(BoardError::UnknownCard(id.clone()));
         };
-        Ok(entry
-            .seat
-            .get()
-            .unwrap_or_else(|| Seat::nearest(self.entry_geometry(entry).rotation.to_rotation_rad())))
+        Ok(entry.seat.get().unwrap_or_else(|| {
+            // `View` derives the facing side from the rendered
+            // rotation (what users see on screen); `Workspace` uses
+            // the card's table-space rotation.
+            match self.imp().seat_anchor.get() {
+                SeatAnchor::View => Seat::nearest(entry.rotation.get() + self.view().rotation),
+                SeatAnchor::Workspace => Seat::nearest(self.entry_geometry(entry).rotation.to_rotation_rad()),
+            }
+        }))
     }
 
     /// Shared tail of the pass-to-seat operations: computes the target
@@ -1806,7 +2143,7 @@ impl FloatingBoard {
             self.set_card_seat(id, Some(target_seat))?;
         }
 
-        let bounds = self.workspace_bounds();
+        let bounds = self.seat_bounds();
         let placement = if move_to_edge && !bounds.is_degenerate() {
             // Every other card physically occupies space near the seat:
             // the fan-out solver slips the passed card into the nearest
