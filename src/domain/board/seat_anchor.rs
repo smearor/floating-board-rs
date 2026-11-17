@@ -8,10 +8,12 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(rename_all = "kebab-case"))]
 pub enum SeatAnchor {
-    /// Seats sit at the edge of the currently shown view region -
-    /// where the users physically sit at the screen. A passed card
-    /// lands at the screen edge even after the view was panned or
-    /// rotated, and `Seat::nearest` derives from the rendered
+    /// Seats sit at the screen edge - where the users physically
+    /// sit. The whole placement (edge position, fan-out lane, margin,
+    /// target rotation) is computed in widget space and mapped back
+    /// through `to_workspace`, so a passed card lands at the visible
+    /// edge facing its user even after the view was panned, zoomed or
+    /// rotated. `Seat::nearest` derives from the rendered
     /// (card + view) rotation.
     ///
     /// Note: when the view shows space beyond the workspace extent

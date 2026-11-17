@@ -29,7 +29,7 @@ pub struct BoardLayout {
     #[cfg_attr(feature = "serde", serde(default))]
     pub view: Option<View<Pixels>>,
     /// Where pass-to-seat operations anchor seat edges (`View`
-    /// default - where the users sit at the screen).
+    /// default - the screen edge where the users sit).
     #[cfg_attr(feature = "serde", serde(default))]
     pub seat_anchor: SeatAnchor,
     /// Per-card placements in stable (id-sorted) order.

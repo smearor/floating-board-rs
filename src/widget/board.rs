@@ -1667,11 +1667,11 @@ impl FloatingBoard {
     }
 
     /// Sets the seat anchor for `rotate_to_next_user` and
-    /// `rotate_to_next_occupied_seat`. `View` places seat edges along
-    /// the shown view region - a pass lands at the screen edge even
-    /// after panning or rotating the camera; `Workspace` keeps seats
-    /// on the workspace extent (fixed positions on the virtual
-    /// table). Generic `LayoutStrategy` runs are unaffected.
+    /// `rotate_to_next_occupied_seat`. `View` resolves seats in screen
+    /// space - the card lands at the widget edge facing the user,
+    /// whatever the camera does; `Workspace` keeps seats on the
+    /// workspace extent (fixed positions on the virtual table).
+    /// Generic `LayoutStrategy` runs are unaffected.
     ///
     /// With `View`, a seat edge beyond the workspace extent can land
     /// outside `workspace_bounds`; `clamp_entry` then pulls the card
@@ -1680,12 +1680,13 @@ impl FloatingBoard {
         self.imp().seat_anchor.set(anchor);
     }
 
-    /// The bounds seat placements resolve against: the shown view
-    /// region under `SeatAnchor::View`, the workspace extent under
-    /// `SeatAnchor::Workspace`.
+    /// The bounds seat placements resolve against: the widget rect
+    /// (screen space) under `SeatAnchor::View`, the workspace extent
+    /// under `SeatAnchor::Workspace`. The view-anchored result is
+    /// mapped back through `to_workspace` in `glide_card_to_seat`.
     fn seat_bounds(&self) -> Rect<Pixels> {
         match self.imp().seat_anchor.get() {
-            SeatAnchor::View => self.view().shown_region(self.widget_bounds().size),
+            SeatAnchor::View => self.widget_bounds(),
             SeatAnchor::Workspace => self.workspace_bounds(),
         }
     }
@@ -2122,6 +2123,10 @@ impl FloatingBoard {
     /// assignment or `assign_seat` asks for it, and glides the card
     /// there.
     fn glide_card_to_seat(&self, id: &CardId, target_seat: Seat, move_to_edge: bool, assign_seat: bool) -> Result<(), BoardError> {
+        let anchor = self.imp().seat_anchor.get();
+        let view = self.view();
+        let widget = self.widget_bounds();
+        let zoom = self.view_zoom();
         let (geometry, footprint, had_seat, margin) = {
             let cards = self.imp().cards.borrow();
             let Some(entry) = cards.get(id) else {
@@ -2129,13 +2134,22 @@ impl FloatingBoard {
             };
             let geometry = self.entry_geometry(entry);
             // The footprint is expressed at the target orientation, so
-            // the placement centers the *rotated* bounding box.
+            // the placement centers the *rotated* bounding box. `View`
+            // works in screen space: the rendered size at the rendered
+            // current rotation, the screen-pixel margin.
             let turn = target_seat.side.to_quarter_turn();
+            let footprint = match anchor {
+                SeatAnchor::View => footprint_for(self.rendered_size(entry), Rotation::quantized(entry.rotation.get() + view.rotation), turn),
+                SeatAnchor::Workspace => footprint_for(self.workspace_card_size(entry), geometry.rotation, turn),
+            };
             (
                 geometry,
-                footprint_for(self.workspace_card_size(entry), geometry.rotation, turn),
+                footprint,
                 entry.seat.get().is_some(),
-                entry.config.anchor_margin.as_f64(),
+                match anchor {
+                    SeatAnchor::View => entry.config.anchor_margin.as_f64() * zoom,
+                    SeatAnchor::Workspace => entry.config.anchor_margin.as_f64(),
+                },
             )
         };
 
@@ -2148,13 +2162,20 @@ impl FloatingBoard {
             // Every other card physically occupies space near the seat:
             // the fan-out solver slips the passed card into the nearest
             // free lane slot beside them instead of stacking on top.
+            // `View` runs the whole lane in screen space.
             let taken: Vec<(Vec2<Pixels>, Vec2<Pixels>)> = self
                 .imp()
                 .cards
                 .borrow()
                 .iter()
                 .filter(|(other_id, _)| *other_id != id)
-                .map(|(_, entry)| (self.entry_geometry(entry).position.into(), self.workspace_footprint(entry).size))
+                .map(|(_, entry)| match anchor {
+                    SeatAnchor::View => {
+                        let footprint = self.rendered_footprint(entry);
+                        (footprint.center(), footprint.size)
+                    }
+                    SeatAnchor::Workspace => (self.entry_geometry(entry).position.into(), self.workspace_footprint(entry).size),
+                })
                 .collect();
             target_seat.fanned_placement(bounds, footprint, margin, &taken, margin)
         } else {
@@ -2164,11 +2185,21 @@ impl FloatingBoard {
             // Degenerate bounds (unrealized board) fall back to
             // rotation-in-place, like `clamp_entry` early-returns.
             position: if move_to_edge && !bounds.is_degenerate() {
-                CardPosition::from(placement.center)
+                CardPosition::from(match anchor {
+                    SeatAnchor::View => view.to_workspace(placement.center, widget),
+                    SeatAnchor::Workspace => placement.center,
+                })
             } else {
                 geometry.position
             },
-            rotation: placement.rotation,
+            // Under `View` the placement's quarter turn is a *screen*
+            // orientation: subtracting the camera rotation makes the
+            // rendered card land on it. Under `Workspace` it is the
+            // table-space rotation already.
+            rotation: match anchor {
+                SeatAnchor::View => Rotation::quantized(placement.rotation.to_rotation_rad() - view.rotation),
+                SeatAnchor::Workspace => placement.rotation,
+            },
             scale: geometry.scale,
         };
         self.glide_card_geometry(id, target);
