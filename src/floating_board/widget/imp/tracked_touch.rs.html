@@ -3,14 +3,14 @@
 <a href=#3 id=3 data-nosnippet>3</a><span class="kw">use </span>std::time::Instant;
 <a href=#4 id=4 data-nosnippet>4</a>
 <a href=#5 id=5 data-nosnippet>5</a><span class="doccomment">/// One finger tracked by the quad transform: the touch sequence, its latest
-<a href=#6 id=6 data-nosnippet>6</a>/// board-space point and when the last event for it arrived (the timestamp
+<a href=#6 id=6 data-nosnippet>6</a>/// workspace point and when the last event for it arrived (the timestamp
 <a href=#7 id=7 data-nosnippet>7</a>/// detects touches whose `TouchEnd` was routed to a claiming gesture and
 <a href=#8 id=8 data-nosnippet>8</a>/// never reached the tracker).
 <a href=#9 id=9 data-nosnippet>9</a></span><span class="attr">#[derive(Debug, Clone)]
 <a href=#10 id=10 data-nosnippet>10</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>TrackedTouch {
 <a href=#11 id=11 data-nosnippet>11</a>    <span class="doccomment">/// The touch sequence identifying this finger.
 <a href=#12 id=12 data-nosnippet>12</a>    </span><span class="kw">pub </span>sequence: gtk4::gdk::EventSequence,
-<a href=#13 id=13 data-nosnippet>13</a>    <span class="doccomment">/// Latest finger position in board coordinates.
+<a href=#13 id=13 data-nosnippet>13</a>    <span class="doccomment">/// Latest finger position in workspace coordinates.
 <a href=#14 id=14 data-nosnippet>14</a>    </span><span class="kw">pub </span>point: Vec2&lt;Pixels&gt;,
 <a href=#15 id=15 data-nosnippet>15</a>    <span class="doccomment">/// Timestamp of the most recent event for this sequence.
 <a href=#16 id=16 data-nosnippet>16</a>    </span><span class="kw">pub </span>last_event: Instant,

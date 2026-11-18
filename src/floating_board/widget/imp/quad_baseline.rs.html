@@ -8,13 +8,13 @@
 <a href=#8 id=8 data-nosnippet>8</a>/// transform (re-)activates; refreshed whenever the point count changes so
 <a href=#9 id=9 data-nosnippet>9</a>/// adding or lifting fingers never causes a jump.
 <a href=#10 id=10 data-nosnippet>10</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>QuadBaseline {
-<a href=#11 id=11 data-nosnippet>11</a>    <span class="doccomment">/// Card center when the baseline was taken (board coordinates).
+<a href=#11 id=11 data-nosnippet>11</a>    <span class="doccomment">/// Card center when the baseline was taken (workspace coordinates).
 <a href=#12 id=12 data-nosnippet>12</a>    </span><span class="kw">pub </span>position: CardPosition,
 <a href=#13 id=13 data-nosnippet>13</a>    <span class="doccomment">/// Scale factor at baseline.
 <a href=#14 id=14 data-nosnippet>14</a>    </span><span class="kw">pub </span>scale: ScaleFactor,
 <a href=#15 id=15 data-nosnippet>15</a>    <span class="doccomment">/// Rotation at baseline.
 <a href=#16 id=16 data-nosnippet>16</a>    </span><span class="kw">pub </span>rotation: RotationRad,
-<a href=#17 id=17 data-nosnippet>17</a>    <span class="doccomment">/// Board-space point per active quad slot at baseline.
+<a href=#17 id=17 data-nosnippet>17</a>    <span class="doccomment">/// Workspace point per active quad slot at baseline.
 <a href=#18 id=18 data-nosnippet>18</a>    </span><span class="kw">pub </span>points: Vec&lt;Vec2&lt;Pixels&gt;&gt;,
 <a href=#19 id=19 data-nosnippet>19</a>    <span class="doccomment">/// Whether the transform already changed the position.
 <a href=#20 id=20 data-nosnippet>20</a>    </span><span class="kw">pub </span>moved: bool,
