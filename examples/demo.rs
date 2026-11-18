@@ -7,6 +7,8 @@ use floating_board::CardPalette;
 use floating_board::CardPosition;
 use floating_board::DragHandle;
 use floating_board::FloatingBoard;
+use floating_board::GotoRotation;
+use floating_board::GotoTransition;
 use floating_board::MinVisible;
 use floating_board::ScaleBounds;
 use floating_board::SeatAnchor;
@@ -175,6 +177,7 @@ fn build_ui(application: &gtk4::Application) {
     let rotate_button = Button::with_label("Rotate 90°");
     let arrange_button = Button::with_label("Arrange");
     let pass_button = Button::with_label("Pass card →");
+    let goto_button = Button::with_label("Goto card");
     let snapshot_button = Button::with_label("Snapshot");
     let restore_button = Button::with_label("Restore");
     restore_button.set_sensitive(false);
@@ -194,6 +197,7 @@ fn build_ui(application: &gtk4::Application) {
     toolbar.append(&rotate_button);
     toolbar.append(&arrange_button);
     toolbar.append(&pass_button);
+    toolbar.append(&goto_button);
     toolbar.append(&snapshot_button);
     toolbar.append(&restore_button);
     let gestures_check = gtk4::CheckButton::with_label("View gestures");
@@ -204,9 +208,18 @@ fn build_ui(application: &gtk4::Application) {
     seat_anchor_check.set_valign(Align::Center);
     seat_anchor_check.set_active(true);
     seat_anchor_check.set_tooltip_text(Some("On: passes land at the visible edge - Off: seats anchor at the workspace extent"));
+    let prezi_check = gtk4::CheckButton::with_label("Prezi goto");
+    prezi_check.set_valign(Align::Center);
+    prezi_check.set_tooltip_text(Some("On: goto pulls back to an overview first - Off: direct flight"));
+    let upright_check = gtk4::CheckButton::with_label("Goto upright");
+    upright_check.set_valign(Align::Center);
+    upright_check.set_active(true);
+    upright_check.set_tooltip_text(Some("On: the camera turns the card upright - Off: keep the view rotation"));
     toolbar.append(&gestures_check);
     toolbar.append(&buttons_check);
     toolbar.append(&seat_anchor_check);
+    toolbar.append(&prezi_check);
+    toolbar.append(&upright_check);
 
     let drawing_area = gtk4::DrawingArea::new();
     drawing_area.set_vexpand(true);
@@ -433,11 +446,38 @@ fn build_ui(application: &gtk4::Application) {
         }) as Rc<dyn Fn(&CardId, TurnDirection)>
     };
 
+    // Shared goto helper used by the toolbar button and the Goto
+    // buttons on dynamic cards: the camera flies onto the card,
+    // optionally Prezi-style and with the card turned upright.
+    let goto_card = {
+        let board = board.clone();
+        let prezi_check = prezi_check.clone();
+        let upright_check = upright_check.clone();
+        let status = status.clone();
+        Rc::new(move |id: &CardId| {
+            let transition = if prezi_check.is_active() {
+                GotoTransition::Transit
+            } else {
+                GotoTransition::Glide
+            };
+            let rotation = if upright_check.is_active() {
+                GotoRotation::Upright
+            } else {
+                GotoRotation::Keep
+            };
+            match board.goto_card(id, transition, rotation) {
+                Ok(()) => status.set_text("Flying to card."),
+                Err(error) => status.set_text(&format!("Goto failed: {error}")),
+            }
+        }) as Rc<dyn Fn(&CardId)>
+    };
+
     // --- Dynamic cards ------------------------------------------------------
     let counter = Cell::new(0_u32);
     {
         let board = board.clone();
         let pass_card = pass_card.clone();
+        let goto_card = goto_card.clone();
         let users = users.clone();
         add_button.connect_clicked(move |_| {
             let number = counter.get() + 1;
@@ -448,9 +488,11 @@ fn build_ui(application: &gtk4::Application) {
             row.set_halign(Align::Center);
             let prev_button = Button::with_label("Prev →");
             let next_button = Button::with_label("← Next");
+            let goto_button = Button::with_label("Goto");
             let badge = Label::new(None);
             row.append(&next_button);
             row.append(&prev_button);
+            row.append(&goto_button);
             row.append(&badge);
             body.append(&row);
             let id = board.add_card(
@@ -484,6 +526,11 @@ fn build_ui(application: &gtk4::Application) {
                 let pass_card = pass_card.clone();
                 let id = id.clone();
                 next_button.connect_clicked(move |_| pass_card(&id, TurnDirection::Clockwise));
+            }
+            {
+                let goto_card = goto_card.clone();
+                let id = id.clone();
+                goto_button.connect_clicked(move |_| goto_card(&id));
             }
             info!(card = %id, "dynamic card added");
         });
@@ -519,6 +566,14 @@ fn build_ui(application: &gtk4::Application) {
         let controls_id = controls_id.clone();
         let pass_card = pass_card.clone();
         pass_button.connect_clicked(move |_| pass_card(&controls_id, TurnDirection::Clockwise));
+    }
+
+    // Flies the camera onto the controls card - centered, slightly
+    // inset and upright unless the toggles pick the transit or the
+    // keep-rotation mode.
+    {
+        let controls_id = controls_id.clone();
+        goto_button.connect_clicked(move |_| goto_card(&controls_id));
     }
 
     // --- Snapshot / restore (in-memory; persistence is consumer-side) -------

@@ -1,4 +1,5 @@
 use crate::domain::CardId;
+use crate::domain::GenerationCounter;
 use crate::domain::SeatAnchor;
 use crate::domain::SequenceNumber;
 use crate::widget::board::FloatingBoard;
@@ -54,6 +55,10 @@ pub struct FloatingBoardImpl {
     /// `FollowWidget` default). An explicit `Some` is pinned and
     /// survives resizes; `reset_view` clears back to `None`.
     pub view: RefCell<Option<View<Pixels>>>,
+    /// Generation of the running `goto_card` camera flight; a new
+    /// flight or any programmatic/gesture view change bumps it so
+    /// stale ticks stop themselves.
+    pub view_flight: Cell<GenerationCounter>,
     /// Empty-space gestures drive the view camera (pan, pinch zoom,
     /// two-finger rotate) while set - default `false`, see
     /// `FloatingBoard::set_view_gestures`.
@@ -89,6 +94,7 @@ impl Default for FloatingBoardImpl {
             input_region_managed: Cell::new(false),
             workspace_size: Cell::new(WorkspaceSize::default()),
             view: RefCell::new(None),
+            view_flight: Cell::new(GenerationCounter::default()),
             view_gestures: Cell::new(false),
             view_buttons: Cell::new(false),
             view_controls: OnceCell::new(),

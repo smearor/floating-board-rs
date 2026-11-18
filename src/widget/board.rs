@@ -7,6 +7,8 @@ use crate::domain::CardId;
 use crate::domain::CardPlacement;
 use crate::domain::CardPosition;
 use crate::domain::GenerationCounter;
+use crate::domain::GotoRotation;
+use crate::domain::GotoTransition;
 use crate::domain::ScaleFactor;
 use crate::domain::SeatAnchor;
 use crate::domain::TurnDirection;
@@ -60,8 +62,12 @@ use gtk4::prelude::WidgetExt;
 use gtk4::prelude::WidgetExtManual;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use smearor_commons_animation::EasingFunction;
+use smearor_commons_animation::Interpolate;
 use smearor_commons_animation::Span;
+use smearor_commons_animation::ThreePhaseSpan;
 use smearor_commons_animation::TimedAnimation;
+use smearor_commons_animation::Trajectory;
+use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
@@ -118,6 +124,10 @@ const QUAD_STALE_MS: u64 = 1500;
 /// Zoom factor applied per click of the corner `+` button (`-` uses
 /// its reciprocal).
 const VIEW_BUTTON_ZOOM_STEP: f64 = 1.25;
+
+/// `goto_card` frames the card's footprint grown by this factor, so
+/// the card lands slightly inset instead of filling the screen.
+const GOTO_CARD_PADDING: f64 = 1.5;
 
 /// Denies every sequence a gesture currently tracks (`set_state` is like
 /// `set_sequence_state(.., Denied)` on all handled sequences; the per-sequence
@@ -334,6 +344,7 @@ impl FloatingBoard {
     /// clamped to the current workspace bounds so nothing restores
     /// off-screen. The stored workspace size and view are applied first.
     pub fn restore_layout(&self, layout: &BoardLayout) {
+        self.cancel_view_flight();
         self.imp().workspace_size.set(layout.workspace);
         self.imp().view.replace(layout.view);
         self.imp().seat_anchor.set(layout.seat_anchor);
@@ -1613,13 +1624,14 @@ impl FloatingBoard {
     /// Re-renders and re-clamps every card. Once set, the view is
     /// pinned - resizes keep it ([`Self::reset_view`] releases the pin).
     pub fn set_view(&self, view: View<Pixels>) {
-        self.imp().view.replace(Some(view));
-        self.on_view_changed();
+        self.cancel_view_flight();
+        self.pin_view(view);
     }
 
     /// Returns to the default view covering the workspace extent, which
     /// tracks the widget while it stays untouched.
     pub fn reset_view(&self) {
+        self.cancel_view_flight();
         self.imp().view.replace(None);
         self.on_view_changed();
     }
@@ -1676,6 +1688,50 @@ impl FloatingBoard {
         self.mutate_view(|view| view.rotate_around(pivot, delta));
     }
 
+    /// Flies the camera onto a card: the target view centers the
+    /// card's workspace footprint grown by `GOTO_CARD_PADDING`, and
+    /// `rotation` decides whether the camera keeps its rotation or
+    /// turns the card upright for the viewer. `transition` picks the
+    /// flight - `Snap` applies the target instantly, `Glide` flies
+    /// straight there and `Transit` pulls back to an overview of both
+    /// regions first (Prezi-style). The target card's
+    /// `animation_speed_ms` times the flight.
+    ///
+    /// A running flight is replaced by the next `goto_card`, and any
+    /// programmatic or gesture-driven view change ends it. The
+    /// destination is a pinned view like [`Self::set_view`] -
+    /// [`Self::reset_view`] releases it.
+    ///
+    /// Returns [`BoardError::UnknownCard`] for an id not on the board.
+    pub fn goto_card(&self, id: &CardId, transition: GotoTransition, rotation: GotoRotation) -> Result<(), BoardError> {
+        let (footprint, card_rotation, duration) = {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return Err(BoardError::UnknownCard(id.clone()));
+            };
+            // The camera targets the in-flight glide destination, not
+            // the mid-flight spot.
+            let geometry = self.effective_geometry(entry);
+            (
+                self.workspace_footprint_at(entry, &geometry),
+                geometry.rotation,
+                Duration::from_millis(entry.config.animation_speed_ms),
+            )
+        };
+        let from = self.view();
+        let target = View {
+            region: Rect::centered(footprint.center(), footprint.size * ViewScaleFactor::new(GOTO_CARD_PADDING)),
+            rotation: match rotation {
+                GotoRotation::Keep => from.rotation,
+                // Rendered rotation is `card + view`, so a view of
+                // `-card` draws the card upright on screen.
+                GotoRotation::Upright => (-card_rotation.to_rotation_rad()).normalized(),
+            },
+        };
+        self.fly_view_to(from, target, transition, duration);
+        Ok(())
+    }
+
     /// Where the pass-to-seat operations anchor seat edges - default
     /// `SeatAnchor::View` (the visible screen edge where users sit).
     pub fn seat_anchor(&self) -> SeatAnchor {
@@ -1710,10 +1766,73 @@ impl FloatingBoard {
     /// Resolves the effective view (the default when unpinned), applies
     /// `f` and pins the result back as an explicit view.
     fn mutate_view(&self, f: impl FnOnce(&mut View<Pixels>)) {
+        self.cancel_view_flight();
         let mut view = self.view();
         f(&mut view);
+        self.pin_view(view);
+    }
+
+    /// Ends a running `goto_card` flight - its ticks notice the
+    /// bumped generation and stop themselves.
+    fn cancel_view_flight(&self) {
+        self.imp().view_flight.set(self.imp().view_flight.get().incremented());
+    }
+
+    /// Stores `view` as the pinned camera and re-renders - the write
+    /// path shared by `set_view`/`mutate_view` and the flight ticks.
+    fn pin_view(&self, view: View<Pixels>) {
         self.imp().view.replace(Some(view));
         self.on_view_changed();
+    }
+
+    /// Moves the camera `from` its current view to `target` along the
+    /// chosen `transition`. Takes over any running flight first.
+    fn fly_view_to(&self, from: View<Pixels>, target: View<Pixels>, transition: GotoTransition, duration: Duration) {
+        let generation = self.imp().view_flight.get().incremented();
+        self.imp().view_flight.set(generation);
+        match transition {
+            GotoTransition::Snap => self.pin_view(target),
+            GotoTransition::Glide => self.start_view_flight(Span::new(from, target), duration, generation),
+            GotoTransition::Transit => {
+                let transit = self.transit_view(from, target);
+                self.start_view_flight(ThreePhaseSpan::new(from, transit, target, Fraction::new(0.5), Fraction::new(0.5)), duration, generation);
+            }
+        }
+    }
+
+    /// The pull-back waypoint of a `Transit` flight: a region covering
+    /// both the current and the target shown region, at half the
+    /// rotation arc - the Prezi overview the flight crosses through.
+    fn transit_view(&self, from: View<Pixels>, target: View<Pixels>) -> View<Pixels> {
+        let widget = self.widget_bounds().size;
+        let corners = from
+            .shown_region(widget)
+            .corners()
+            .into_iter()
+            .chain(target.shown_region(widget).corners())
+            .collect::<Vec<_>>();
+        View {
+            region: Rect::from_points(corners).unwrap_or(target.region),
+            rotation: from.rotation.interpolate(target.rotation, Fraction::new(0.5)),
+        }
+    }
+
+    /// Frame-clock view flight: ticks pin the eased view until the
+    /// animation completes or `view_flight` moved on.
+    fn start_view_flight<S: Trajectory<Value = View<Pixels>> + 'static>(&self, trajectory: S, duration: Duration, generation: GenerationCounter) {
+        let mut animation = TimedAnimation::new(trajectory, duration, EasingFunction::EaseInOut);
+        animation.start();
+        let board = self.clone();
+        self.add_tick_callback(move |_, _frame_clock| {
+            if board.imp().view_flight.get() != generation {
+                return ControlFlow::Break;
+            }
+            let Some(view) = animation.value() else {
+                return ControlFlow::Break;
+            };
+            board.pin_view(view);
+            if animation.is_complete() { ControlFlow::Break } else { ControlFlow::Continue }
+        });
     }
 
     /// The workspace point currently shown at the widget center - the

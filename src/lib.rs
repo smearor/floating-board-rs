@@ -55,6 +55,8 @@ pub use domain::CardPalette;
 pub use domain::CardPlacement;
 pub use domain::CardPosition;
 pub use domain::DragHandle;
+pub use domain::GotoRotation;
+pub use domain::GotoTransition;
 pub use domain::MinVisible;
 pub use domain::ScaleBounds;
 pub use domain::ScaleFactor;
