@@ -129,6 +129,12 @@ impl ObjectImpl for FloatingBoardImpl {
 
         let card_layer = CardLayer::new();
         card_layer.add_css_class(CLASS_CARD_LAYER);
+        // The layer must fill the board: a fixed-style container
+        // otherwise measures at its children bounding box, shrinking
+        // and shifting with card positions (picking and any geometry
+        // derived from its allocation would follow the card cluster).
+        card_layer.set_hexpand(true);
+        card_layer.set_vexpand(true);
         overlay.add_overlay(&card_layer);
 
         board.append(&overlay);

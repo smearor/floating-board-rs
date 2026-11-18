@@ -73,6 +73,22 @@ impl From<ScaleFactor> for f64 {
     }
 }
 
+/// Wraps a geometry scale factor; the card-domain minimum is applied
+/// via [`ScaleFactor::new`].
+impl From<GeometryScaleFactor> for ScaleFactor {
+    fn from(value: GeometryScaleFactor) -> Self {
+        Self::new(value.as_f64())
+    }
+}
+
+/// Unwraps the technical geometry factor - valid by construction, as
+/// card scales are clamped when a [`ScaleFactor`] is created.
+impl From<ScaleFactor> for GeometryScaleFactor {
+    fn from(value: ScaleFactor) -> Self {
+        value.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,4 +1,5 @@
 use crate::domain::CardAnchor;
+use crate::domain::CardGeometry;
 use crate::domain::CardPosition;
 use crate::domain::GenerationCounter;
 use crate::domain::ScaleBounds;
@@ -95,6 +96,12 @@ pub(crate) struct CardEntry {
     /// `apply_layout` call bumps it and stale frame callbacks stop
     /// themselves instead of fighting the new animation.
     pub layout_generation: Cell<GenerationCounter>,
+    /// Destination of the in-flight glide, tagged with the
+    /// `layout_generation` that started it. Seat fan-out reads this as
+    /// the card's effective geometry so passes during a glide fan out
+    /// around the landing spot, not the mid-flight position. A
+    /// superseded tag is ignored by readers; completion clears it.
+    pub glide_target: Cell<Option<(GenerationCounter, CardGeometry)>>,
 }
 
 /// Smallest radial grab distance the resize drag accepts as its

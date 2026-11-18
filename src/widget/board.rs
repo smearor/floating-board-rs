@@ -57,11 +57,11 @@ use gtk4::prelude::LayoutManagerExt;
 use gtk4::prelude::NativeExt;
 use gtk4::prelude::SurfaceExt;
 use gtk4::prelude::WidgetExt;
+use gtk4::prelude::WidgetExtManual;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use smearor_commons_animation::EasingFunction;
 use smearor_commons_animation::Span;
 use smearor_commons_animation::TimedAnimation;
-use smearor_commons_animation::drive;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
@@ -225,6 +225,7 @@ impl FloatingBoard {
             sequence,
             seat: Cell::new(config.seat),
             layout_generation: Cell::new(GenerationCounter::default()),
+            glide_target: Cell::new(None),
         };
         self.imp().cards.borrow_mut().insert(id.clone(), entry);
 
@@ -345,6 +346,11 @@ impl FloatingBoard {
                         entry.position.set(placement.geometry.position);
                         entry.scale.set(placement.geometry.scale.clamped(&entry.config.scale_limits));
                         entry.pending_anchor.borrow_mut().take();
+                        // A restore supersedes in-flight glides: bumping
+                        // the generation stops their ticks and retires
+                        // the recorded target for seat fan-out.
+                        entry.layout_generation.set(entry.layout_generation.get().incremented());
+                        entry.glide_target.take();
                         (entry.card.clone(), entry.rotation_widget.clone(), entry.scaling.clone())
                     }
                     None => {
@@ -1568,10 +1574,14 @@ impl FloatingBoard {
 
     /// The rendering surface rectangle: the card layer's allocation in
     /// widget pixels, origin at `(0, 0)`.
+    /// The viewport rectangle: the board widget's own allocation. Not
+    /// the card layer's - a `GtkFixed`-style layer measures at its
+    /// children bounding box, so its allocated size shifts with card
+    /// positions and must not feed view mapping or seat placement.
+    /// The layer sits at origin (0,0) inside the board, so both share
+    /// the same coordinate space.
     fn widget_bounds(&self) -> Rect<Pixels> {
-        self.card_layer()
-            .map(|layer| Rect::new(Vec2::ZERO, layer.allocated_size().to_f64().with_unit()))
-            .unwrap_or_default()
+        Rect::new(Vec2::ZERO, self.allocated_size().to_f64().with_unit::<Pixels>())
     }
 
     /// The logical bounds the cards live in (workspace coordinates): the
@@ -1991,25 +2001,61 @@ impl FloatingBoard {
     /// (unscaled by the view) size centered on the stored position.
     /// Used for clamping, layout strategies and seat fan-out.
     fn workspace_footprint(&self, entry: &CardEntry) -> Rect<Pixels> {
-        Rect::centered(entry.position.get().into(), self.workspace_card_size(entry))
+        self.workspace_footprint_at(entry, &self.entry_geometry(entry))
+    }
+
+    /// Workspace footprint for an arbitrary `geometry` (an in-flight
+    /// glide target): the natural size at `geometry`'s scale rotated
+    /// by its rotation, centered on its position.
+    fn workspace_footprint_at(&self, entry: &CardEntry, geometry: &CardGeometry) -> Rect<Pixels> {
+        let (_, natural) = entry.card.measure_size();
+        let size = (natural.to_f64().with_unit::<Pixels>() * geometry.scale.value()).rotated_bounds(geometry.rotation.to_rotation_rad());
+        let size = match size.x > 0.0 && size.y > 0.0 {
+            true => size,
+            false => self.rendered_size(entry) / self.view_zoom(),
+        };
+        Rect::centered(geometry.position.into(), size)
     }
 
     /// Footprint rectangle of the transform stack in layer (widget)
     /// coordinates: the rendered size centered on the view-mapped
     /// position. Used for `gtk4::Fixed` placement and z-restacking.
     fn rendered_footprint(&self, entry: &CardEntry) -> Rect<Pixels> {
-        // Before the first allocation the widget bounds are degenerate and
-        // `to_widget` cannot compute a scale (0/0). Fall back to the raw
-        // workspace point: for the default identity view workspace and
-        // widget coordinates coincide once the layer fills the board, so
-        // explicit positions land correctly immediately instead of waiting
-        // a frame - and non-identity views reconcile at the first
-        // allocation via `on_board_allocated`.
-        let center = match self.widget_bounds().is_degenerate() {
-            true => entry.position.get().into(),
-            false => self.view().to_widget(entry.position.get().into(), self.widget_bounds()),
+        self.rendered_footprint_at(entry, &self.entry_geometry(entry))
+    }
+
+    /// Rendered footprint for an arbitrary `geometry` (an in-flight
+    /// glide target): the natural size at `geometry`'s scale times
+    /// view zoom, rotated by its rotation + view rotation, centered
+    /// on the view-mapped position. Same degenerate-bounds fallback
+    /// as [`Self::rendered_footprint`].
+    fn rendered_footprint_at(&self, entry: &CardEntry, geometry: &CardGeometry) -> Rect<Pixels> {
+        let view = self.view();
+        let (_, natural) = entry.card.measure_size();
+        let size = (natural.to_f64().with_unit::<Pixels>() * (geometry.scale.value() * self.view_zoom()))
+            .rotated_bounds(geometry.rotation.to_rotation_rad() + view.rotation);
+        let size = match size.x > 0.0 && size.y > 0.0 {
+            true => size,
+            false => entry.scaling.allocated_size().to_f64().with_unit::<Pixels>(),
         };
-        Rect::centered(center, self.rendered_size(entry))
+        let widget = self.widget_bounds();
+        let center = match widget.is_degenerate() {
+            true => geometry.position.into(),
+            false => view.to_widget(geometry.position.into(), widget),
+        };
+        Rect::centered(center, size)
+    }
+
+    /// The geometry a card is effectively at for obstacle purposes:
+    /// its in-flight glide target while the glide runs (its
+    /// `layout_generation` still matches), otherwise the live
+    /// geometry. Fan-out treats a card heading for a seat as already
+    /// there, so passes during the animation do not stack on it.
+    fn effective_geometry(&self, entry: &CardEntry) -> CardGeometry {
+        match entry.glide_target.get() {
+            Some((generation, target)) if generation == entry.layout_generation.get() => target,
+            _ => self.entry_geometry(entry),
+        }
     }
 
     /// Positions the transform stack so its rendered center matches the
@@ -2204,12 +2250,17 @@ impl FloatingBoard {
                 .borrow()
                 .iter()
                 .filter(|(other_id, _)| *other_id != id)
-                .map(|(_, entry)| match anchor {
-                    SeatAnchor::View => {
-                        let footprint = self.rendered_footprint(entry);
-                        (footprint.center(), footprint.size)
-                    }
-                    SeatAnchor::Workspace => (self.entry_geometry(entry).position.into(), self.workspace_footprint(entry).size),
+                .map(|(_, entry)| {
+                    // Cards gliding to a seat count at their
+                    // destination: a pass issued while a sibling is
+                    // still moving fans out around its landing spot
+                    // instead of stacking on it.
+                    let geometry = self.effective_geometry(entry);
+                    let footprint = match anchor {
+                        SeatAnchor::View => self.rendered_footprint_at(entry, &geometry),
+                        SeatAnchor::Workspace => self.workspace_footprint_at(entry, &geometry),
+                    };
+                    (footprint.center(), footprint.size)
                 })
                 .collect();
             target_seat.fanned_placement(bounds, footprint, margin, &taken, margin)
@@ -2237,6 +2288,7 @@ impl FloatingBoard {
             },
             scale: geometry.scale,
         };
+
         self.glide_card_geometry(id, target)
     }
 
@@ -2258,6 +2310,10 @@ impl FloatingBoard {
             };
             let generation = entry.layout_generation.get().incremented();
             entry.layout_generation.set(generation);
+            // Seat fan-out reads the destination as the card's
+            // effective geometry, so passes during the glide fan out
+            // around the landing spot instead of the mid-flight one.
+            entry.glide_target.set(Some((generation, target)));
             (
                 entry.scaling.clone(),
                 self.entry_geometry(entry),
@@ -2269,7 +2325,10 @@ impl FloatingBoard {
         animation.start();
         let board = self.clone();
         let id = id.clone();
-        drive(&scaling, animation, move |_, geometry| {
+        scaling.add_tick_callback(move |_, _frame_clock| {
+            let Some(geometry) = animation.value() else {
+                return ControlFlow::Break;
+            };
             {
                 let cards = board.imp().cards.borrow();
                 match cards.get(&id) {
@@ -2278,6 +2337,13 @@ impl FloatingBoard {
                 }
             }
             board.set_card_geometry(&id, &geometry);
+            if animation.is_complete() {
+                let cards = board.imp().cards.borrow();
+                if let Some(entry) = cards.get(&id) {
+                    entry.glide_target.take();
+                }
+                return ControlFlow::Break;
+            }
             ControlFlow::Continue
         });
         Ok(())
