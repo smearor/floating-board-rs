@@ -168,6 +168,18 @@ impl Card {
         }
     }
 
+    /// Glides the card to `target` on the frame clock - the animated
+    /// counterpart of [`Self::set_geometry`].
+    ///
+    /// See [`FloatingBoard::glide_card_geometry`]: ticks apply the
+    /// eased geometry through the regular update path, and a newly
+    /// started glide supersedes a running one.
+    pub fn glide_to(&self, target: &CardGeometry) {
+        if let Some(board) = self.board() {
+            let _ = board.glide_card_geometry(&self.id(), *target);
+        }
+    }
+
     /// Current scale factor.
     pub fn scale(&self) -> ScaleFactor {
         self.geometry().scale

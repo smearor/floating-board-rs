@@ -14,12 +14,9 @@ pub enum SeatAnchor {
     /// through `to_workspace`, so a passed card lands at the visible
     /// edge facing its user even after the view was panned, zoomed or
     /// rotated. `Seat::nearest` derives from the rendered
-    /// (card + view) rotation.
-    ///
-    /// Note: when the view shows space beyond the workspace extent
-    /// (`FollowWidget`/`Fixed` panned outside), a seat target can land
-    /// outside `workspace_bounds` and `clamp_entry` may pull the card
-    /// partially back inside.
+    /// (card + view) rotation. The clamp domain widens to the shown
+    /// region (`clamp_bounds`): cards may rest anywhere on screen,
+    /// including seat positions beyond the workspace extent.
     #[default]
     View,
     /// Seats sit at the workspace extent - fixed positions on the

@@ -54,6 +54,8 @@ use gtk4::prelude::GestureDragExt;
 use gtk4::prelude::GestureExt;
 use gtk4::prelude::GestureSingleExt;
 use gtk4::prelude::LayoutManagerExt;
+use gtk4::prelude::NativeExt;
+use gtk4::prelude::SurfaceExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use smearor_commons_animation::EasingFunction;
@@ -424,7 +426,7 @@ impl FloatingBoard {
                 scale: *scale,
             };
             if animated {
-                self.glide_card_geometry(id, target);
+                self.glide_card_geometry(id, target)?;
             } else {
                 self.set_card_geometry(id, &target);
             }
@@ -628,18 +630,6 @@ impl FloatingBoard {
         card.emit_card_raised();
     }
 
-    /// Re-centers every card on its stored position. Called from the card
-    /// layer's `size_allocate`: child measures are final at that point, so
-    /// cards whose natural size or rotation changed since the last `put`
-    /// get re-positioned in the same pass - `apply_position` no-ops on
-    /// cards that already sit at their target spot.
-    pub(crate) fn reconcile_card_positions(&self) {
-        let cards = self.imp().cards.borrow();
-        for entry in cards.values() {
-            self.sync_rendered_transform(entry);
-        }
-    }
-
     /// Re-centers the card on its stored position and re-clamps it (called
     /// after size changes like folding).
     pub(crate) fn recenter_card(&self, id: &CardId) {
@@ -762,9 +752,25 @@ impl FloatingBoard {
         self.imp().input_region_managed.set(managed);
     }
 
-    /// Called from `WidgetImpl::size_allocate`: resolves pending anchors and
-    /// re-clamps all cards against the new bounds.
+    /// Reconciles model and render state after each allocation pass -
+    /// resolves pending anchors, syncs card transforms to the view and
+    /// re-clamps. Called by the board's own layout manager
+    /// (`FloatingBoardLayout::allocate`): GTK4 delegates allocation to
+    /// the layout manager for widgets that have one (like `GtkBox`), so
+    /// a `size_allocate` vfunc would never run.
     pub(crate) fn on_board_allocated(&self) {
+        // smearor-wrot-rotation is designed for layer-shell surfaces and
+        // narrows the surface input region to each card's footprint on every
+        // allocation. Inside the board all card allocations run through this
+        // pass, so restoring the full input region here wins per layout pass.
+        // Skipped while a consumer manages the region itself
+        // (`set_input_region_managed`) - e.g. touch-passthrough overlays that
+        // restrict input to the cards.
+        if !self.imp().input_region_managed.get()
+            && let Some(surface) = self.native().and_then(|native| native.surface())
+        {
+            surface.set_input_region(None);
+        }
         let bounds = self.workspace_bounds();
         if bounds.is_degenerate() {
             return;
@@ -1992,7 +1998,17 @@ impl FloatingBoard {
     /// coordinates: the rendered size centered on the view-mapped
     /// position. Used for `gtk4::Fixed` placement and z-restacking.
     fn rendered_footprint(&self, entry: &CardEntry) -> Rect<Pixels> {
-        let center = self.view().to_widget(entry.position.get().into(), self.widget_bounds());
+        // Before the first allocation the widget bounds are degenerate and
+        // `to_widget` cannot compute a scale (0/0). Fall back to the raw
+        // workspace point: for the default identity view workspace and
+        // widget coordinates coincide once the layer fills the board, so
+        // explicit positions land correctly immediately instead of waiting
+        // a frame - and non-identity views reconcile at the first
+        // allocation via `on_board_allocated`.
+        let center = match self.widget_bounds().is_degenerate() {
+            true => entry.position.get().into(),
+            false => self.view().to_widget(entry.position.get().into(), self.widget_bounds()),
+        };
         Rect::centered(center, self.rendered_size(entry))
     }
 
@@ -2012,12 +2028,31 @@ impl FloatingBoard {
         }
     }
 
-    /// Pushes the card back inside the workspace bounds.
+    /// The rect a card's footprint may occupy: the workspace extent -
+    /// except under `SeatAnchor::View`, where the visible surface is
+    /// the user-facing domain: the shown region maps onto the widget
+    /// rect exactly, so cards may rest anywhere on screen (seats live
+    /// at screen edges there, and `rotate_to_next_user` parks even
+    /// unassigned cards at them). The domain is the bounding rect of
+    /// extent and shown region - convex, so glide paths between
+    /// workspace interior and screen edge stay inside.
+    fn clamp_bounds(&self) -> Rect<Pixels> {
+        let workspace = self.workspace_bounds();
+        match self.imp().seat_anchor.get() {
+            SeatAnchor::View => {
+                let shown = self.view().shown_region(self.widget_bounds().size);
+                Rect::from_points([workspace.min, workspace.max(), shown.min, shown.max()]).unwrap_or(workspace)
+            }
+            SeatAnchor::Workspace => workspace,
+        }
+    }
+
+    /// Pushes the card back inside [`Self::clamp_bounds`].
     /// `BoundsMode::Loose` cards keep only `min_visible` workspace
     /// pixels inside; `Contained` cards get their whole footprint
     /// pulled back.
     fn clamp_entry(&self, entry: &CardEntry) {
-        let bounds = self.workspace_bounds();
+        let bounds = self.clamp_bounds();
         if bounds.is_degenerate() {
             return;
         }
@@ -2202,8 +2237,7 @@ impl FloatingBoard {
             },
             scale: geometry.scale,
         };
-        self.glide_card_geometry(id, target);
-        Ok(())
+        self.glide_card_geometry(id, target)
     }
 
     /// Glides a card towards `target` on the frame clock. Each tick
@@ -2214,11 +2248,13 @@ impl FloatingBoard {
     /// Starting a new glide bumps the card's `layout_generation`;
     /// ticks of a superseded animation notice the stale generation and
     /// stop themselves.
-    fn glide_card_geometry(&self, id: &CardId, target: CardGeometry) {
+    ///
+    /// Returns [`BoardError::UnknownCard`] for an id not on the board.
+    pub fn glide_card_geometry(&self, id: &CardId, target: CardGeometry) -> Result<(), BoardError> {
         let (scaling, from, duration, generation) = {
             let cards = self.imp().cards.borrow();
             let Some(entry) = cards.get(id) else {
-                return;
+                return Err(BoardError::UnknownCard(id.clone()));
             };
             let generation = entry.layout_generation.get().incremented();
             entry.layout_generation.set(generation);
@@ -2244,5 +2280,6 @@ impl FloatingBoard {
             board.set_card_geometry(&id, &geometry);
             ControlFlow::Continue
         });
+        Ok(())
     }
 }

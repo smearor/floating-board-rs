@@ -6,23 +6,21 @@ use crate::widget::board_signal::BOARD_SIGNALS;
 use crate::widget::card_layer::CardLayer;
 use crate::widget::css::CLASS_BOARD;
 use crate::widget::css::CLASS_CARD_LAYER;
+use crate::widget::floating_board_layout::FloatingBoardLayout;
 use crate::widget::imp::card_entry::CardEntry;
 use glib::subclass::Signal;
-use glib::subclass::types::ObjectSubclassIsExt;
 use gtk4::Orientation;
 use gtk4::glib;
 use gtk4::prelude::BoxExt;
-use gtk4::prelude::NativeExt;
 use gtk4::prelude::OrientableExt;
-use gtk4::prelude::SurfaceExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::BoxImpl;
 use gtk4::subclass::prelude::ObjectImpl;
 use gtk4::subclass::prelude::ObjectImplExt;
 use gtk4::subclass::prelude::ObjectSubclass;
 use gtk4::subclass::prelude::ObjectSubclassExt;
+use gtk4::subclass::prelude::WidgetClassExt;
 use gtk4::subclass::prelude::WidgetImpl;
-use gtk4::subclass::prelude::WidgetImplExt;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::ScaleFactor;
@@ -107,6 +105,15 @@ impl ObjectSubclass for FloatingBoardImpl {
     const NAME: &'static str = "FloatingBoard";
     type Type = FloatingBoard;
     type ParentType = gtk4::Box;
+
+    fn class_init(klass: &mut Self::Class) {
+        // `GtkBox` installs a `GtkBoxLayout`, and for widgets with a
+        // layout manager GTK4 calls `gtk_layout_manager_allocate`
+        // directly - a `size_allocate` vfunc would never run. The
+        // board therefore carries its own layout manager, whose
+        // `allocate` drives the per-pass card reconciliation.
+        klass.set_layout_manager_type::<FloatingBoardLayout>();
+    }
 }
 
 impl ObjectImpl for FloatingBoardImpl {
@@ -121,7 +128,6 @@ impl ObjectImpl for FloatingBoardImpl {
         overlay.set_vexpand(true);
 
         let card_layer = CardLayer::new();
-        card_layer.imp().board.replace(Some(board.downgrade()));
         card_layer.add_css_class(CLASS_CARD_LAYER);
         overlay.add_overlay(&card_layer);
 
@@ -139,23 +145,6 @@ impl ObjectImpl for FloatingBoardImpl {
     }
 }
 
-impl WidgetImpl for FloatingBoardImpl {
-    fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
-        self.parent_size_allocate(width, height, baseline);
-        // smearor-wrot-rotation is designed for layer-shell surfaces and
-        // narrows the surface input region to each card's footprint on every
-        // allocation. Inside the board all card allocations run through this
-        // vfunc, so restoring the full input region here wins per layout pass.
-        // Skipped while a consumer manages the region itself
-        // (`set_input_region_managed`) - e.g. touch-passthrough overlays that
-        // restrict input to the cards.
-        if !self.input_region_managed.get()
-            && let Some(surface) = self.obj().native().and_then(|native| native.surface())
-        {
-            surface.set_input_region(None);
-        }
-        self.obj().on_board_allocated();
-    }
-}
+impl WidgetImpl for FloatingBoardImpl {}
 
 impl BoxImpl for FloatingBoardImpl {}
