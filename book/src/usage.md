@@ -195,6 +195,107 @@ the queue there reaches farther from the seat than a second row would
 `BoardError::NoNextSeat` is returned when the roster holds no seat
 other than the card's current one.
 
+## Workspace and View
+
+Card geometry — position, rotation and scale — is stored in *workspace
+coordinates* on a virtual surface. A `View` camera decides which part of
+the workspace maps onto the widget, so panning, zooming or rotating the
+table never touches card state. The defaults make the widget a window
+exactly covering the workspace — pre-workspace behavior.
+
+### Workspace extent
+
+```rust,ignore
+use smearor_commons_layout::WorkspaceSize;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Vec2;
+
+board.set_workspace_size(WorkspaceSize::FollowWidget);                     // default: mirrors the allocation
+board.set_workspace_size(WorkspaceSize::Fixed(Vec2::<Pixels>::new(2000.0, 1600.0))); // a table bigger than the widget
+board.set_workspace_size(WorkspaceSize::Infinite);                          // unbounded
+```
+
+- `FollowWidget` (default): the workspace extent tracks the widget
+  allocation — identical behavior to pre-workspace versions.
+- `Fixed(size)`: a fixed workspace extent in pixels, origin at (0,0).
+- `Infinite`: no extent; clamping falls back to the shown view region
+  (so cards cannot be dragged off-screen and lost).
+
+### The camera
+
+```rust,ignore
+let view = board.view();                 // effective View { region, rotation }
+board.set_view(view);                    // pin an explicit view
+board.reset_view();                      // back to the default covering the extent
+
+board.pan_view(Vec2::<Pixels>::new(100.0, 0.0));                // shift by workspace pixels
+board.zoom_view(anchor, ScaleFactor::new(1.25));                // zoom in around a workspace point
+board.rotate_view(pivot, RotationRad::from_degrees(90.0));      // turn the table around a point
+```
+
+The default view covers the workspace extent and follows the widget.
+`set_view`, `pan_view`, `zoom_view` and `rotate_view` pin an explicit
+view — resizes no longer change zoom or center until `reset_view`
+releases the pin. `View` itself (`smearor_commons_layout`) offers
+`to_widget`/`to_workspace` for coordinate mapping and `shown_region`
+for the aspect-expanded region actually on screen.
+
+### User control
+
+Both controls are opt-in (default off) because they share the touch
+surface with card gestures:
+
+- `board.set_view_gestures(true)` — drag on empty space pans, a pinch
+  zooms around the gesture center and a two-finger twist rotates the
+  table. Card gestures keep precedence: they claim sequences first,
+  and touches starting on a card are denied up front.
+- `board.set_view_buttons(true)` — overlaid corner controls (zoom in,
+  zoom out, reset) styled via `.floating-board-view-controls`.
+
+### `goto_card`
+
+```rust,ignore
+use floating_board::GotoRotation;
+use floating_board::GotoTransition;
+
+// Fly the camera onto a card, turning it readable for the viewer:
+board.goto_card(&id, GotoTransition::Glide, GotoRotation::Upright)?;
+
+// Prezi-style: pull back to an overview of both regions first,
+// then glide down onto the card:
+board.goto_card(&id, GotoTransition::Transit, GotoRotation::Upright)?;
+
+// Or just bring it on screen without turning the table:
+board.goto_card(&id, GotoTransition::Snap, GotoRotation::Keep)?;
+```
+
+The target view centers the card's workspace footprint with a padding
+margin. `GotoTransition` picks the flight (`Snap`, `Glide`, `Transit`),
+`GotoRotation` the destination rotation (`Upright` rotates so the card
+reads upright, `Keep` pans/zooms only). Flights run on the frame clock
+over the card's `animation_speed_ms`; a new `goto_card` supersedes a
+running one and any programmatic or gesture view change cancels it.
+The destination pins like `set_view` — `reset_view` releases it.
+
+### Seats and the camera
+
+`board.set_seat_anchor` chooses where pass-to-seat operations anchor
+their table edges:
+
+- `SeatAnchor::View` (default): seats sit at the *screen* edge — a
+  passed card lands where the user actually sits, however the camera
+  is panned, zoomed or rotated.
+- `SeatAnchor::Workspace`: seats are fixed positions on the virtual
+  table — they stay where the workspace puts them.
+
+### Persistence and clamping
+
+`BoardLayout` persists `workspace` and `view` (via `serde(default)` —
+snapshots from before the workspace read the defaults). Cards stored
+out of bounds are clamped on restore as usual. `Infinite` workspaces
+clamp card *operations* against the shown view region but never
+re-clamp on view changes, so panning cannot drag cards along.
+
 ## Persistence
 
 Snapshots are value objects; file location and format belong to the consumer.
@@ -299,4 +400,8 @@ non-overlapping row, "Pass card →" sends the controls card to the next
 user — hopping the occupied seats when the "Seats" switch is on
 (`rotate_to_next_occupied_seat`), stepping table sides when off. In
 seat mode the markers themselves are draggable along the table edge.
+"View gestures"/"View buttons"/"Seats @ view" toggle the camera and
+seat anchoring live; "Goto card" and each dynamic card's "Goto" fly
+the camera onto a card — "Prezi goto" selects the transit flight,
+"Goto upright" turns the card readable.
 A status line shows signals live.
