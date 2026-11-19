@@ -28,6 +28,7 @@ use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::ScaleFactor;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_layout::FlowLayout;
 use smearor_commons_layout::Seat;
@@ -163,15 +164,17 @@ fn build_ui(application: &gtk4::Application) {
     // Clicks on empty areas of the card layer fall through to these widgets.
     let content = gtk4::Box::new(Orientation::Vertical, 0);
 
-    let toolbar = gtk4::Box::new(Orientation::Horizontal, 8);
-    toolbar.set_margin_top(8);
-    toolbar.set_margin_bottom(8);
-    toolbar.set_margin_start(8);
-    toolbar.set_margin_end(8);
+    // Demo-local styling: the round button the Settings card folds into.
+    let css = gtk4::CssProvider::new();
+    css.load_from_string(".round-button { border-radius: 50%; min-width: 46px; min-height: 46px; padding: 0; }");
+    if let Some(display) = gtk4::gdk::Display::default() {
+        gtk4::style_context_add_provider_for_display(&display, &css, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
 
-    let hint = Label::new(Some("Drag card header | 2+ finger move/rotate/stretch | click raises"));
-    hint.set_hexpand(true);
-    hint.set_halign(Align::Start);
+    // The demo has no toolbar: every control lives on a sticky card
+    // pinned to the glass, so they stay reachable however the camera
+    // moves.
+
     let content_button = Button::with_label("Content button (click-through)");
     let add_button = Button::with_label("Add card");
     let rotate_button = Button::with_label("Rotate 90°");
@@ -186,24 +189,14 @@ fn build_ui(application: &gtk4::Application) {
     mode_switch.set_valign(Align::Center);
     let mode_label = Label::new(Some("Seats"));
     mode_label.set_valign(Align::Center);
-    toolbar.append(&hint);
     let add_user_button = Button::with_label("+ user");
     let remove_user_button = Button::with_label("− user");
-    toolbar.append(&mode_label);
-    toolbar.append(&mode_switch);
-    toolbar.append(&add_user_button);
-    toolbar.append(&remove_user_button);
-    toolbar.append(&add_button);
-    toolbar.append(&rotate_button);
-    toolbar.append(&arrange_button);
-    toolbar.append(&pass_button);
-    toolbar.append(&goto_button);
-    toolbar.append(&snapshot_button);
-    toolbar.append(&restore_button);
     let gestures_check = gtk4::CheckButton::with_label("View gestures");
     gestures_check.set_valign(Align::Center);
     let buttons_check = gtk4::CheckButton::with_label("View buttons");
     buttons_check.set_valign(Align::Center);
+    buttons_check.set_active(true);
+    buttons_check.set_tooltip_text(Some("Show the view-control card (sticky, bottom-right)"));
     let seat_anchor_check = gtk4::CheckButton::with_label("Seats @ view");
     seat_anchor_check.set_valign(Align::Center);
     seat_anchor_check.set_active(true);
@@ -215,11 +208,6 @@ fn build_ui(application: &gtk4::Application) {
     upright_check.set_valign(Align::Center);
     upright_check.set_active(true);
     upright_check.set_tooltip_text(Some("On: the camera turns the card upright - Off: keep the view rotation"));
-    toolbar.append(&gestures_check);
-    toolbar.append(&buttons_check);
-    toolbar.append(&seat_anchor_check);
-    toolbar.append(&prezi_check);
-    toolbar.append(&upright_check);
 
     let drawing_area = gtk4::DrawingArea::new();
     drawing_area.set_vexpand(true);
@@ -241,6 +229,19 @@ fn build_ui(application: &gtk4::Application) {
             y += 80.0;
         }
         let _ = cr.stroke();
+
+        // Gesture hint, dimmed as part of the background grid.
+        cr.select_font_face("Sans", gtk4::cairo::FontSlant::Normal, gtk4::cairo::FontWeight::Normal);
+        cr.set_font_size(13.0);
+        let hint = "Drag card header | 2+ finger move/rotate/stretch | click raises";
+        if let Ok(extents) = cr.text_extents(hint) {
+            cr.set_source_rgba(1.0, 1.0, 1.0, 0.35);
+            cr.move_to(
+                (f64::from(width) - extents.width()) / 2.0 - extents.x_bearing(),
+                f64::from(height) / 2.0 - extents.height() / 2.0 - extents.y_bearing(),
+            );
+            let _ = cr.show_text(hint);
+        }
 
         // Table users at their current seats (the roster drives both
         // the badges and "Pass card"). In seat mode the markers are
@@ -286,6 +287,199 @@ fn build_ui(application: &gtk4::Application) {
     let board = FloatingBoard::new(&board_content);
     board.set_vexpand(true);
 
+    // Camera chrome as a sticky card: pinned to the bottom-right
+    // corner of the glass - it stays put while the view pans, zooms
+    // or rotates. The "View buttons" check toggles its visibility.
+    let view_controls = gtk4::Box::new(Orientation::Horizontal, 4);
+    let zoom_out_button = Button::with_label("−");
+    zoom_out_button.set_tooltip_text(Some("Zoom out"));
+    let zoom_in_button = Button::with_label("+");
+    zoom_in_button.set_tooltip_text(Some("Zoom in"));
+    let rotate_left_button = Button::with_label("⟲");
+    rotate_left_button.set_tooltip_text(Some("Rotate the table left"));
+    let rotate_right_button = Button::with_label("⟳");
+    rotate_right_button.set_tooltip_text(Some("Rotate the table right"));
+    let reset_button = Button::with_label("⌂");
+    reset_button.set_tooltip_text(Some("Reset view"));
+    for button in [&zoom_out_button, &zoom_in_button, &rotate_left_button, &rotate_right_button, &reset_button] {
+        view_controls.append(button);
+    }
+    let view_card_id = board
+        .add_card_with_id(
+            "view-controls",
+            &view_controls,
+            CardConfig {
+                title: Some("View".to_string()),
+                position: CardAnchor::BottomRight,
+                sticky: true,
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|_| CardId::new("view-controls"));
+    {
+        let board = board.clone();
+        zoom_in_button.connect_clicked(move |_| {
+            let anchor = board.view().region.center();
+            board.zoom_view(anchor, ScaleFactor::new(1.25));
+        });
+    }
+    {
+        let board = board.clone();
+        zoom_out_button.connect_clicked(move |_| {
+            let anchor = board.view().region.center();
+            board.zoom_view(anchor, ScaleFactor::new(0.8));
+        });
+    }
+    {
+        let board = board.clone();
+        rotate_left_button.connect_clicked(move |_| {
+            let pivot = board.view().region.center();
+            board.rotate_view(pivot, RotationRad::from_degrees(15.0));
+        });
+    }
+    {
+        let board = board.clone();
+        rotate_right_button.connect_clicked(move |_| {
+            let pivot = board.view().region.center();
+            board.rotate_view(pivot, RotationRad::from_degrees(-15.0));
+        });
+    }
+    {
+        let board = board.clone();
+        reset_button.connect_clicked(move |_| board.reset_view());
+    }
+
+    // Sticky control cards: all demo chrome lives on the glass, grouped
+    // by topic. Each card explains what its controls do - the cards
+    // stay reachable under every camera position.
+    let explain = |text: &str| {
+        let label = Label::new(Some(text));
+        label.add_css_class("dim-label");
+        label.set_wrap(false);
+        label.set_halign(Align::Start);
+        label
+    };
+
+    // User: the seat roster. Add/remove users, drag their markers
+    // along the table edge - passes target the next occupied seat.
+    // Folds into a compact icon row instead of the header strip.
+    let user_card = gtk4::Box::new(Orientation::Vertical, 4);
+    let user_row = gtk4::Box::new(Orientation::Horizontal, 4);
+    user_row.append(&add_user_button);
+    user_row.append(&remove_user_button);
+    user_card.append(&user_row);
+    user_card.append(&explain("Adds/removes a seat marker on the table\nedge. Passes land at the next occupied seat."));
+    let user_folded = gtk4::Box::new(Orientation::Horizontal, 0);
+    let folded_add = Button::from_icon_name("contact-new-symbolic");
+    folded_add.set_tooltip_text(Some("Add user"));
+    let folded_remove = Button::from_icon_name("edit-delete-symbolic");
+    folded_remove.set_tooltip_text(Some("Remove user"));
+    let folded_open = Button::from_icon_name("view-restore-symbolic");
+    folded_open.set_tooltip_text(Some("Unfold"));
+    user_folded.append(&folded_add);
+    user_folded.append(&folded_remove);
+    user_folded.append(&folded_open);
+    let user_id = board.add_card(
+        &user_card,
+        CardConfig {
+            title: Some("User".to_string()),
+            position: CardAnchor::TopLeft,
+            sticky: true,
+            foldable: true,
+            folded_content: Some(user_folded.clone().upcast()),
+            ..Default::default()
+        },
+    );
+    let add_button_clone = add_user_button.clone();
+    folded_add.connect_clicked(move |_| add_button_clone.emit_clicked());
+    let remove_button_clone = remove_user_button.clone();
+    folded_remove.connect_clicked(move |_| remove_button_clone.emit_clicked());
+    if let Ok(card) = board.card(&user_id) {
+        folded_open.connect_clicked(move |_| card.set_folded(false));
+    }
+
+    // Layout: how cards travel and align. The Seats switch picks the
+    // pass semantics, Seats @ view anchors seats at the screen edge.
+    let layout_card = gtk4::Box::new(Orientation::Vertical, 4);
+    let mode_row = gtk4::Box::new(Orientation::Horizontal, 4);
+    mode_row.append(&Label::new(Some("Table")));
+    mode_row.append(&mode_switch);
+    mode_row.append(&mode_label);
+    layout_card.append(&mode_row);
+    let layout_row = gtk4::Box::new(Orientation::Horizontal, 4);
+    layout_row.append(&rotate_button);
+    layout_row.append(&arrange_button);
+    layout_row.append(&pass_button);
+    layout_row.append(&goto_button);
+    layout_card.append(&layout_row);
+    layout_card.append(&explain(
+        "Seats: passes hop to the next occupied seat; off: one side.\nSeats @ view: seats at the screen edge, off: workspace.\nRotate/Arrange all cards, Pass/Goto the controls card.",
+    ));
+    let _layout_id = board.add_card(
+        &layout_card,
+        CardConfig {
+            title: Some("Layout".to_string()),
+            position: CardAnchor::CenterLeft,
+            sticky: true,
+            foldable: true,
+            ..Default::default()
+        },
+    );
+
+    // Settings: camera and goto behavior.
+    let settings_card = gtk4::Box::new(Orientation::Vertical, 4);
+    let settings_row = gtk4::Box::new(Orientation::Horizontal, 4);
+    settings_row.append(&gestures_check);
+    settings_row.append(&buttons_check);
+    settings_card.append(&settings_row);
+    let goto_row = gtk4::Box::new(Orientation::Horizontal, 4);
+    goto_row.append(&seat_anchor_check);
+    goto_row.append(&prezi_check);
+    goto_row.append(&upright_check);
+    settings_card.append(&goto_row);
+    settings_card.append(&explain(
+        "View gestures: pan/zoom/rotate on empty space.\nView buttons: the camera card bottom-right.\nPrezi goto: pull back to an overview first.\nGoto upright: turn the target card readable.",
+    ));
+    // Folds into a single round burger-menu button.
+    let settings_folded = Button::from_icon_name("open-menu-symbolic");
+    settings_folded.add_css_class("round-button");
+    settings_folded.set_tooltip_text(Some("Settings"));
+    let settings_id = board.add_card(
+        &settings_card,
+        CardConfig {
+            title: Some("Settings".to_string()),
+            position: CardAnchor::TopRight,
+            sticky: true,
+            foldable: true,
+            folded_content: Some(settings_folded.clone().upcast()),
+            ..Default::default()
+        },
+    );
+    if let Ok(card) = board.card(&settings_id) {
+        settings_folded.connect_clicked(move |_| card.set_folded(false));
+    }
+
+    // Session: board content and persistence.
+    let session_card = gtk4::Box::new(Orientation::Vertical, 4);
+    let session_row = gtk4::Box::new(Orientation::Horizontal, 4);
+    session_row.append(&add_button);
+    session_row.append(&snapshot_button);
+    session_row.append(&restore_button);
+    session_card.append(&session_row);
+    session_card.append(&explain(
+        "Add card: spawn a dynamic card (pass/goto/sticky\nbuttons inside). Snapshot/Restore round-trips\ngeometry, seats, workspace and view.",
+    ));
+    let _session_id = board.add_card(
+        &session_card,
+        CardConfig {
+            title: Some("Session".to_string()),
+            position: CardAnchor::BottomLeft,
+            sticky: true,
+            foldable: true,
+            ..Default::default()
+        },
+    );
+
     // Opt-in view control: pan/zoom/rotate on empty space, corner
     // buttons - both off by default, toggled live by the checks.
     {
@@ -294,7 +488,9 @@ fn build_ui(application: &gtk4::Application) {
     }
     {
         let board = board.clone();
-        buttons_check.connect_toggled(move |check| board.set_view_buttons(check.is_active()));
+        buttons_check.connect_toggled(move |check| {
+            let _ = board.set_card_visible(&view_card_id, check.is_active());
+        });
     }
     {
         let board = board.clone();
@@ -303,7 +499,6 @@ fn build_ui(application: &gtk4::Application) {
         });
     }
 
-    content.append(&toolbar);
     content.append(&board);
     content.append(&status);
 
@@ -419,6 +614,9 @@ fn build_ui(application: &gtk4::Application) {
                 foldable: true,
                 max_width: Some(Pixels::new(300.0)),
                 seat: Some(Seat::at(TableSide::Top, Fraction::new(0.75))),
+                // Pinned to the glass: keeps its spot while the camera
+                // pans, zooms or rotates (passing it releases the pin).
+                sticky: true,
                 ..Default::default()
             },
         )
@@ -489,10 +687,13 @@ fn build_ui(application: &gtk4::Application) {
             let prev_button = Button::with_label("Prev →");
             let next_button = Button::with_label("← Next");
             let goto_button = Button::with_label("Goto");
+            let sticky_button = gtk4::CheckButton::with_label("Sticky");
+            sticky_button.set_tooltip_text(Some("Pin to the screen - stays put while the view moves"));
             let badge = Label::new(None);
             row.append(&next_button);
             row.append(&prev_button);
             row.append(&goto_button);
+            row.append(&sticky_button);
             row.append(&badge);
             body.append(&row);
             let id = board.add_card(
@@ -531,6 +732,13 @@ fn build_ui(application: &gtk4::Application) {
                 let goto_card = goto_card.clone();
                 let id = id.clone();
                 goto_button.connect_clicked(move |_| goto_card(&id));
+            }
+            {
+                let board = board.clone();
+                let id = id.clone();
+                sticky_button.connect_toggled(move |button| {
+                    let _ = board.set_card_sticky(&id, button.is_active());
+                });
             }
             info!(card = %id, "dynamic card added");
         });

@@ -43,6 +43,7 @@ Features:
   whole card or a grip icon). Headerless and fully chrome-less cards are supported.
 - **Virtual workspace and camera**: card geometry lives in workspace coordinates on a surface that can be `FollowWidget` sized, `Fixed`
   sized or `Infinite`. A `View` camera maps the workspace onto the widget and can be panned, zoomed and rotated, per flag-gated gestures,
+  or pinned per card (`sticky`) so chrome stays put on the glass while the table moves beneath it
   overlaid control buttons or programmatic API.
 - **`goto_card` camera flights**: fly the camera onto a card and center it, optionally turning it upright for the viewer. `GotoTransition`
   selects between `Snap`, a direct `Glide`, and a `Transit` flight that pulls back to an overview first, Prezi style.

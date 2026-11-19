@@ -8,6 +8,7 @@ use crate::widget::board::FloatingBoard;
 use crate::widget::card_config::CardConfig;
 use crate::widget::card_layer::CardLayer;
 use crate::widget::card_signal::CardSignal;
+use crate::widget::css::CLASS_COLLAPSED;
 use crate::widget::css::CLASS_FOLDED;
 use crate::widget::css::CLASS_HEADERLESS;
 use crate::widget::css::install_palette;
@@ -117,6 +118,9 @@ impl Card {
             holder.set_margin_end(padding);
             holder.append(content);
         }
+        if let (Some(folded), Some(holder)) = (&config.folded_content, imp.folded_holder.get()) {
+            holder.append(folded);
+        }
         card
     }
 
@@ -136,13 +140,16 @@ impl Card {
         self.imp().board.borrow().upgrade()
     }
 
-    /// Current geometry (center position, rotation, scale).
+    /// Current geometry (center position, rotation, scale). For a
+    /// `sticky` card the position is expressed in widget pixels; all
+    /// other cards report workspace coordinates.
     pub fn geometry(&self) -> CardGeometry {
         self.board().and_then(|board| board.card_geometry(&self.id())).unwrap_or_default()
     }
 
     /// Applies a full geometry update (position + rotation + scale), clamped
-    /// to the board bounds.
+    /// to the board bounds. For a `sticky` card `geometry` is expressed in
+    /// widget pixels.
     pub fn set_geometry(&self, geometry: &CardGeometry) {
         if let Some(board) = self.board() {
             board.set_card_geometry(&self.id(), geometry);
@@ -206,6 +213,24 @@ impl Card {
     pub fn set_seat(&self, seat: Option<Seat>) {
         if let Some(board) = self.board() {
             let _ = board.set_card_seat(&self.id(), seat);
+        }
+    }
+
+    /// Whether the card is pinned to the screen: a sticky card keeps
+    /// its on-screen position, rotation and zoom while the view camera
+    /// pans, zooms or rotates (`CardConfig::sticky`).
+    pub fn sticky(&self) -> bool {
+        self.board().and_then(|board| board.card_sticky(&self.id()).ok()).unwrap_or(false)
+    }
+
+    /// Pins the card to the screen (`true`) or releases it back onto
+    /// the workspace (`false`). Toggling never moves the card
+    /// visually - the stored geometry converts between workspace and
+    /// widget coordinates at the seam. See
+    /// [`FloatingBoard::set_card_sticky`].
+    pub fn set_sticky(&self, sticky: bool) {
+        if let Some(board) = self.board() {
+            let _ = board.set_card_sticky(&self.id(), sticky);
         }
     }
 
@@ -301,25 +326,43 @@ impl Card {
         self.set_folded(!self.folded());
     }
 
-    /// Folds or unfolds the card: folding hides the content and keeps only the
-    /// header strip (`.floating-card-folded`), unfolding restores it.
+    /// Folds or unfolds the card. With `CardConfig::folded_content` set,
+    /// folding swaps the whole card - header included - for that widget
+    /// (`.floating-card-collapsed` strips the chrome); without it, folding
+    /// hides the content and keeps only the header strip
+    /// (`.floating-card-folded`). Unfolding restores the full card.
     pub fn set_folded(&self, folded: bool) {
         let imp = self.imp();
         if imp.folded.get() == folded {
             return;
         }
         imp.folded.set(folded);
+        let collapsed = imp.folded_holder.get().is_some_and(|holder| holder.first_child().is_some());
         if let Some(holder) = imp.content_holder.get() {
             if folded {
-                // Pin the card width while folded: without the content the
-                // natural width shrinks to the header alone and the fold
-                // button would end up outside the shrunken header.
-                let (_, natural) = self.measure_size();
-                self.set_size_request(natural.x, -1);
+                // Pin the card width while folded to the header: without
+                // the content the natural width shrinks and the fold
+                // button would end up outside the shrunken header. A
+                // collapsed card is meant to shrink instead.
+                if !collapsed {
+                    let (_, natural) = self.measure_size();
+                    self.set_size_request(natural.x, -1);
+                }
             } else {
                 self.set_size_request(-1, -1);
             }
             holder.set_visible(!folded);
+        }
+        // A custom folded widget replaces the header too; restore it on
+        // unfold (the header is always visible while unfolded, also in
+        // headerless mode where CSS slims it).
+        if let Some(header) = imp.header.get()
+            && collapsed
+        {
+            header.set_visible(!folded);
+        }
+        if let Some(holder) = imp.folded_holder.get() {
+            holder.set_visible(folded && collapsed);
         }
         // The grips sit on the content overlay - hide them while folded.
         if let Some(grip) = imp.resize_grip.get() {
@@ -334,8 +377,12 @@ impl Card {
         }
         if folded {
             self.add_css_class(CLASS_FOLDED);
+            if collapsed {
+                self.add_css_class(CLASS_COLLAPSED);
+            }
         } else {
             self.remove_css_class(CLASS_FOLDED);
+            self.remove_css_class(CLASS_COLLAPSED);
         }
         // Folding changes the measured size; the center anchor must be kept.
         if let Some(board) = self.board() {

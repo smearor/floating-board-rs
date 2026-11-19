@@ -17,6 +17,12 @@
     min-height: 10px;
     padding: 2px 8px;
 }
+/* Folded into consumer-supplied `folded_content`: the chrome steps
+   back so the collapsed widget defines the whole look. */
+.floating-card-collapsed {
+    background: none;
+    box-shadow: none;
+}
 /* No default padding: `CardConfig::content_padding` supplies it as a
    margin on the content holder so it is adjustable per card. */
 .floating-card-handle {

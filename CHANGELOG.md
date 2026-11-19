@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `CardConfig::folded_content`: folding a card can now swap the whole
+  card (header included) for a consumer-supplied widget - a round icon
+  button, a compact mini view, etc. The `floating-card-collapsed` class
+  strips the chrome while folded; wire the widget to `set_folded(false)`
+  to unfold. `None` keeps the existing header-strip fold.
+- Sticky cards: `CardConfig::sticky` / `FloatingBoard::set_card_sticky` /
+  `Card::set_sticky` pin a card to the screen - it keeps its on-screen
+  position, rotation and zoom while the view pans, zooms or rotates.
+  Toggling converts the stored geometry between workspace and widget
+  coordinates without moving the card; sticky cards skip
+  `apply_layout`, clamp against the widget rect, persist via
+  `CardPlacement::sticky`, and passing one to a seat releases the pin.
 
 - `FloatingBoard` composite widget: internal `GtkOverlay` stacking a transparent `GtkFixed` card layer over the consumer's content widget; gestures on empty areas fall through to the content.
 - `Card` widgets (`ScalingWidget` > `RotationWidget` > `Card` transform stack) that can be moved, rotated and scaled independently, designed for table-top multitouch surfaces.

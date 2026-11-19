@@ -85,6 +85,8 @@ let controls_id = board.add_card_with_id(
 | `max_width` / `max_height` | `Option<i32>` | `None` | Hard cap on the measured size — keeps the card stable when content changes size |
 | `animation_speed_ms` | `u64` | `500` | Duration of rotation and layout animations |
 | `seat` | `Option<Seat>` | `None` | Tabletop seat the card is assigned to — independent of its visual rotation |
+| `sticky` | `bool` | `false` | Pin the card to the screen: it keeps position, rotation and zoom while the view moves |
+| `folded_content` | `Option<Widget>` | `None` | Custom widget shown while folded instead of the header strip (round button, compact view) |
 | `z_index` | `Option<i32>` | `None` | Initial stacking order; `None` appends on top |
 
 `CardConfig::default()` yields a fully interactive card anchored at the board
@@ -109,6 +111,25 @@ card.raise();
 card.set_folded(true);   // or card.fold() to toggle
 let folded = card.folded();
 card.close();            // runs the configured close action (remove or hide)
+```
+
+`CardConfig::folded_content` replaces the whole card while folded,
+header included: folding hides the chrome and shows that widget
+instead (`.floating-card-collapsed` makes the card background
+transparent). Wire the folded widget to `set_folded(false)` or
+`fold()` - the card's own fold button hides with the header. A round
+icon button or a compact mini toolbar both work:
+
+```rust,ignore
+let collapsed = Button::from_icon_name("open-menu-symbolic");
+board.add_card(&body, CardConfig {
+    foldable: true,
+    folded_content: Some(collapsed.clone().upcast()),
+    ..Default::default()
+});
+let card = board.card(&id)?;
+collapsed.connect_clicked(move |_| card.set_folded(false));
+
 
 // The rotated footprint in board coordinates — union of all footprints is
 // the dynamic safe-area of the board.
@@ -276,6 +297,36 @@ reads upright, `Keep` pans/zooms only). Flights run on the frame clock
 over the card's `animation_speed_ms`; a new `goto_card` supersedes a
 running one and any programmatic or gesture view change cancels it.
 The destination pins like `set_view` — `reset_view` releases it.
+A `sticky` target is pinned to the glass itself, so the camera moves
+to the workspace region behind it and `rotation` is ignored.
+
+### Sticky cards
+
+`CardConfig::sticky` (or `card.set_sticky(true)`) pins a card to the
+screen instead of the workspace. A sticky card keeps its on-screen
+position, rotation and zoom no matter how the view pans, zooms or
+rotates — like chrome glued to the glass rather than a sheet on the
+table. It still clamps against the widget rect, and its gestures work
+in screen coordinates.
+
+```rust,ignore
+board.add_card("sticky-hud", &content, CardConfig {
+    position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(900.0, 60.0))),
+    sticky: true,
+    ..Default::default()
+});
+
+// Toggling never moves the card visually: the stored geometry
+// converts between workspace and widget coordinates at the seam.
+card.set_sticky(false); // release back onto the table
+```
+
+While pinned, the card's stored position is in widget pixels (also in
+`Card::geometry()` and layout snapshots); all other cards use
+workspace coordinates. Sticky cards are skipped by `apply_layout`,
+count as obstacles for seat passes only under `SeatAnchor::View`, and
+passing one to a seat releases the pin first — a card handed to
+another user always lands on the table.
 
 ### Seats and the camera
 
@@ -374,6 +425,8 @@ The crate ships a default stylesheet registered with
 | `.floating-card-content` | the content area |
 | `.floating-card-handle` | the grip icon (`DragHandle::Handle`) |
 | `.floating-card-folded` | added while folded |
+| `.floating-card-collapsed` | added while folded with `folded_content` (chrome stripped) |
+| `.floating-card-folded-content` | wrapper around `folded_content` while folded |
 | `.floating-card-headerless` | added for `headerless` cards |
 
 The few crate-owned strings (untitled fallback, fold/close tooltips) are

@@ -31,6 +31,12 @@ pub struct CardPlacement {
     /// field existed.
     #[cfg_attr(feature = "serde", serde(default))]
     pub seat: Option<Seat>,
+    /// Whether the card is pinned to the screen (`CardConfig::sticky`).
+    /// Sticky geometry is stored in widget pixels, not workspace
+    /// coordinates. Defaults to `false` when reading layouts written
+    /// before the field existed.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub sticky: bool,
 }
 
 impl CardPlacement {
@@ -41,12 +47,18 @@ impl CardPlacement {
             geometry,
             folded,
             seat: None,
+            sticky: false,
         }
     }
 
     /// Returns the placement with the given seat assignment.
     pub fn with_seat(self, seat: Option<Seat>) -> Self {
         Self { seat, ..self }
+    }
+
+    /// Returns the placement with the given sticky flag.
+    pub fn with_sticky(self, sticky: bool) -> Self {
+        Self { sticky, ..self }
     }
 }
 

@@ -25,6 +25,16 @@ pub const CLASS_CONTENT: &str = "floating-card-content";
 pub const CLASS_HANDLE: &str = "floating-card-handle";
 /// CSS class applied while a card is folded.
 pub const CLASS_FOLDED: &str = "floating-card-folded";
+
+/// Added alongside [`CLASS_FOLDED`] when the card folds into
+/// consumer-supplied `CardConfig::folded_content` instead of the
+/// header strip: the card chrome becomes transparent so the folded
+/// widget (a round button, a compact toolbar, ...) defines the look.
+pub const CLASS_COLLAPSED: &str = "floating-card-collapsed";
+
+/// Wrapper around `CardConfig::folded_content` while the card is
+/// folded; style custom collapsed looks against it.
+pub const CLASS_FOLDED_CONTENT: &str = "floating-card-folded-content";
 /// CSS class of the bottom-right resize grip (`CardConfig::resizable`).
 pub const CLASS_RESIZE_GRIP: &str = "floating-card-resize-grip";
 /// CSS class of the bottom-left rotate grip (`CardConfig::rotate_grip`).

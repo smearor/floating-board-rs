@@ -92,6 +92,10 @@ pub(crate) struct CardEntry {
     /// `Some` mirrors `config.seat` until a seat-changing operation
     /// (pass to next user) updates it.
     pub seat: Cell<Option<Seat>>,
+    /// Pinned to the screen (`CardConfig::sticky`): the card bypasses
+    /// the view camera - position, rotation and scale are widget-space
+    /// while set.
+    pub sticky: Cell<bool>,
     /// Generation counter of the running layout animation - a new
     /// `apply_layout` call bumps it and stale frame callbacks stop
     /// themselves instead of fighting the new animation.

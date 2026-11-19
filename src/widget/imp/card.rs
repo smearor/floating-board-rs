@@ -74,6 +74,9 @@ pub struct CardImpl {
     pub rotate_grip_enabled: Cell<bool>,
     /// Whether the card is currently folded to its header.
     pub folded: Cell<bool>,
+    /// Container for `CardConfig::folded_content` - visible only while
+    /// folded with a custom folded widget installed.
+    pub folded_holder: OnceCell<gtk4::Box>,
     /// Upper bound on the reported width (`CardConfig::max_width`).
     pub max_width: Cell<Option<Pixels>>,
     /// Upper bound on the reported height (`CardConfig::max_height`).
@@ -96,6 +99,7 @@ impl Default for CardImpl {
             rotate_grip: OnceCell::new(),
             rotate_grip_enabled: Cell::new(false),
             folded: Cell::new(false),
+            folded_holder: OnceCell::new(),
             max_width: Cell::new(None),
             max_height: Cell::new(None),
         }
@@ -158,8 +162,13 @@ impl ObjectImpl for CardImpl {
         let rotate_grip = rotate_grip();
         content_overlay.add_overlay(&rotate_grip);
 
+        let folded_holder = gtk4::Box::new(Orientation::Horizontal, 0);
+        folded_holder.add_css_class(crate::widget::css::CLASS_FOLDED_CONTENT);
+        folded_holder.set_visible(false);
+
         card.append(&header);
         card.append(&content_overlay);
+        card.append(&folded_holder);
 
         let _ = self.header.set(header);
         let _ = self.content_holder.set(content_holder);
@@ -169,6 +178,7 @@ impl ObjectImpl for CardImpl {
         let _ = self.close_button.set(close_button);
         let _ = self.resize_grip.set(resize_grip);
         let _ = self.rotate_grip.set(rotate_grip);
+        let _ = self.folded_holder.set(folded_holder);
     }
 
     fn signals() -> &'static [Signal] {

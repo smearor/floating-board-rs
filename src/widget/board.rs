@@ -234,6 +234,7 @@ impl FloatingBoard {
             watched: RefCell::new(HashSet::new()),
             sequence,
             seat: Cell::new(config.seat),
+            sticky: Cell::new(config.sticky),
             layout_generation: Cell::new(GenerationCounter::default()),
             glide_target: Cell::new(None),
         };
@@ -310,7 +311,13 @@ impl FloatingBoard {
     pub fn card_alignment(&self, card: &Card) -> CardAlignment {
         let position = card.geometry().position;
         let rendered = card.rendered_bounds();
-        let rendered_center = self.view().to_widget(position.0, self.widget_bounds());
+        let rendered_center = {
+            let cards = self.imp().cards.borrow();
+            match cards.get(&card.id()) {
+                Some(entry) => self.card_view(entry).to_widget(position.0, self.widget_bounds()),
+                None => position.0,
+            }
+        };
         CardAlignment {
             card_id: card.id(),
             position,
@@ -329,7 +336,11 @@ impl FloatingBoard {
         let mut layout = BoardLayout::new(
             cards
                 .iter()
-                .map(|(id, entry)| CardPlacement::new(id.clone(), self.entry_geometry(entry), entry.card.folded()).with_seat(entry.seat.get()))
+                .map(|(id, entry)| {
+                    CardPlacement::new(id.clone(), self.entry_geometry(entry), entry.card.folded())
+                        .with_seat(entry.seat.get())
+                        .with_sticky(entry.sticky.get())
+                })
                 .collect(),
         );
         layout.workspace = self.imp().workspace_size.get();
@@ -354,6 +365,7 @@ impl FloatingBoard {
                 let cards = self.imp().cards.borrow();
                 match cards.get(&placement.id) {
                     Some(entry) => {
+                        entry.sticky.set(placement.sticky);
                         entry.position.set(placement.geometry.position);
                         entry.scale.set(placement.geometry.scale.clamped(&entry.config.scale_limits));
                         entry.pending_anchor.borrow_mut().take();
@@ -372,8 +384,13 @@ impl FloatingBoard {
             };
             // Notify handlers re-borrow the card map, so widget calls happen
             // outside of it.
-            rotation_widget.set_rotation(SmearorRotation::from(placement.geometry.rotation.to_rotation_rad() + self.view().rotation));
-            scaling.set_scale(placement.geometry.scale.value() * self.view_zoom());
+            {
+                let cards = self.imp().cards.borrow();
+                if let Some(entry) = cards.get(&placement.id) {
+                    rotation_widget.set_rotation(SmearorRotation::from(placement.geometry.rotation.to_rotation_rad() + self.card_view(entry).rotation));
+                    scaling.set_scale(placement.geometry.scale.value() * self.card_view_zoom(entry));
+                }
+            }
             card.set_folded(placement.folded);
             let _ = self.set_card_seat(&placement.id, placement.seat);
             let cards = self.imp().cards.borrow();
@@ -418,11 +435,15 @@ impl FloatingBoard {
                         let Some(entry) = cards.get(id) else {
                             return Err(BoardError::UnknownCard(id.clone()));
                         };
-                        selected.push((id.clone(), entry.scale.get(), self.layout_item(entry)));
+                        // Sticky cards are pinned to the screen and do
+                        // not participate in workspace layouts.
+                        if !entry.sticky.get() {
+                            selected.push((id.clone(), entry.scale.get(), self.layout_item(entry)));
+                        }
                     }
                 }
                 None => {
-                    let mut visible: Vec<(&CardId, &CardEntry)> = cards.iter().filter(|(_, entry)| entry.scaling.is_visible()).collect();
+                    let mut visible: Vec<(&CardId, &CardEntry)> = cards.iter().filter(|(_, entry)| entry.scaling.is_visible() && !entry.sticky.get()).collect();
                     visible.sort_by_key(|(_, entry)| entry.sequence);
                     for (id, entry) in visible {
                         selected.push((id.clone(), entry.scale.get(), self.layout_item(entry)));
@@ -523,6 +544,8 @@ impl FloatingBoard {
     }
 
     /// Applies a full geometry update, clamped to the board bounds.
+    /// For a sticky card `geometry` is expressed in widget pixels,
+    /// not workspace coordinates.
     pub(crate) fn set_card_geometry(&self, id: &CardId, geometry: &CardGeometry) {
         let (rotation_widget, scaling, scale) = {
             let cards = self.imp().cards.borrow();
@@ -537,33 +560,37 @@ impl FloatingBoard {
                 None => return,
             }
         };
-        rotation_widget.set_rotation(SmearorRotation::from(geometry.rotation.to_rotation_rad() + self.view().rotation));
-        scaling.set_scale(scale.value() * self.view_zoom());
-        let cards = self.imp().cards.borrow();
-        if let Some(entry) = cards.get(id) {
-            self.apply_position(entry);
-            self.clamp_entry(entry);
+        {
+            let cards = self.imp().cards.borrow();
+            if let Some(entry) = cards.get(id) {
+                rotation_widget.set_rotation(SmearorRotation::from(geometry.rotation.to_rotation_rad() + self.card_view(entry).rotation));
+                scaling.set_scale(scale.value() * self.card_view_zoom(entry));
+                self.apply_position(entry);
+                self.clamp_entry(entry);
+            }
         }
-        drop(cards);
         self.emit_geometry_changed();
     }
 
     /// Sets the card rotation immediately (no animation).
     pub(crate) fn set_card_rotation(&self, id: &CardId, rotation: Rotation) {
-        let rotation_widget = self.imp().cards.borrow().get(id).map(|entry| entry.rotation_widget.clone());
-        if let Some(rotation_widget) = rotation_widget {
+        let cards = self.imp().cards.borrow();
+        if let Some(entry) = cards.get(id) {
             // The notify::rotation handler performs re-centering, clamping and
             // signal emission. The widget carries the rendered rotation -
-            // card rotation plus the view's on-screen rotation.
-            rotation_widget.set_rotation(SmearorRotation::from(rotation.to_rotation_rad() + self.view().rotation));
+            // card rotation plus the view's on-screen rotation (identity
+            // for sticky cards).
+            let rendered = rotation.to_rotation_rad() + self.card_view(entry).rotation;
+            entry.rotation_widget.set_rotation(SmearorRotation::from(rendered));
         }
     }
 
     /// Sets the card rotation with the zoom-snap animation.
     pub(crate) fn set_card_rotation_animated(&self, id: &CardId, rotation: Rotation) {
-        let rotation_widget = self.imp().cards.borrow().get(id).map(|entry| entry.rotation_widget.clone());
-        if let Some(rotation_widget) = rotation_widget {
-            rotation_widget.set_rotation_with_animation(rotation.to_rotation_rad() + self.view().rotation);
+        let cards = self.imp().cards.borrow();
+        if let Some(entry) = cards.get(id) {
+            let rendered = rotation.to_rotation_rad() + self.card_view(entry).rotation;
+            entry.rotation_widget.set_rotation_with_animation(rendered);
         }
     }
 
@@ -576,7 +603,7 @@ impl FloatingBoard {
             };
             let scale = scale.clamped(&entry.config.scale_limits);
             entry.scale.set(scale);
-            entry.scaling.set_scale(scale.value() * self.view_zoom());
+            entry.scaling.set_scale(scale.value() * self.card_view_zoom(entry));
             self.apply_position(entry);
             self.clamp_entry(entry);
             entry.card.clone()
@@ -593,14 +620,20 @@ impl FloatingBoard {
     /// applies the interim state); the anchor then resolves against the
     /// reset footprint.
     pub fn reset_card(&self, id: &CardId) -> Result<(), BoardError> {
-        let (rotation_widget, scaling) = {
+        let (rotation_widget, scaling, sticky) = {
             let cards = self.imp().cards.borrow();
             let entry = cards.get(id).ok_or_else(|| BoardError::UnknownCard(id.clone()))?;
             entry.scale.set(ScaleFactor::default());
-            (entry.rotation_widget.clone(), entry.scaling.clone())
+            (entry.rotation_widget.clone(), entry.scaling.clone(), entry.sticky.get())
         };
-        rotation_widget.set_rotation(SmearorRotation::from(self.view().rotation));
-        scaling.set_scale(self.view_zoom());
+        rotation_widget.set_rotation(SmearorRotation::from(match sticky {
+            true => RotationRad::ZERO,
+            false => self.view().rotation,
+        }));
+        scaling.set_scale(match sticky {
+            true => 1.0,
+            false => self.view_zoom(),
+        });
         {
             let cards = self.imp().cards.borrow();
             let Some(entry) = cards.get(id) else {
@@ -612,7 +645,10 @@ impl FloatingBoard {
                     entry.position.set(position);
                 }
                 anchor => {
-                    let bounds = self.workspace_bounds();
+                    let bounds = match entry.sticky.get() {
+                        true => self.widget_bounds(),
+                        false => self.workspace_bounds(),
+                    };
                     if bounds.is_degenerate() {
                         entry.pending_anchor.replace(Some(anchor));
                     } else {
@@ -731,6 +767,63 @@ impl FloatingBoard {
         Ok(())
     }
 
+    /// Whether the card is pinned to the screen (`CardConfig::sticky`).
+    pub fn card_sticky(&self, id: &CardId) -> Result<bool, BoardError> {
+        let cards = self.imp().cards.borrow();
+        let Some(entry) = cards.get(id) else {
+            return Err(BoardError::UnknownCard(id.clone()));
+        };
+        Ok(entry.sticky.get())
+    }
+
+    /// Pins the card to the screen (`sticky = true`) or releases it
+    /// back onto the workspace (`false`). A sticky card ignores the
+    /// `View` camera entirely: it keeps its on-screen position,
+    /// rotation and zoom while the view pans, zooms or rotates, and
+    /// it clamps against the widget rect.
+    ///
+    /// Toggling never moves the card visually: the stored geometry
+    /// switches space at the seam - pinning captures the current
+    /// rendered geometry into widget pixels, releasing maps it back
+    /// through `to_workspace`. Sticky cards are skipped by
+    /// [`Self::apply_layout`], and passing one to a seat releases the
+    /// pin first (`rotate_to_next_user`,
+    /// `rotate_to_next_occupied_seat`).
+    ///
+    /// Returns [`BoardError::UnknownCard`] for an id not on the board.
+    pub fn set_card_sticky(&self, id: &CardId, sticky: bool) -> Result<(), BoardError> {
+        let cards = self.imp().cards.borrow();
+        let Some(entry) = cards.get(id) else {
+            return Err(BoardError::UnknownCard(id.clone()));
+        };
+        if entry.sticky.get() == sticky {
+            return Ok(());
+        }
+        let view = self.view();
+        let widget = self.widget_bounds();
+        if sticky {
+            // Workspace -> screen: capture the rendered geometry.
+            if !widget.is_degenerate() {
+                entry.position.set(CardPosition::from(view.to_widget(entry.position.get().into(), widget)));
+            }
+            entry.rotation.set((entry.rotation.get() + view.rotation).normalized());
+            entry.scale.set(ScaleFactor::new(entry.scale.get().value() * self.view_zoom()));
+        } else {
+            // Screen -> workspace: map back through the view.
+            if !widget.is_degenerate() {
+                entry.position.set(CardPosition::from(view.to_workspace(entry.position.get().into(), widget)));
+            }
+            entry.rotation.set((entry.rotation.get() - view.rotation).normalized());
+            entry.scale.set(ScaleFactor::new(entry.scale.get().value() / self.view_zoom()));
+        }
+        entry.sticky.set(sticky);
+        self.sync_rendered_transform(entry);
+        self.clamp_entry(entry);
+        drop(cards);
+        self.emit_geometry_changed();
+        Ok(())
+    }
+
     /// Whether the card's transform stack is currently shown.
     pub fn is_card_visible(&self, id: &CardId) -> Result<bool, BoardError> {
         let cards = self.imp().cards.borrow();
@@ -744,8 +837,8 @@ impl FloatingBoard {
     /// rotation, centered on its board position.
     fn entry_footprint(&self, entry: &CardEntry) -> Region {
         let (_, natural) = entry.card.measure_size();
-        let scale = entry.scale.get().value() * self.view_zoom();
-        let view = self.view();
+        let scale = entry.scale.get().value() * self.card_view_zoom(entry);
+        let view = self.card_view(entry);
         let center = view.to_widget(entry.position.get().into(), self.widget_bounds());
         let footprint = Rect::<Pixels>::centered(center, natural.to_f64().with_unit::<Pixels>() * scale);
         footprint.rotated_region(entry.rotation.get() + view.rotation).unwrap_or_else(|error| {
@@ -788,8 +881,8 @@ impl FloatingBoard {
         {
             surface.set_input_region(None);
         }
-        let bounds = self.workspace_bounds();
-        if bounds.is_degenerate() {
+        let workspace = self.workspace_bounds();
+        if workspace.is_degenerate() {
             return;
         }
         let mut resolved = false;
@@ -797,6 +890,12 @@ impl FloatingBoard {
             let cards = self.imp().cards.borrow();
             for entry in cards.values() {
                 if let Some(anchor) = entry.pending_anchor.borrow_mut().take() {
+                    // Sticky anchors resolve against the widget rect -
+                    // their geometry lives in screen coordinates.
+                    let bounds = match entry.sticky.get() {
+                        true => self.widget_bounds(),
+                        false => workspace,
+                    };
                     let footprint = self.workspace_card_size(entry);
                     entry.position.set(anchor.resolve(&bounds, footprint, entry.config.anchor_margin));
                     resolved = true;
@@ -827,7 +926,7 @@ impl FloatingBoard {
             // The widget carries card rotation + view rotation; the model
             // keeps the workspace part. Synced before position/clamp work
             // reads it.
-            entry.rotation.set(entry.rotation_widget.rotation() - self.view().rotation);
+            entry.rotation.set(entry.rotation_widget.rotation() - self.card_view(entry).rotation);
             // smearor-wrot-rotation queues allocation rather than resize, so
             // the RotatedLayout measure would stay stale; `layout_changed`
             // invalidates the measure chain and a 90 degree turn correctly
@@ -875,21 +974,23 @@ impl FloatingBoard {
                 // (slot + emulated/pointer dupe) would look identical
                 // here - sequence address + device distinguishes them.
                 info!(card = %id, sequence = ?sequence, "quad touch begin");
-                if let Some(point) = self.event_point_in_workspace(controller, event) {
+                {
                     let cards = self.imp().cards.borrow();
-                    if let Some(entry) = cards.get(id) {
+                    if let Some(entry) = cards.get(id)
+                        && let Some(point) = self.event_point_in_workspace(entry, controller, event)
+                    {
                         self.activate_quad_touch(entry, sequence, point, card_drag, click);
                     }
                 }
                 self.emit_geometry_changed();
             }
             EventType::TouchUpdate => {
-                let Some(point) = self.event_point_in_workspace(controller, event) else {
-                    return;
-                };
                 {
                     let cards = self.imp().cards.borrow();
                     let Some(entry) = cards.get(id) else {
+                        return;
+                    };
+                    let Some(point) = self.event_point_in_workspace(entry, controller, event) else {
                         return;
                     };
                     let tracked = {
@@ -1097,12 +1198,18 @@ impl FloatingBoard {
     /// layer point mapped back through the view (input path). `None`
     /// while the widget is degenerate (the inverse map cannot scale
     /// by zero).
-    fn event_point_in_workspace(&self, controller: &EventControllerLegacy, event: &gtk4::gdk::Event) -> Option<Vec2<Pixels>> {
+    fn event_point_in_workspace(&self, entry: &CardEntry, controller: &EventControllerLegacy, event: &gtk4::gdk::Event) -> Option<Vec2<Pixels>> {
         let widget = self.widget_bounds();
         if widget.is_degenerate() {
             return None;
         }
-        Some(self.view().to_workspace(self.event_point_in_layer(controller, event)?, widget))
+        let layer_point = self.event_point_in_layer(controller, event)?;
+        // Sticky cards live in widget coordinates - their input path
+        // skips the view inverse just like their render path does.
+        match entry.sticky.get() {
+            true => Some(layer_point),
+            false => Some(self.view().to_workspace(layer_point, widget)),
+        }
     }
 
     /// Takes a fresh baseline: current geometry plus the live quad points.
@@ -1175,7 +1282,7 @@ impl FloatingBoard {
             }
         }
         if entry.config.rotatable {
-            let rendered = baseline.rotation + angle + self.view().rotation;
+            let rendered = baseline.rotation + angle + self.card_view(entry).rotation;
             if rendered.signed_delta_to(entry.rotation_widget.rotation()).abs() > RotationRad::from_degrees(0.01) {
                 baseline.rotated = true;
                 entry.rotation_widget.set_rotation(SmearorRotation::from(rendered));
@@ -1184,7 +1291,7 @@ impl FloatingBoard {
         if entry.config.scalable && scale != entry.scale.get() {
             baseline.scaled = true;
             entry.scale.set(scale);
-            entry.scaling.set_scale(scale.value() * self.view_zoom());
+            entry.scaling.set_scale(scale.value() * self.card_view_zoom(entry));
         }
         drop(baseline_ref);
         self.apply_position(entry);
@@ -1199,7 +1306,7 @@ impl FloatingBoard {
     fn on_card_drag_begin(&self, id: &CardId, gesture: &GestureDrag) {
         if let Some(entry) = self.imp().cards.borrow().get(id) {
             entry.drag_start.set(entry.position.get());
-            entry.drag_grab.set(self.pointer_in_workspace(gesture));
+            entry.drag_grab.set(self.pointer_in_workspace(entry, gesture));
         }
     }
 
@@ -1251,7 +1358,7 @@ impl FloatingBoard {
     /// rotated card resizes identically to an unrotated one.
     fn on_card_resize_begin(&self, id: &CardId, gesture: &GestureDrag) {
         if let Some(entry) = self.imp().cards.borrow().get(id) {
-            entry.resize_grab.set(self.pointer_in_workspace(gesture));
+            entry.resize_grab.set(self.pointer_in_workspace(entry, gesture));
             entry.resize_scale.set(entry.scale.get());
         }
     }
@@ -1271,7 +1378,7 @@ impl FloatingBoard {
             };
             debug!(card = %id, scale = scale.value(), "resize update");
             entry.scale.set(scale);
-            entry.scaling.set_scale(scale.value() * self.view_zoom());
+            entry.scaling.set_scale(scale.value() * self.card_view_zoom(entry));
             self.apply_position(entry);
             if entry.config.bounds_mode == BoundsMode::Contained {
                 self.clamp_entry(entry);
@@ -1298,7 +1405,7 @@ impl FloatingBoard {
     /// The resize drag's scale target at the gesture's current pointer
     /// position; `None` until the pointer maps into workspace coordinates.
     fn resize_scale_for(&self, gesture: &GestureDrag, entry: &CardEntry) -> Option<ScaleFactor> {
-        entry.resize_target(self.pointer_in_workspace(gesture)?)
+        entry.resize_target(self.pointer_in_workspace(entry, gesture)?)
     }
 
     /// Captures the pointer's board position at rotate-drag begin. The
@@ -1306,7 +1413,7 @@ impl FloatingBoard {
     /// reference frame - it decides the step direction.
     fn on_card_rotate_begin(&self, id: &CardId, gesture: &GestureDrag) {
         if let Some(entry) = self.imp().cards.borrow().get(id) {
-            entry.rotate_grab.set(self.pointer_in_workspace(gesture));
+            entry.rotate_grab.set(self.pointer_in_workspace(entry, gesture));
             entry.rotate_stepped.set(false);
         }
     }
@@ -1321,7 +1428,7 @@ impl FloatingBoard {
             let Some(entry) = cards.get(id) else {
                 return;
             };
-            let Some(now) = self.pointer_in_workspace(gesture) else {
+            let Some(now) = self.pointer_in_workspace(entry, gesture) else {
                 return;
             };
             let Some(target) = entry.rotate_target(now, entry.rotation.get()) else {
@@ -1329,9 +1436,9 @@ impl FloatingBoard {
             };
             entry.rotate_stepped.set(true);
             debug!(card = %id, target_deg = target.to_degrees(), "rotate step");
-            (entry.rotation_widget.clone(), target)
+            (entry.rotation_widget.clone(), target + self.card_view(entry).rotation)
         };
-        rotation_widget.set_rotation_with_animation(target + self.view().rotation);
+        rotation_widget.set_rotation_with_animation(target);
     }
 
     fn on_card_rotate_end(&self, id: &CardId, _gesture: &GestureDrag) {
@@ -1349,12 +1456,16 @@ impl FloatingBoard {
     /// Pointer position in workspace coordinates - the layer point mapped
     /// back through the view (input path). `None` while the widget is
     /// degenerate (the inverse map cannot scale by zero).
-    fn pointer_in_workspace(&self, gesture: &GestureDrag) -> Option<Vec2<Pixels>> {
+    fn pointer_in_workspace(&self, entry: &CardEntry, gesture: &GestureDrag) -> Option<Vec2<Pixels>> {
         let widget = self.widget_bounds();
         if widget.is_degenerate() {
             return None;
         }
-        Some(self.view().to_workspace(self.pointer_in_layer(gesture)?, widget))
+        let layer_point = self.pointer_in_layer(gesture)?;
+        match entry.sticky.get() {
+            true => Some(layer_point),
+            false => Some(self.view().to_workspace(layer_point, widget)),
+        }
     }
 
     /// Drag delta in workspace coordinates: current pointer position minus
@@ -1363,7 +1474,7 @@ impl FloatingBoard {
     /// the first allocation (the view factors cancel: the offset lives
     /// inside the card's rendered transform).
     fn drag_delta(&self, gesture: &GestureDrag, offset: Vec2<Pixels>, entry: &CardEntry) -> Vec2<Pixels> {
-        if let (Some(now), Some(grab)) = (self.pointer_in_workspace(gesture), entry.drag_grab.get()) {
+        if let (Some(now), Some(grab)) = (self.pointer_in_workspace(entry, gesture), entry.drag_grab.get()) {
             return now - grab;
         }
         let rotation = entry.rotation.get();
@@ -1704,7 +1815,7 @@ impl FloatingBoard {
     ///
     /// Returns [`BoardError::UnknownCard`] for an id not on the board.
     pub fn goto_card(&self, id: &CardId, transition: GotoTransition, rotation: GotoRotation) -> Result<(), BoardError> {
-        let (footprint, card_rotation, duration) = {
+        let (geometry, footprint, sticky, duration) = {
             let cards = self.imp().cards.borrow();
             let Some(entry) = cards.get(id) else {
                 return Err(BoardError::UnknownCard(id.clone()));
@@ -1713,19 +1824,36 @@ impl FloatingBoard {
             // the mid-flight spot.
             let geometry = self.effective_geometry(entry);
             (
+                geometry,
                 self.workspace_footprint_at(entry, &geometry),
-                geometry.rotation,
+                entry.sticky.get(),
                 Duration::from_millis(entry.config.animation_speed_ms),
             )
         };
         let from = self.view();
+        let region = match sticky {
+            // A sticky card is pinned to the glass - `goto_card` aims
+            // the camera at the workspace region behind it.
+            true => {
+                let widget = self.widget_bounds();
+                let rendered = self.rendered_footprint_at(self.imp().cards.borrow().get(id).ok_or_else(|| BoardError::UnknownCard(id.clone()))?, &geometry);
+                let corners = rendered
+                    .corners()
+                    .into_iter()
+                    .map(|corner| from.to_workspace(corner, widget))
+                    .collect::<Vec<_>>();
+                let behind = Rect::from_points(corners).unwrap_or(rendered);
+                Rect::centered(behind.center(), behind.size * ViewScaleFactor::new(GOTO_CARD_PADDING))
+            }
+            false => Rect::centered(footprint.center(), footprint.size * ViewScaleFactor::new(GOTO_CARD_PADDING)),
+        };
         let target = View {
-            region: Rect::centered(footprint.center(), footprint.size * ViewScaleFactor::new(GOTO_CARD_PADDING)),
-            rotation: match rotation {
-                GotoRotation::Keep => from.rotation,
+            region,
+            rotation: match (rotation, sticky) {
+                (GotoRotation::Keep, _) | (GotoRotation::Upright, true) => from.rotation,
                 // Rendered rotation is `card + view`, so a view of
                 // `-card` draws the card upright on screen.
-                GotoRotation::Upright => (-card_rotation.to_rotation_rad()).normalized(),
+                (GotoRotation::Upright, false) => (-geometry.rotation.to_rotation_rad()).normalized(),
             },
         };
         self.fly_view_to(from, target, transition, duration);
@@ -2069,6 +2197,27 @@ impl FloatingBoard {
         self.emit_geometry_changed();
     }
 
+    /// The camera a card renders through: the board's view for
+    /// regular cards, the identity view (`covering` the widget,
+    /// rotation zero) for sticky cards pinned to the screen - so
+    /// `to_widget`, `to_workspace`, `+ rotation` and `x zoom` all
+    /// become no-ops for them.
+    fn card_view(&self, entry: &CardEntry) -> View<Pixels> {
+        match entry.sticky.get() {
+            true => View::covering(self.widget_bounds()),
+            false => self.view(),
+        }
+    }
+
+    /// The view zoom a card renders at - `1.0` for sticky cards, which
+    /// carry their on-screen scale in `entry.scale` directly.
+    fn card_view_zoom(&self, entry: &CardEntry) -> f64 {
+        match entry.sticky.get() {
+            true => 1.0,
+            false => self.view_zoom(),
+        }
+    }
+
     /// Uniform scale of the view mapping - widget pixels per workspace
     /// pixel. `1.0` while the widget or the shown region is degenerate.
     fn view_zoom(&self) -> f64 {
@@ -2105,11 +2254,11 @@ impl FloatingBoard {
     /// card scale x view zoom, position = `to_widget(center)`.
     /// `notify::rotation` syncs the model rotation back.
     fn sync_rendered_transform(&self, entry: &CardEntry) {
-        let rendered_rotation = entry.rotation.get() + self.view().rotation;
+        let rendered_rotation = entry.rotation.get() + self.card_view(entry).rotation;
         if rendered_rotation.signed_delta_to(entry.rotation_widget.rotation()).abs() > RotationRad::from_degrees(0.0001) {
             entry.rotation_widget.set_rotation(SmearorRotation::from(rendered_rotation));
         }
-        let rendered_scale = entry.scale.get().value() * self.view_zoom();
+        let rendered_scale = entry.scale.get().value() * self.card_view_zoom(entry);
         if (entry.scaling.scale() - rendered_scale).abs() > 1e-6 {
             entry.scaling.set_scale(rendered_scale);
         }
@@ -2131,7 +2280,7 @@ impl FloatingBoard {
         let size = (natural.to_f64().with_unit::<Pixels>() * geometry.scale.value()).rotated_bounds(geometry.rotation.to_rotation_rad());
         let size = match size.x > 0.0 && size.y > 0.0 {
             true => size,
-            false => self.rendered_size(entry) / self.view_zoom(),
+            false => self.rendered_size(entry) / self.card_view_zoom(entry),
         };
         Rect::centered(geometry.position.into(), size)
     }
@@ -2149,9 +2298,9 @@ impl FloatingBoard {
     /// on the view-mapped position. Same degenerate-bounds fallback
     /// as [`Self::rendered_footprint`].
     fn rendered_footprint_at(&self, entry: &CardEntry, geometry: &CardGeometry) -> Rect<Pixels> {
-        let view = self.view();
+        let view = self.card_view(entry);
         let (_, natural) = entry.card.measure_size();
-        let size = (natural.to_f64().with_unit::<Pixels>() * (geometry.scale.value() * self.view_zoom()))
+        let size = (natural.to_f64().with_unit::<Pixels>() * (geometry.scale.value() * self.card_view_zoom(entry)))
             .rotated_bounds(geometry.rotation.to_rotation_rad() + view.rotation);
         let size = match size.x > 0.0 && size.y > 0.0 {
             true => size,
@@ -2201,7 +2350,12 @@ impl FloatingBoard {
     /// unassigned cards at them). The domain is the bounding rect of
     /// extent and shown region - convex, so glide paths between
     /// workspace interior and screen edge stay inside.
-    fn clamp_bounds(&self) -> Rect<Pixels> {
+    fn clamp_bounds(&self, entry: &CardEntry) -> Rect<Pixels> {
+        // A sticky card lives on the glass: its bounds are the widget
+        // rect itself, unaffected by workspace or camera.
+        if entry.sticky.get() {
+            return self.widget_bounds();
+        }
         let workspace = self.workspace_bounds();
         match self.imp().seat_anchor.get() {
             SeatAnchor::View => {
@@ -2217,7 +2371,7 @@ impl FloatingBoard {
     /// pixels inside; `Contained` cards get their whole footprint
     /// pulled back.
     fn clamp_entry(&self, entry: &CardEntry) {
-        let bounds = self.clamp_bounds();
+        let bounds = self.clamp_bounds(entry);
         if bounds.is_degenerate() {
             return;
         }
@@ -2249,7 +2403,7 @@ impl FloatingBoard {
         if size.x > 0.0 && size.y > 0.0 {
             size
         } else {
-            self.rendered_size(entry) / self.view_zoom()
+            self.rendered_size(entry) / self.card_view_zoom(entry)
         }
     }
 
@@ -2277,8 +2431,8 @@ impl FloatingBoard {
     /// natural size times the rendered scale (card scale x view zoom).
     fn predicted_rendered_size(&self, entry: &CardEntry) -> Vec2<Pixels> {
         let (_, natural) = entry.card.measure_size();
-        let scale = entry.scale.get().value() * self.view_zoom();
-        (natural.to_f64().with_unit::<Pixels>() * scale).rotated_bounds(entry.rotation.get() + self.view().rotation)
+        let scale = entry.scale.get().value() * self.card_view_zoom(entry);
+        (natural.to_f64().with_unit::<Pixels>() * scale).rotated_bounds(entry.rotation.get() + self.card_view(entry).rotation)
     }
 
     fn entry_geometry(&self, entry: &CardEntry) -> CardGeometry {
@@ -2311,7 +2465,7 @@ impl FloatingBoard {
             // rotation (what users see on screen); `Workspace` uses
             // the card's table-space rotation.
             match self.imp().seat_anchor.get() {
-                SeatAnchor::View => Seat::nearest(entry.rotation.get() + self.view().rotation),
+                SeatAnchor::View => Seat::nearest(entry.rotation.get() + self.card_view(entry).rotation),
                 SeatAnchor::Workspace => Seat::nearest(self.entry_geometry(entry).rotation.to_rotation_rad()),
             }
         }))
@@ -2323,6 +2477,10 @@ impl FloatingBoard {
     /// assignment or `assign_seat` asks for it, and glides the card
     /// there.
     fn glide_card_to_seat(&self, id: &CardId, target_seat: Seat, move_to_edge: bool, assign_seat: bool) -> Result<(), BoardError> {
+        // Passing a pinned card sends it onto the table: release the
+        // screen pin first so the seat target lands in workspace
+        // coordinates (the conversion keeps it visually in place).
+        self.set_card_sticky(id, false)?;
         let anchor = self.imp().seat_anchor.get();
         let view = self.view();
         let widget = self.widget_bounds();
@@ -2368,7 +2526,7 @@ impl FloatingBoard {
                 .cards
                 .borrow()
                 .iter()
-                .filter(|(other_id, _)| *other_id != id)
+                .filter(|(other_id, entry)| *other_id != id && (anchor == SeatAnchor::View || !entry.sticky.get()))
                 .map(|(_, entry)| {
                     // Cards gliding to a seat count at their
                     // destination: a pass issued while a sibling is

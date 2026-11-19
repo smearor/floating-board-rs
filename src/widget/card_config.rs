@@ -6,6 +6,7 @@ use crate::domain::DragHandle;
 use crate::domain::MinVisible;
 use crate::domain::ScaleBounds;
 use crate::widget::card_close_action::CardCloseAction;
+use gtk4::Widget;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_layout::Seat;
 
@@ -101,6 +102,26 @@ pub struct CardConfig {
     /// rotation.
     #[cfg_attr(feature = "serde", serde(default))]
     pub seat: Option<Seat>,
+    /// Custom widget shown while the card is folded. When set, folding
+    /// collapses the whole card - header included - to this widget and
+    /// adds the `floating-card-collapsed` class, so a round button or
+    /// a compact mini view can replace the full card. `None` keeps the
+    /// default fold that leaves the header strip visible.
+    ///
+    /// The folded widget should offer an unfold affordance wired to
+    /// `Card::set_folded(false)` or `Card::fold` - the card's own fold
+    /// button hides with the header.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub folded_content: Option<Widget>,
+    /// Pins the card to the screen instead of the workspace: a sticky
+    /// card ignores the `View` camera entirely and keeps its on-screen
+    /// position, rotation and zoom while the view pans, zooms or
+    /// rotates. Its stored geometry is then expressed in widget
+    /// pixels; toggling converts between the two spaces, so pinning
+    /// never moves the card visually. Sticky cards are skipped by
+    /// `apply_layout`, and passing one to a seat releases the pin.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub sticky: bool,
 }
 
 impl Default for CardConfig {
@@ -129,6 +150,8 @@ impl Default for CardConfig {
             max_height: None,
             animation_speed_ms: 500,
             seat: None,
+            folded_content: None,
+            sticky: false,
         }
     }
 }
