@@ -1860,6 +1860,15 @@ impl FloatingBoard {
         Ok(())
     }
 
+    /// Flies the camera to an arbitrary target view - the public
+    /// counterpart of `goto_card` for framings that are not a card
+    /// close-up: an overview, or the seat corner a passed card
+    /// travels to. `transition` picks the same `Snap`/`Glide`/
+    /// `Transit` machinery, `duration` the flight time.
+    pub fn goto_view(&self, target: View<Pixels>, transition: GotoTransition, duration: Duration) {
+        self.fly_view_to(self.view(), target, transition, duration);
+    }
+
     /// Where the pass-to-seat operations anchor seat edges - default
     /// `SeatAnchor::View` (the visible screen edge where users sit).
     pub fn seat_anchor(&self) -> SeatAnchor {
