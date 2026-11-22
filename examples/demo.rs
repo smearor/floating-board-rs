@@ -545,13 +545,16 @@ fn build_ui(application: &gtk4::Application) {
                 chrome_style: ChromeStyle::Adwaita,
                 // The explicit list reproduces the legacy flags
                 // (foldable/closable/resizable/rotate_grip) and adds the
-                // quarter-step rotate actions as inline controls.
+                // quarter-step rotate plus geometric seat-pass actions
+                // as inline controls.
                 chrome: Some(vec![
                     ChromeSlot::inline(ChromeElement::Title),
                     ChromeSlot::inline(ChromeElement::Minimize),
                     ChromeSlot::inline(ChromeElement::Close),
                     ChromeSlot::inline(ChromeElement::RotateClockwise),
                     ChromeSlot::inline(ChromeElement::RotateCounterClockwise),
+                    ChromeSlot::inline(ChromeElement::NextSeat),
+                    ChromeSlot::inline(ChromeElement::PreviousSeat),
                     ChromeSlot::inline(ChromeElement::ResizeGrip),
                     ChromeSlot::inline(ChromeElement::RotateGrip),
                 ]),

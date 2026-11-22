@@ -1,8 +1,10 @@
+use crate::domain::BoardError;
 use crate::domain::CardGeometry;
 use crate::domain::CardId;
 use crate::domain::CardPosition;
 use crate::domain::DragHandle;
 use crate::domain::ScaleFactor;
+use crate::domain::TurnDirection;
 use crate::l10n::l10n;
 use crate::widget::board::FloatingBoard;
 use crate::widget::card_config::CardConfig;
@@ -160,6 +162,20 @@ impl Card {
     /// transition.
     pub fn rotate_to_zero(&self) {
         self.set_rotation_with_animation(Rotation::ZERO);
+    }
+
+    /// Passes the card one table side in `direction`
+    /// (`FloatingBoard::rotate_to_next_user`): the geometric next-seat
+    /// step, not roster-aware. For "next *occupied* seat" consumers keep
+    /// their roster and call
+    /// `FloatingBoard::rotate_to_next_occupied_seat` - e.g. from a
+    /// custom satellite. This is the wiring behind
+    /// `ChromeElement::NextSeat`/`PreviousSeat`.
+    pub fn pass_to_next_user(&self, direction: TurnDirection, move_to_edge: bool) -> Result<(), BoardError> {
+        match self.board() {
+            Some(board) => board.rotate_to_next_user(&self.id(), direction, move_to_edge),
+            None => Err(BoardError::UnknownCard(self.id())),
+        }
     }
 
     /// Glides the card to `target` on the frame clock - the animated

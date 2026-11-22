@@ -10,3 +10,5 @@ view-zoom-out = Zoom view out
 view-reset = Reset view
 card-rotate-clockwise = Rotate clockwise
 card-rotate-counter-clockwise = Rotate counter-clockwise
+card-next-seat = Pass card to the next seat
+card-previous-seat = Pass card to the previous seat

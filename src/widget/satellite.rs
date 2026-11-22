@@ -12,6 +12,7 @@ use crate::domain::ChromeElement;
 use crate::domain::SatelliteItem;
 use crate::domain::SatelliteKind;
 use crate::domain::SatellitePlacement;
+use crate::domain::TurnDirection;
 use crate::domain::resolve;
 use crate::widget::board::FloatingBoard;
 use crate::widget::card::Card;
@@ -180,6 +181,8 @@ fn satellite_widget(card: &Card, config: &SatelliteConfig) -> Option<Widget> {
         SatelliteKind::Chrome(ChromeElement::Close) => card.build_close_button().upcast(),
         SatelliteKind::Chrome(ChromeElement::RotateClockwise) => card.build_rotate_button(RotationDirection::Clockwise).upcast(),
         SatelliteKind::Chrome(ChromeElement::RotateCounterClockwise) => card.build_rotate_button(RotationDirection::CounterClockwise).upcast(),
+        SatelliteKind::Chrome(ChromeElement::NextSeat) => card.build_pass_button(TurnDirection::Clockwise).upcast(),
+        SatelliteKind::Chrome(ChromeElement::PreviousSeat) => card.build_pass_button(TurnDirection::CounterClockwise).upcast(),
         SatelliteKind::Chrome(element) => {
             warn!(satellite = %config.id, element = ?element, "chrome element is not satellite-capable - satellite skipped");
             return None;

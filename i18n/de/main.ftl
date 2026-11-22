@@ -10,3 +10,5 @@ view-zoom-out = Ansicht verkleinern
 view-reset = Ansicht zurücksetzen
 card-rotate-clockwise = Im Uhrzeigersinn drehen
 card-rotate-counter-clockwise = Gegen den Uhrzeigersinn drehen
+card-next-seat = Karte an den nächsten Platz weiterreichen
+card-previous-seat = Karte an den vorherigen Platz weiterreichen

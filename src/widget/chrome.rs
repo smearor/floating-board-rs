@@ -17,6 +17,7 @@ use crate::domain::ChromeElement;
 use crate::domain::ChromePlacement;
 use crate::domain::ChromeSlot;
 use crate::domain::ChromeStyle;
+use crate::domain::TurnDirection;
 use crate::l10n::l10n;
 use crate::widget::card::Card;
 use crate::widget::card_config::CardConfig;
@@ -139,6 +140,14 @@ impl Card {
                     header.append(&self.build_rotate_button(RotationDirection::CounterClockwise));
                     header_children += 1;
                 }
+                (ChromeElement::NextSeat, ChromePlacement::Inline) => {
+                    header.append(&self.build_pass_button(TurnDirection::Clockwise));
+                    header_children += 1;
+                }
+                (ChromeElement::PreviousSeat, ChromePlacement::Inline) => {
+                    header.append(&self.build_pass_button(TurnDirection::CounterClockwise));
+                    header_children += 1;
+                }
                 (ChromeElement::ResizeGrip, ChromePlacement::Inline) => self.mount_grip(ChromeElement::ResizeGrip),
                 (ChromeElement::RotateGrip, ChromePlacement::Inline) => self.mount_grip(ChromeElement::RotateGrip),
                 (_, ChromePlacement::Satellite) => skip_satellite(slot.element),
@@ -222,6 +231,28 @@ impl Card {
         button.connect_clicked(move |_| {
             if let Some(card) = card_weak.upgrade() {
                 card.rotate_to_next_quarter(direction);
+            }
+        });
+        button
+    }
+
+    /// Mount-agnostic pass button handing the card one table side in
+    /// `direction` per click (`Card::pass_to_next_user`) - the shared
+    /// builder for `ChromeElement::NextSeat` and `PreviousSeat`, inline
+    /// and satellite mounts alike. `move_to_edge` is fixed to `true`:
+    /// a passed card lands at the seat's edge lane.
+    pub(crate) fn build_pass_button(&self, direction: TurnDirection) -> Button {
+        let (icon_name, tooltip) = match direction {
+            TurnDirection::Clockwise => ("go-next-symbolic", "card-next-seat"),
+            TurnDirection::CounterClockwise => ("go-previous-symbolic", "card-previous-seat"),
+        };
+        let button = Button::from_icon_name(icon_name);
+        button.add_css_class("flat");
+        button.set_tooltip_text(Some(&l10n().message(tooltip)));
+        let card_weak = self.downgrade();
+        button.connect_clicked(move |_| {
+            if let Some(card) = card_weak.upgrade() {
+                let _ = card.pass_to_next_user(direction, true);
             }
         });
         button
@@ -353,6 +384,7 @@ mod adwaita {
     use crate::domain::ChromeElement;
     use crate::domain::ChromePlacement;
     use crate::domain::ChromeSlot;
+    use crate::domain::TurnDirection;
     use crate::widget::card::Card;
     use crate::widget::card_config::CardConfig;
     use crate::widget::chrome::CARD_GESTURE_NAME;
@@ -456,7 +488,7 @@ mod adwaita {
             // move window buttons to the left).
             let mut minimize_button: Option<gtk4::Button> = None;
             let mut close_button: Option<gtk4::Button> = None;
-            let mut rotate_buttons: Vec<gtk4::Button> = Vec::new();
+            let mut action_buttons: Vec<gtk4::Button> = Vec::new();
             let mut header_children = 0usize;
             for slot in slots {
                 match (slot.element, slot.placement) {
@@ -500,14 +532,28 @@ mod adwaita {
                         let button = self.build_rotate_button(RotationDirection::Clockwise);
                         button.remove_css_class("flat");
                         button.add_css_class("rotate-clockwise");
-                        rotate_buttons.push(button);
+                        action_buttons.push(button);
                         header_children += 1;
                     }
                     (ChromeElement::RotateCounterClockwise, ChromePlacement::Inline) => {
                         let button = self.build_rotate_button(RotationDirection::CounterClockwise);
                         button.remove_css_class("flat");
                         button.add_css_class("rotate-counter-clockwise");
-                        rotate_buttons.push(button);
+                        action_buttons.push(button);
+                        header_children += 1;
+                    }
+                    (ChromeElement::NextSeat, ChromePlacement::Inline) => {
+                        let button = self.build_pass_button(TurnDirection::Clockwise);
+                        button.remove_css_class("flat");
+                        button.add_css_class("next-seat");
+                        action_buttons.push(button);
+                        header_children += 1;
+                    }
+                    (ChromeElement::PreviousSeat, ChromePlacement::Inline) => {
+                        let button = self.build_pass_button(TurnDirection::CounterClockwise);
+                        button.remove_css_class("flat");
+                        button.add_css_class("previous-seat");
+                        action_buttons.push(button);
                         header_children += 1;
                     }
                     (ChromeElement::ResizeGrip, ChromePlacement::Inline) => self.mount_grip(ChromeElement::ResizeGrip),
@@ -515,7 +561,7 @@ mod adwaita {
                     (_, ChromePlacement::Satellite) => skip_satellite(slot.element),
                 }
             }
-            pack_window_controls(&header, minimize_button, close_button, rotate_buttons);
+            pack_window_controls(&header, minimize_button, close_button, action_buttons);
             strip_foreign_gestures(&header);
             // Same rule as the builtin renderer: no children, no header -
             // `drag_source(DragHandle::Header)` falls back to the card.
