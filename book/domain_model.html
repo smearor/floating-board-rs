@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "coal";
             const default_dark_theme = "coal";
-            window.path_to_searchindex_js = "searchindex-d736a8bc.js";
+            window.path_to_searchindex_js = "searchindex-8d23d73f.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-932eff1a.js"></script>
+        <script src="toc-2eaac78a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -205,7 +205,7 @@ live behind the <code>serde</code> cargo feature (enabled by default). Building 
 </thead>
 <tbody>
 <tr><td><code>CardId</code></td><td>Newtype over <code>String</code>. Consumers assign stable, semantic keys such as <code>"controls"</code> or <code>"params"</code> that survive in persisted layouts. <code>add_card</code> generates <code>card-N</code> ids; <code>add_card_with_id</code> takes a semantic key.</td></tr>
-<tr><td><code>CardPosition</code></td><td>Newtype over <code>(f64, f64)</code> board pixels — the card’s <strong>center point</strong>, not its top-left corner. The center anchor stays stable under rotation and scaling. Serializes as a <code>[x, y]</code> pair.</td></tr>
+<tr><td><code>CardPosition</code></td><td>Newtype over <code>(f64, f64)</code> workspace pixels — the card’s <strong>center point</strong>, not its top-left corner. The center anchor stays stable under rotation and scaling. Serializes as a <code>[x, y]</code> pair. (Sticky cards are the exception: while pinned they store widget pixels.)</td></tr>
 </tbody>
 </table>
 </div>
@@ -234,9 +234,15 @@ live behind the <code>serde</code> cargo feature (enabled by default). Building 
 <tbody>
 <tr><td><code>CardAnchor</code></td><td>Declarative initial placement: <code>TopLeft</code> … <code>BottomRight</code> (nine anchors) plus <code>Explicit(CardPosition)</code>. Anchors are resolved once the card’s natural size and the board bounds are known.</td></tr>
 <tr><td><code>DragHandle</code></td><td>Which part of a card is the drag affordance: <code>Header</code> (default — only the title strip drags, content stays interactive), <code>WholeCard</code> (display-only cards), <code>Handle</code> (dedicated grip icon in the header).</td></tr>
-<tr><td><code>CardPlacement</code></td><td><code>{ id: CardId, geometry: CardGeometry }</code> — one entry of a layout, serialized flat.</td></tr>
-<tr><td><code>BoardLayout</code></td><td><code>{ version: u8, cards: Vec&lt;CardPlacement&gt; }</code> — the serializable snapshot produced by <code>layout_snapshot()</code> and consumed by <code>restore_layout()</code>. <code>version</code> is reserved for future migrations (currently <code>1</code>).</td></tr>
-<tr><td><code>BoardError</code></td><td><code>UnknownCard(CardId)</code> | <code>DuplicateCard(CardId)</code> — the crate’s <code>thiserror</code> error type.</td></tr>
+<tr><td><code>CardPlacement</code></td><td><code>{ id: CardId, geometry: CardGeometry, folded: bool, seat: Option&lt;Seat&gt;, sticky: bool }</code> — one entry of a layout, serialized flat; the non-geometry fields default via <code>serde(default)</code> for older files.</td></tr>
+<tr><td><code>BoardLayout</code></td><td><code>{ version: u8, workspace, view, seat_anchor, cards: Vec&lt;CardPlacement&gt; }</code> — the serializable snapshot produced by <code>layout_snapshot()</code> and consumed by <code>restore_layout()</code>. <code>version</code> is reserved for future migrations (currently <code>1</code>); the workspace fields default via <code>serde(default)</code> so older files parse as <code>FollowWidget</code> plus the default view — exactly the pre-workspace behavior.</td></tr>
+<tr><td><code>BoardError</code></td><td><code>UnknownCard(CardId)</code> | <code>DuplicateCard(CardId)</code> | <code>Layout(..)</code> | <code>NoNextSeat</code> — the crate’s <code>thiserror</code> error type.</td></tr>
+<tr><td><code>BoundsMode</code></td><td><code>Loose</code> (default) | <code>Contained</code> — how strictly a card’s footprint is kept inside the bounds.</td></tr>
+<tr><td><code>SeatAnchor</code></td><td><code>View</code> (default) | <code>Workspace</code> — where pass-to-seat operations anchor table edges.</td></tr>
+<tr><td><code>TurnDirection</code></td><td><code>Clockwise</code> (default) | <code>CounterClockwise</code> — the direction a card is passed around the table.</td></tr>
+<tr><td><code>GotoTransition</code></td><td><code>Snap</code> | <code>Glide</code> (default) | <code>Transit</code> — how <code>goto_card</code> moves the camera.</td></tr>
+<tr><td><code>GotoRotation</code></td><td><code>Keep</code> | <code>Upright</code> — the destination rotation of a <code>goto_card</code> flight.</td></tr>
+<tr><td><code>CardPalette</code> / <code>CardColor</code></td><td>Semantic color set per card (<code>Background</code>, <code>Foreground</code>, <code>Header</code>), turned into a scoped CSS provider.</td></tr>
 </tbody>
 </table>
 </div>
@@ -275,18 +281,25 @@ boards.</p>
 <h2 id="serialization-format"><a class="header" href="#serialization-format">Serialization Format</a></h2>
 <p><code>BoardLayout</code> serializes flat per card — designed for <code>gui-cards.toml</code>:</p>
 <pre><code class="language-toml">version = 1
+workspace = { fixed = [2000.0, 1600.0] }
+seat_anchor = "workspace"
 
 [[cards]]
 id = "controls"
 position = [480.0, 660.0]
 rotation = 180.0
 scale = 1.0
+folded = false
+sticky = false
+seat = { side = "bottom" }
 </code></pre>
 <ul>
-<li><code>position</code> is the card <strong>center</strong> as an <code>[x, y]</code> pair.</li>
+<li><code>position</code> is the card <strong>center</strong> in workspace coordinates, as an <code>[x, y]</code> pair.</li>
 <li><code>rotation</code> is plain degrees (independent of <code>SmearorRotation</code>’s own serde
 representation).</li>
 <li><code>scale</code> is the factor (<code>1.0</code> = natural size).</li>
+<li><code>workspace</code>, <code>view</code> and <code>seat_anchor</code> carry <code>serde(default)</code> — files from
+before the workspace read the defaults.</li>
 </ul>
 <p>Where the file lives and which format is used (TOML, JSON, …) is entirely up
 to the consumer — the library only produces and consumes the <code>BoardLayout</code>
@@ -296,7 +309,7 @@ value. See <a href="usage.html#persistence">Usage</a> for restore semantics.</p>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="introduction.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="tabletop/layouts.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -310,7 +323,7 @@ value. See <a href="usage.html#persistence">Usage</a> for restore semantics.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="introduction.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="tabletop/layouts.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 360" font-family="'Source Code Pro',ui-monospace,monospace">
+  <rect width="660" height="360" rx="14" fill="#0a0e16" stroke="#1c2433"/>
+
+  <text x="330" y="36" fill="#8b98ad" font-size="11" letter-spacing="2" text-anchor="middle">TRANSFORM STACK — outer scale, inner rotation</text>
+
+  <!-- ScalingWidget -->
+  <rect x="60" y="62" width="330" height="248" rx="12" fill="#0a0e16" stroke="#04e762" stroke-width="1.8"/>
+  <text x="80" y="84" fill="#04e762" font-size="11.5">ScalingWidget · scale s</text>
+
+  <!-- RotationWidget (drawn rotated inside) -->
+  <g transform="rotate(18 210 195)">
+    <rect x="92" y="108" width="236" height="176" rx="10" fill="#0a0e16" stroke="#00a1e4" stroke-width="1.8"/>
+    <text x="112" y="130" fill="#00a1e4" font-size="11.5">RotationWidget · θ</text>
+
+    <!-- Card -->
+    <rect x="120" y="152" width="180" height="110" rx="8" fill="#10151f" stroke="#dc0073" stroke-width="1.5"/>
+    <rect x="120" y="152" width="180" height="26" rx="8" fill="#161c28" stroke="#dc0073" stroke-width="1.2"/>
+    <rect x="120" y="170" width="180" height="8" fill="#161c28"/>
+    <text x="210" y="169" fill="#e8ecf4" font-size="10" text-anchor="middle">header</text>
+    <text x="210" y="224" fill="#8b98ad" font-size="10" text-anchor="middle">Card · gtk4::Box</text>
+  </g>
+
+  <!-- annotations right -->
+  <g font-size="10">
+    <rect x="410" y="62" width="220" height="70" rx="8" fill="#10151f" stroke="#1c2433"/>
+    <text x="424" y="84" fill="#f5b700">render time</text>
+    <text x="424" y="102" fill="#e8ecf4">gsk::Transform at</text>
+    <text x="424" y="118" fill="#e8ecf4">allocation — never moves widgets</text>
+
+    <rect x="410" y="148" width="220" height="70" rx="8" fill="#10151f" stroke="#1c2433"/>
+    <text x="424" y="170" fill="#f5b700">picking</text>
+    <text x="424" y="188" fill="#e8ecf4">GTK inverts scale⁻¹ · rotate⁻¹ —</text>
+    <text x="424" y="204" fill="#8b98ad">controls stay usable rotated</text>
+
+    <rect x="410" y="234" width="220" height="70" rx="8" fill="#10151f" stroke="#1c2433"/>
+    <text x="424" y="256" fill="#f5b700">measure, don't read back</text>
+    <text x="424" y="274" fill="#e8ecf4">rotated_bounds(w·s, h·s, θ)</text>
+    <text x="424" y="290" fill="#8b98ad">predicts the next allocation</text>
+  </g>
+
+  <line x1="390" y1="140" x2="406" y2="96" stroke="#3a4560" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="330" y1="200" x2="406" y2="182" stroke="#3a4560" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="390" y1="290" x2="406" y2="270" stroke="#3a4560" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <text x="330" y="340" fill="#8b98ad" font-size="10" text-anchor="middle">ScalingWidget → RotationWidget (smearor-wrot-rotation) → Card</text>
+</svg>

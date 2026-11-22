@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "coal";
             const default_dark_theme = "coal";
-            window.path_to_searchindex_js = "searchindex-d736a8bc.js";
+            window.path_to_searchindex_js = "searchindex-8d23d73f.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-932eff1a.js"></script>
+        <script src="toc-2eaac78a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -250,321 +250,6 @@ let controls = board.add_card(
 different interaction profiles (header drag, handle drag, whole-card drag,
 foldable/closable chrome, 90° rotation), a toolbar for adding cards and
 snapshot/restore, and a live status line fed by the board’s signals.</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="domain-model"><a class="header" href="#domain-model">Domain Model</a></h1>
-<p>The <code>floating_board::domain</code> module is the heart of the library. It contains
-<strong>no <code>gtk4</code> dependency</strong>: only newtypes, enums and pure geometry functions.
-Everything here is display-free and unit-testable — the same types appear in
-the widget API, in gesture handling, and in the persisted layout files.</p>
-<h2 id="design-principles"><a class="header" href="#design-principles">Design Principles</a></h2>
-<ol>
-<li><strong>Radically strict types.</strong> Every concept is a newtype or enum with
-semantic meaning: a <code>CardPosition</code> is never confused with a pixel offset,
-and a <code>ScaleFactor</code> can never silently become negative.</li>
-<li><strong>The board owns the state.</strong> Position, rotation and scale exist exactly
-once per card — inside the <code>FloatingBoard</code>. <code>Card</code> objects are views that
-delegate every geometry read and write to the board. Widget children never
-own geometry state.</li>
-<li><strong>Feature-gated serialization.</strong> Serde implementations on the domain types
-live behind the <code>serde</code> cargo feature (enabled by default). Building with
-<code>--no-default-features</code> removes the persistence dependency entirely.</li>
-</ol>
-<h2 id="type-reference"><a class="header" href="#type-reference">Type Reference</a></h2>
-<h3 id="identity"><a class="header" href="#identity">Identity</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Type</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>CardId</code></td><td>Newtype over <code>String</code>. Consumers assign stable, semantic keys such as <code>"controls"</code> or <code>"params"</code> that survive in persisted layouts. <code>add_card</code> generates <code>card-N</code> ids; <code>add_card_with_id</code> takes a semantic key.</td></tr>
-<tr><td><code>CardPosition</code></td><td>Newtype over <code>(f64, f64)</code> board pixels — the card’s <strong>center point</strong>, not its top-left corner. The center anchor stays stable under rotation and scaling. Serializes as a <code>[x, y]</code> pair.</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="geometry"><a class="header" href="#geometry">Geometry</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Type</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>CardGeometry</code></td><td><code>{ position: CardPosition, rotation: SmearorRotation, scale: ScaleFactor }</code> — the complete geometric state of a card and the unit of persistence.</td></tr>
-<tr><td><code>ScaleFactor</code></td><td>Newtype over <code>f64</code> (<code>1.0</code> = natural size). Always strictly positive; per-card limits are applied via <code>ScaleBounds</code>.</td></tr>
-<tr><td><code>ScaleBounds</code></td><td><code>{ min: f64, max: f64 }</code> — inclusive scale limits, default <code>0.5 – 2.0</code>. Arguments are normalized so <code>min &lt;= max</code>.</td></tr>
-<tr><td><code>SmearorRotation</code></td><td>Rotation enum from <code>smearor-wrot-rotation</code>: <code>Deg0</code>, <code>Deg90</code>, <code>Deg180</code>, <code>Deg270</code>, <code>Deg(f32)</code>. Re-exported by this crate. In <code>CardGeometry</code> it serializes as a plain degree value (<code>rotation = 180.0</code>).</td></tr>
-<tr><td><code>MinVisible</code></td><td>Newtype over <code>f64</code> pixels — the minimum overlap a card must keep inside the board bounds. Default <code>40.0</code>.</td></tr>
-<tr><td><code>Rect</code></td><td>GTK-free axis-aligned rectangle (<code>x</code>, <code>y</code>, <code>width</code>, <code>height</code>) used for footprints and bounds in the pure math functions.</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="placement"><a class="header" href="#placement">Placement</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Type</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>CardAnchor</code></td><td>Declarative initial placement: <code>TopLeft</code> … <code>BottomRight</code> (nine anchors) plus <code>Explicit(CardPosition)</code>. Anchors are resolved once the card’s natural size and the board bounds are known.</td></tr>
-<tr><td><code>DragHandle</code></td><td>Which part of a card is the drag affordance: <code>Header</code> (default — only the title strip drags, content stays interactive), <code>WholeCard</code> (display-only cards), <code>Handle</code> (dedicated grip icon in the header).</td></tr>
-<tr><td><code>CardPlacement</code></td><td><code>{ id: CardId, geometry: CardGeometry }</code> — one entry of a layout, serialized flat.</td></tr>
-<tr><td><code>BoardLayout</code></td><td><code>{ version: u8, cards: Vec&lt;CardPlacement&gt; }</code> — the serializable snapshot produced by <code>layout_snapshot()</code> and consumed by <code>restore_layout()</code>. <code>version</code> is reserved for future migrations (currently <code>1</code>).</td></tr>
-<tr><td><code>BoardError</code></td><td><code>UnknownCard(CardId)</code> | <code>DuplicateCard(CardId)</code> — the crate’s <code>thiserror</code> error type.</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="configuration-widget-layer"><a class="header" href="#configuration-widget-layer">Configuration (widget layer)</a></h3>
-<p><code>CardConfig</code> technically lives in the widget layer but uses only domain
-types: <code>title</code>, <code>position: CardAnchor</code>, <code>draggable</code>, <code>rotatable</code>, <code>scalable</code>,
-<code>foldable</code>, <code>closable</code>, <code>headerless</code>, <code>drag_handle</code>,
-<code>scale_limits: ScaleBounds</code>, <code>min_visible: MinVisible</code>, <code>z_index</code>.</p>
-<h2 id="pure-geometry-functions"><a class="header" href="#pure-geometry-functions">Pure Geometry Functions</a></h2>
-<p>All board math is implemented as pure functions over the domain types — no
-GTK, no display server, directly unit-testable.</p>
-<h3 id="rotated_boundswidth-height-degrees---f64-f64"><a class="header" href="#rotated_boundswidth-height-degrees---f64-f64"><code>rotated_bounds(width, height, degrees) -&gt; (f64, f64)</code></a></h3>
-<p>Axis-aligned bounding box of a rectangle rotated around its center:</p>
-<p>$$\text{bbox}_w = W |\cos\theta| + H |\sin\theta|, \qquad \text{bbox}_h = W |\sin\theta| + H |\cos\theta|$$</p>
-<p>This is exactly the size <code>gtk4::Fixed</code> allocates for a card stack, so the
-board can predict a card’s displayed size before it is realized.</p>
-<h3 id="rotate_vectorx-y-degrees---f64-f64"><a class="header" href="#rotate_vectorx-y-degrees---f64-f64"><code>rotate_vector(x, y, degrees) -&gt; (f64, f64)</code></a></h3>
-<p>Rotates a vector — used as the fallback for mapping drag offsets from card
-space into board space.</p>
-<h3 id="rotated_region_scanlineswidth-height-degrees---veci32-i32-i32"><a class="header" href="#rotated_region_scanlineswidth-height-degrees---veci32-i32-i32"><code>rotated_region_scanlines(width, height, degrees) -&gt; Vec&lt;(i32, i32, i32)&gt;</code></a></h3>
-<p>Rasterizes a rotated rectangle into horizontal scanline strips
-<code>(y, x_start, x_end)</code> relative to its center. The widget layer unions these
-into the <code>cairo::Region</code> returned by <code>card.footprint()</code> — the same
-scanline-intersection algorithm <code>smearor-wrot-rotation</code> uses for its input
-region.</p>
-<h3 id="resolve_anchoranchor-bounds-footprint_w-footprint_h---cardposition"><a class="header" href="#resolve_anchoranchor-bounds-footprint_w-footprint_h---cardposition"><code>resolve_anchor(anchor, bounds, footprint_w, footprint_h) -&gt; CardPosition</code></a></h3>
-<p>Resolves a <code>CardAnchor</code> into a center position. Edge anchors keep the card
-<code>ANCHOR_MARGIN</code> (24 px) inside the bounds; <code>Center</code> centers the card;
-<code>Explicit</code> passes its position through unchanged.</p>
-<h3 id="clamp_offsetfootprint-bounds-min_visible---f64-f64"><a class="header" href="#clamp_offsetfootprint-bounds-min_visible---f64-f64"><code>clamp_offset(footprint, bounds, min_visible) -&gt; (f64, f64)</code></a></h3>
-<p>The boundary-clamping function. Returns the minimal translation so that at
-least <code>min_visible</code> pixels of <code>footprint</code> overlap <code>bounds</code> on each axis.
-Applying the offset to a card’s position pushes it back inside. The required
-overlap is capped at half the bounds size so it stays satisfiable on tiny
-boards.</p>
-<h2 id="serialization-format"><a class="header" href="#serialization-format">Serialization Format</a></h2>
-<p><code>BoardLayout</code> serializes flat per card — designed for <code>gui-cards.toml</code>:</p>
-<pre><code class="language-toml">version = 1
-
-[[cards]]
-id = "controls"
-position = [480.0, 660.0]
-rotation = 180.0
-scale = 1.0
-</code></pre>
-<ul>
-<li><code>position</code> is the card <strong>center</strong> as an <code>[x, y]</code> pair.</li>
-<li><code>rotation</code> is plain degrees (independent of <code>SmearorRotation</code>’s own serde
-representation).</li>
-<li><code>scale</code> is the factor (<code>1.0</code> = natural size).</li>
-</ul>
-<p>Where the file lives and which format is used (TOML, JSON, …) is entirely up
-to the consumer — the library only produces and consumes the <code>BoardLayout</code>
-value. See <a href="#persistence">Usage</a> for restore semantics.</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="architecture"><a class="header" href="#architecture">Architecture</a></h1>
-<p><code>floating-board</code> is split into two layers: a pure domain core and a thin GTK
-widget layer that maps GTK mechanics (gestures, layout, transforms) onto
-domain operations.</p>
-<pre class="mermaid">graph TD
-    classDef consumer fill: #00a1e4, stroke: #ffffff, stroke-width: 2px, color: #ffffff
-    classDef widget fill: #1e1e1e, stroke: #00a1e4, stroke-width: 2px, color: #ffffff
-    classDef domain fill: #89fc00, stroke: #333333, stroke-width: 2px, color: #000000
-
-    Consumer["Consumer application&lt;br/&gt;&lt;small&gt;floating_board::FloatingBoard + domain types in/out&lt;/small&gt;"]:::consumer --&gt; Widget
-    subgraph Widget["src/widget/ - ObjectSubclass glue (gestures, layout, CSS)"]
-        FB["FloatingBoard &amp;gt; Overlay &amp;lbrace; content, Fixed &amp;lbrace; card stacks &amp;rbrace; &amp;rbrace;"]
-    end
-    Widget --&gt; Domain
-    subgraph Domain["src/domain/ - pure Rust, no gtk4"]
-        DT["NewTypes, Enums, geometry math,&lt;br/&gt;BoardLayout serde"]
-    end
-</pre>
-
-<h2 id="widget-stack"><a class="header" href="#widget-stack">Widget Stack</a></h2>
-<pre class="mermaid">graph TD
-    classDef board fill: #00a1e4, stroke: #ffffff, stroke-width: 2px, color: #ffffff
-    classDef layer fill: #1e1e1e, stroke: #00a1e4, stroke-width: 2px, color: #ffffff
-    classDef card fill: #89fc00, stroke: #333333, stroke-width: 2px, color: #000000
-    classDef content fill: #dc0073, stroke: #ffffff, stroke-width: 2px, color: #ffffff
-
-    Board["FloatingBoard (gtk4::Box)"]:::board --&gt; Overlay["gtk4::Overlay"]:::layer
-    Overlay --&gt; Content["content widget (consumer)"]:::content
-    Overlay --&gt; Fixed["card layer (gtk4::Fixed)"]:::layer
-    Fixed --&gt; S1["ScalingWidget"]:::card
-    Fixed --&gt; S2["ScalingWidget"]:::card
-    S1 --&gt; R1["RotationWidget"]:::card
-    R1 --&gt; C1["Card (gtk4::Box)"]:::card
-    S2 --&gt; R2["RotationWidget"]:::card
-    R2 --&gt; C2["Card (gtk4::Box)"]:::card
-</pre>
-
-<ul>
-<li><strong><code>FloatingBoard</code></strong> is a <code>gtk4::Box</code> composite. Its internal <code>GtkOverlay</code>
-holds the consumer’s content widget as the bottom layer and a transparent
-<code>gtk4::Fixed</code> as the card layer on top. Consumers only ever see
-<code>add_card</code>/<code>remove_card</code>/<code>card</code>/<code>set_content</code> — never the overlay itself.</li>
-<li><strong>Card layer (<code>gtk4::Fixed</code>)</strong> positions each transform stack by top-left
-coordinates. It has no background of its own: its pick test only hits card
-children, so gestures on empty areas fall through to the content below.</li>
-<li><strong>Transform stack</strong> per card: <code>ScalingWidget { RotationWidget { Card } }</code> —
-outer scale, inner rotation. Both transforms are applied via
-<code>gsk::Transform</code> at allocation time, which means GTK4’s picking machinery
-automatically applies the full inverse stack <code>scale⁻¹ · rotate⁻¹</code> when
-delivering events — controls on rotated, scaled cards stay usable.</li>
-</ul>
-<h2 id="the-card"><a class="header" href="#the-card">The Card</a></h2>
-<pre class="mermaid">graph TD
-    classDef card fill: #89fc00, stroke: #333333, stroke-width: 2px, color: #000000
-    classDef header fill: #1e1e1e, stroke: #00a1e4, stroke-width: 2px, color: #ffffff
-    classDef content fill: #dc0073, stroke: #ffffff, stroke-width: 2px, color: #ffffff
-
-    subgraph CardBox["Card (gtk4::Box, .floating-card)"]
-        direction TB
-        subgraph Header["Header (.floating-card-header, drag affordance)"]
-            Chrome["&amp;#x2261; handle &amp;nbsp;&amp;nbsp; Title &amp;nbsp;&amp;nbsp; &amp;#x2B1C; fold &amp;nbsp; &amp;#x2715; close"]
-        end
-        subgraph ContentBox["Content (.floating-card-content)"]
-            Content["arbitrary consumer widget"]
-        end
-    end
-    class CardBox card
-    class Header header
-    class ContentBox content
-</pre>
-
-<ul>
-<li><code>Card</code> is a <code>gtk4::Box</code> subclass: header strip plus a content holder for the
-consumer widget. Chrome (handle icon, title, fold button, close button) is
-controlled by <code>CardConfig</code> flags (<code>foldable</code>, <code>closable</code>, <code>headerless</code>,
-<code>drag_handle</code>).</li>
-<li>The card is a <strong>view</strong>: it owns no geometry. <code>card.geometry()</code>,
-<code>set_position</code>, <code>set_rotation</code>, <code>set_scale</code>, <code>raise</code> all delegate to the
-<code>FloatingBoard</code> through a weak backlink set up at <code>add_card</code>.</li>
-</ul>
-<h2 id="coordinate-spaces"><a class="header" href="#coordinate-spaces">Coordinate Spaces</a></h2>
-<p><code>CardPosition</code> is the card’s <strong>center</strong> in board pixels. <code>gtk4::Fixed</code>
-positions children by top-left, so the board converts on every move:</p>
-<p>$$\text{top-left} = \text{center} - \frac{\text{displayed size}}{2}$$</p>
-<p>The <em>displayed size</em> is predicted, not read back: <code>RotatedLayout</code>’s measure
-reports the rotated bounding box of the card’s natural size, and
-<code>ScalingLayout</code> multiplies it by the scale factor — so
-<code>rotated_bounds(natural_w · s, natural_h · s, θ)</code> always equals the size
-<code>GtkFixed</code> will allocate next. This keeps the center anchor exact even while
-rotation or scale transitions are still pending re-allocation.</p>
-<h2 id="gestures"><a class="header" href="#gestures">Gestures</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Gesture</th><th>Controller</th><th>Effect</th><th>Conflict rule</th></tr>
-</thead>
-<tbody>
-<tr><td>1-finger drag on header/handle/card</td><td><code>GestureDrag</code></td><td>move card (live), clamp on end, <code>card-moved</code></td><td>exclusive per sequence</td></tr>
-<tr><td>1-finger touch on card</td><td><code>GestureClick</code></td><td>raise card on release, <code>card-raised</code></td><td>claims only on release without movement — also raises after a finished drag</td></tr>
-<tr><td>2+ finger transform</td><td>quad tracker (<code>EventControllerLegacy</code>)</td><td>similarity transform: centroid = move, radius = scale, point-cloud angle = rotate</td><td>one mechanism, nothing to arbitrate</td></tr>
-<tr><td>1-finger touch on empty area</td><td>—</td><td>falls through to content</td><td>pick-based, no controller needed</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="the-quad-transform-gesture"><a class="header" href="#the-quad-transform-gesture">The quad transform gesture</a></h3>
-<p>Move, rotate and zoom are <strong>one</strong> gesture, not three competing ones. A raw
-<code>EventControllerLegacy</code> on the card observes every touch sequence
-(<code>TouchBegin</code>/<code>Update</code>/<code>End</code>/<code>Cancel</code>) without claiming any — each finger
-maps to a tracked board-space point and interactive content keeps working.
-(<code>GestureSingle</code>-based slots were abandoned: a single locks onto the first
-sequence it sees and cannot distribute touches across siblings.)</p>
-<p>With <code>QUAD_MIN_POINTS</code> (2) or more live points the board fits a transform
-between the baseline point cloud and the current points:</p>
-<ul>
-<li><strong>Move</strong>: the card center follows the point-cloud centroid (the card point
-under the finger polygon stays fixed).</li>
-<li><strong>Scale</strong>: the RMS radius ratio of the two point sets, clamped to
-<code>scale_limits</code> — the card keeps its aspect ratio.</li>
-<li><strong>Rotate</strong>: the Procrustes angle <code>atan2(Σ w×u, Σ w·u)</code> between the two
-point sets, applied via <code>RotationWidget::set_rotation</code> (negated — the
-angle is computed in y-down screen coordinates).</li>
-</ul>
-<p>The baseline re-snapshots whenever a finger joins or leaves, so the
-transform never jumps; a frame-to-frame angle jump beyond <code>60°</code> is treated
-as a degenerate finger crossing (points through the centroid) and re-baselines
-instead of applying. Tracked touches that get claimed by another gesture or
-produce no event for <code>1.5 s</code> are swept out, so lost <code>TouchEnd</code> events cannot
-linger as phantom points. smearor-wrot-rotation’s built-in rotate gesture is
-disabled; <code>rotatable</code>/<code>scalable</code>/<code>draggable</code> gate which transform degrees of
-freedom apply.
-| 1-finger touch on empty area | — | falls through to content | pick-based, no controller needed |</p>
-<h3 id="drag-deltas-in-board-space"><a class="header" href="#drag-deltas-in-board-space">Drag deltas in board space</a></h3>
-<p><code>GestureDrag</code> reports offsets in the coordinate space of the drag source —
-which lives <em>inside</em> the rotated/scaled transform stack and <em>moves</em> with the
-card. Mapping that delta under the current transform creates a feedback loop
-(the reference frame shifts as the card tracks the pointer), visible as
-jitter and reduced pointer speed. The board therefore derives the drag delta
-from two <strong>board-space pointer samples</strong>: the pointer position is read from
-<code>Gesture::current_event</code>’s surface coordinates and mapped through
-<code>Native::compute_point</code> into the card layer — independent of the card’s own
-transform. A pure-vector fallback (<code>rotate_vector · scale</code>) covers the window
-before the first allocation.</p>
-<h3 id="surface-input-region"><a class="header" href="#surface-input-region">Surface input region</a></h3>
-<p><code>smearor-wrot-rotation</code> is built for layer-shell surfaces and narrows the
-surface input region to each card’s footprint on every allocation. Inside a
-regular window that would make everything outside the last-allocated card
-input-dead, so the board restores the full input region (<code>None</code>) at the end
-of its <code>size_allocate</code> — every card allocation runs inside that call, so the
-reset always wins.</p>
-<h3 id="rotation-tracking"><a class="header" href="#rotation-tracking">Rotation tracking</a></h3>
-<p><code>RotatedLayout</code> exposes <code>rotation</code> as a notify-able GObject property. The
-board connects <code>notify::rotation</code> once per card: any rotation change —
-gesture snap or programmatic — re-centers the card on its anchor, re-clamps
-it into the bounds, and emits <code>card-rotated</code> plus <code>geometry-changed</code>.</p>
-<h2 id="boundary-clamping"><a class="header" href="#boundary-clamping">Boundary Clamping</a></h2>
-<p>After a drag ends and whenever rotation, scale or the board size changes,
-each card is pushed back so that at least <code>CardConfig::min_visible</code> pixels of
-its footprint overlap the board bounds on each axis. The math is the pure
-function <code>domain::clamp_offset(footprint, bounds, min_visible) -&gt; (dx, dy)</code>
-— see <a href="#clamp_offsetfootprint-bounds-min_visible---f64-f64">Domain Model</a>.</p>
-<h2 id="z-order"><a class="header" href="#z-order">z-Order</a></h2>
-<p>The child order of the <code>gtk4::Fixed</code> layer is the stacking order. A released
-click (or finished drag) removes and re-appends the card’s transform stack,
-raising it to the top. At <code>add_card</code>, an optional <code>CardConfig::z_index</code> sorts
-the layer stably by insertion sequence.</p>
-<h2 id="anchor-resolution"><a class="header" href="#anchor-resolution">Anchor Resolution</a></h2>
-<p><code>CardConfig::position</code> is a <code>CardAnchor</code> stored as <em>pending</em> until the board
-is first allocated (the card’s natural size and the board bounds must be
-known). <code>domain::resolve_anchor</code> then computes the center — edge anchors hold
-the card <code>ANCHOR_MARGIN</code> inside the bounds — and the card is moved into
-place. <code>CardAnchor::Explicit</code> resolves eagerly at <code>add_card</code>.</p>
-<h2 id="multi-user"><a class="header" href="#multi-user">Multi-User</a></h2>
-<p>GTK touch sequences are independent per <code>EventController</code>, hence per card:
-different users can drive different cards simultaneously. Simultaneous
-rotate+pinch on the same card is allowed; one card serves one active drag
-sequence at a time.</p>
-<h2 id="state-flow"><a class="header" href="#state-flow">State Flow</a></h2>
-<pre class="mermaid">sequenceDiagram
-    actor User
-    participant G as Gesture controllers
-    participant B as FloatingBoard (CardEntry)
-    participant L as gtk4::Fixed / layouts
-    participant C as Consumer
-
-    User-&gt;&gt;G: drag / pinch / rotate
-    G-&gt;&gt;B: domain-space delta
-    B-&gt;&gt;B: update position / scale cells
-    B-&gt;&gt;L: Fixed::move_, set_scale, (RotatedLayout::rotation)
-    B-&gt;&gt;C: geometry-changed
-    User-&gt;&gt;B: layout_snapshot()
-    B-&gt;&gt;C: BoardLayout (serde)
-    C-&gt;&gt;B: restore_layout()
-    B-&gt;&gt;B: clamp to bounds, warn on unknown ids
-    B-&gt;&gt;L: apply positions, rotation, scale
-</pre>
-
-<p>All mutations flow through the board; signals (<code>card-moved</code>, <code>card-rotated</code>,
-<code>card-scaled</code>, <code>card-raised</code>, <code>card-folded</code> on the card; <code>card-added</code>,
-<code>card-removed</code>, <code>geometry-changed</code> on the board) are emitted after state
-updates so consumers can debounce persistence on a single channel.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="usage"><a class="header" href="#usage">Usage</a></h1>
 <h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
@@ -875,6 +560,9 @@ id = "controls"
 position = [480.0, 660.0]
 rotation = 180.0
 scale = 1.0
+folded = false
+sticky = false
+seat = { side = "bottom" }
 </code></pre>
 <h2 id="signals"><a class="header" href="#signals">Signals</a></h2>
 <p>Connect with <code>connect_closure</code> or the generated <code>connect_*</code> helpers:</p>
@@ -954,6 +642,1398 @@ seat anchoring live; “Goto card” and each dynamic card’s “Goto” fly
 the camera onto a card — “Prezi goto” selects the transit flight,
 “Goto upright” turns the card readable.
 A status line shows signals live.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="cards"><a class="header" href="#cards">Cards</a></h1>
+<p>A <strong>card</strong> is the unit of content on the board: an arbitrary consumer
+widget wrapped in movable, rotatable, scalable chrome. Cards are views —
+they own no geometry. The <code>FloatingBoard</code> is the single state owner, and
+every <code>Card</code> delegates reads and writes to it through a weak backlink
+established at <code>add_card</code>.</p>
+<pre class="mermaid">flowchart LR
+    subgraph board["FloatingBoard · gtk4::Box"]
+        ov["gtk4::Overlay"]
+        cl["card layer · gtk4::Fixed"]
+        content["consumer content widget"]
+    end
+    subgraph stack["transform stack · per card"]
+        sc["ScalingWidget"]
+        ro["RotationWidget"]
+        ca["Card · gtk4::Box"]
+    end
+    ov --&gt; content
+    ov --&gt; cl
+    cl --&gt; sc
+    sc --&gt; ro
+    ro --&gt; ca
+</pre>
+
+<h2 id="whats-inside"><a class="header" href="#whats-inside">What’s inside</a></h2>
+<ul>
+<li><strong><a href="#anatomy">Anatomy</a></strong>: what a card is made of — header
+strip, drag handle, title, fold and close buttons, content area,
+resize and rotate grips, and the folded states.</li>
+<li><strong><a href="#chrome">Chrome</a></strong>: configuring the frame —
+<code>DragHandle</code> variants, <code>headerless</code>, fold modes including
+<code>folded_content</code>, <code>CardCloseAction</code>, per-card <code>CardPalette</code>,
+<code>content_padding</code>, size caps and <code>z_index</code>.</li>
+</ul>
+<h2 id="the-card-api-at-a-glance"><a class="header" href="#the-card-api-at-a-glance">The card API at a glance</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Group</th><th>Methods</th></tr>
+</thead>
+<tbody>
+<tr><td>Identity</td><td><code>id()</code>, <code>title()</code>, <code>board()</code></td></tr>
+<tr><td>Geometry</td><td><code>geometry()</code>, <code>set_geometry()</code>, <code>position()</code>, <code>set_position()</code>, <code>rotation()</code>, <code>set_rotation()</code>, <code>scale()</code>, <code>set_scale()</code></td></tr>
+<tr><td>Animation</td><td><code>set_rotation_with_animation()</code>, <code>glide_to()</code></td></tr>
+<tr><td>Chrome</td><td><code>fold()</code>, <code>set_folded()</code>, <code>folded()</code>, <code>close()</code>, <code>raise()</code>, <code>reset()</code></td></tr>
+<tr><td>Tabletop</td><td><code>seat()</code>, <code>set_seat()</code>, <code>sticky()</code>, <code>set_sticky()</code></td></tr>
+<tr><td>Diagnostics</td><td><code>rendered_bounds()</code>, <code>placed_position()</code>, <code>ancestor_chain()</code>, <code>footprint()</code>, <code>content()</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Signals: <code>card-moved</code>, <code>card-rotated</code>, <code>card-scaled</code>, <code>card-raised</code>,
+<code>card-folded</code>, <code>card-seat-changed</code>. See <a href="#signals">Usage</a> for
+the full table and <a href="#gestures">Gestures</a> for how user input turns
+into geometry.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="anatomy"><a class="header" href="#anatomy">Anatomy</a></h1>
+<p>A card is a <code>gtk4::Box</code> subclass with two vertical sections: the
+<strong>header strip</strong> (the chrome: handle, title, fold and close buttons)
+and the <strong>content area</strong> (an arbitrary consumer widget). Optional
+grips sit on the bottom corners. Everything outside the flags a
+<code>CardConfig</code> enables is never built.</p>
+<figure class="diagram">
+  <img src="cards/img/anatomy.svg" alt="Card with header strip containing handle, title, fold and close buttons, a content area, and resize and rotate grips on the bottom corners">
+  <figcaption>the anatomy of a fully chromed card — every element is opt-in</figcaption>
+</figure>
+<h2 id="the-header-strip"><a class="header" href="#the-header-strip">The header strip</a></h2>
+<p><code>.floating-card-header</code> carries the drag affordance and the window
+controls:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Element</th><th>Flag</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>handle icon</td><td><code>drag_handle: Handle</code></td><td>three-line grip; only shown for <code>DragHandle::Handle</code></td></tr>
+<tr><td>title</td><td><code>title: Option&lt;String&gt;</code></td><td>a localized fallback is used when the header shows without a title</td></tr>
+<tr><td>fold button</td><td><code>foldable</code></td><td>collapses the card to its header</td></tr>
+<tr><td>close button</td><td><code>closable</code></td><td>runs the card’s <code>CardCloseAction</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>headerless</code> collapses the whole strip to a slim grip — for cards that
+still need a fold/close path but no title bar.</p>
+<h2 id="the-content-area"><a class="header" href="#the-content-area">The content area</a></h2>
+<p><code>.floating-card-content</code> holds one consumer widget — the card imposes
+no structure on it. <code>content_padding</code> (default 10 px) insets it from
+the card border. <code>max_width</code>/<code>max_height</code> cap the <em>measured</em> size, so
+a card stays stable when its content changes size — the cap applies
+to the natural size before rotation and scale.</p>
+<p>Interactive content keeps working: the transform stack inverts
+rotation and scale during picking, and the quad tracker never claims
+touch sequences (see <a href="#quad-transform">Quad Transform</a>). Buttons,
+entries and canvases on a card behave exactly as if they were not
+floating.</p>
+<h2 id="the-grips"><a class="header" href="#the-grips">The grips</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Grip</th><th>Flag</th><th>Gesture</th></tr>
+</thead>
+<tbody>
+<tr><td>resize grip</td><td><code>resizable</code></td><td>bottom-right corner; drags scale the card around its center within <code>scale_limits</code></td></tr>
+<tr><td>rotate grip</td><td><code>rotate_grip</code></td><td>bottom-left corner; a swipe quarter-turns the card in the swipe direction</td></tr>
+</tbody>
+</table>
+</div>
+<p>Both are one-finger gestures — useful complements to the two-finger
+transform, and the only rotate path for single-handed use.</p>
+<h2 id="the-folded-states"><a class="header" href="#the-folded-states">The folded states</a></h2>
+<p>Folding is a state, not a chrome detail — it is stored in
+<code>CardGeometry</code>-adjacent state, serialized in <code>BoardLayout</code> and reported
+via <code>card-folded</code>:</p>
+<ul>
+<li><strong>Plain fold</strong> (<code>foldable</code> + <code>set_folded(true)</code>): the content area
+collapses; the card shrinks to its header strip. <code>.floating-card-folded</code>
+is added to the style classes.</li>
+<li><strong><code>folded_content</code></strong>: a consumer widget that replaces the <em>whole</em>
+card while folded — header included. Chrome is stripped
+(<code>.floating-card-collapsed</code> makes the card background transparent)
+and the folded widget shows inside <code>.floating-card-folded-content</code>.
+A round icon button or a compact mini toolbar both work; wire its
+activation back to <code>set_folded(false)</code> — the card’s own fold button
+hides with the header.</li>
+</ul>
+<h2 id="z-order"><a class="header" href="#z-order">z-order</a></h2>
+<p><code>Card::raise()</code> re-appends the card’s transform stack on the
+<code>gtk4::Fixed</code> layer — the child order <em>is</em> the stacking order. A
+released click (or finished drag) raises automatically; <code>z_index</code>
+sorts the initial order stably by insertion sequence.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="chrome"><a class="header" href="#chrome">Chrome</a></h1>
+<p><code>CardConfig</code> decides how much window-manager chrome a card gets —
+from a fully titled window with fold and close buttons down to a
+chrome-less floating content widget.</p>
+<h2 id="drag-handles"><a class="header" href="#drag-handles">Drag handles</a></h2>
+<p><code>DragHandle</code> selects which part of the card is the move affordance:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Header</code> (default)</td><td>only the title strip drags — content stays fully interactive</td></tr>
+<tr><td><code>WholeCard</code></td><td>the entire surface drags — for display-only cards whose content needs no input</td></tr>
+<tr><td><code>Handle</code></td><td>a dedicated grip icon in the header is the only drag surface — title clicks stay free for content</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>draggable: false</code> disables the drag entirely; the card can still be
+rotated, scaled and laid out.</p>
+<h2 id="folds-and-closes"><a class="header" href="#folds-and-closes">Folds and closes</a></h2>
+<pre><code class="language-rust ignore">CardConfig {
+    foldable: true,                        // fold button in the header
+    closable: true,                        // close button in the header
+    close_action: CardCloseAction::Hide,   // or Remove (default)
+    folded_content: Some(mini_toolbar),    // replaces the whole card while folded
+    ..Default::default()
+}</code></pre>
+<p><code>CardCloseAction</code> decides what the close button means:</p>
+<ul>
+<li><strong><code>Remove</code></strong> (default): destroys the card — <code>card-removed</code> fires and
+the <code>CardId</code> is gone from <code>board.cards()</code>.</li>
+<li><strong><code>Hide</code></strong>: collapses the card in place — it keeps its geometry,
+stays listed and comes back with
+<code>board.set_card_visible(&amp;id, true)</code>. Suits menu-driven boards that
+open and close the same panels repeatedly.</li>
+</ul>
+<p><code>board.close_card(&amp;id)</code> runs the configured action programmatically;
+<code>is_card_visible</code> reports the state.</p>
+<h2 id="per-card-colors"><a class="header" href="#per-card-colors">Per-card colors</a></h2>
+<p><code>palette</code> accepts a <code>CardPalette</code> — a <code>Palette&lt;CardColor, f64&gt;</code> from
+<code>smearor-commons-color</code> — and turns it into a scoped CSS provider at
+build time:</p>
+<pre><code class="language-rust ignore">use floating_board::CardColor;
+use floating_board::CardPalette;
+use smearor_commons_color::Color;
+
+let mut palette = CardPalette::new();
+palette.insert(CardColor::Background, Color::&lt;f64&gt;::new(0.1, 0.12, 0.18));
+palette.insert(CardColor::Foreground, Color::&lt;f64&gt;::new(0.9, 0.9, 0.9));
+palette.insert(CardColor::Header,      Color::&lt;f64&gt;::new(0.16, 0.2, 0.3));</code></pre>
+<p>Slots: <code>Background</code> (card surface), <code>Foreground</code> (title, buttons, grip
+strokes), <code>Header</code> (header strip). Unfilled slots keep the themed
+colors — a palette may fill any subset. Per-seat card colors are the
+idiomatic use: each player’s cards carry their marker color.</p>
+<h2 id="layout-related-flags"><a class="header" href="#layout-related-flags">Layout-related flags</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>headerless</code></td><td>collapses the header to a slim grip</td></tr>
+<tr><td><code>content_padding</code></td><td>inset between card border and content (default 10 px)</td></tr>
+<tr><td><code>max_width</code> / <code>max_height</code></td><td>hard cap on measured card size</td></tr>
+<tr><td><code>z_index</code></td><td>initial stacking order; <code>None</code> appends on top</td></tr>
+<tr><td><code>animation_speed_ms</code></td><td>duration of rotation, glide and camera animations on this card (default 500 ms)</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>CardConfig::default()</code> yields a fully interactive card: draggable,
+rotatable, scalable, header shown, <code>Center</code> anchored. Everything else
+is opt-in.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="geometry"><a class="header" href="#geometry">Geometry</a></h1>
+<p><code>floating-board</code> separates <em>where a card is</em> from <em>where it appears</em>.
+Card state — <code>CardGeometry { position, rotation, scale }</code> — lives in
+<strong>workspace coordinates</strong> on a virtual surface. A <code>View</code> camera maps a
+region of that workspace onto the widget; GTK transform widgets then
+map the widget onto the screen. Each hop is a different coordinate
+space, and the crate keeps them strictly apart.</p>
+<pre class="mermaid">flowchart LR
+    subgraph ws["Workspace · domain truth"]
+        cg["CardGeometry&lt;br/&gt;center · rotation · scale"]
+    end
+    subgraph view["View camera"]
+        r["region + rotation"]
+    end
+    subgraph wd["Widget · screen"]
+        tl["gtk4::Fixed top-left&lt;br/&gt;+ gsk::Transform stack"]
+    end
+    cg --&gt; r --&gt; tl
+    tl -.-&gt;|"to_workspace"| cg
+</pre>
+
+<p>Three invariants hold the model together:</p>
+<ol>
+<li><strong>The center is the anchor.</strong> <code>CardPosition</code> stores the card’s
+<em>center</em>, so rotation and scale never shift the point a user is
+pointing at.</li>
+<li><strong>Geometry is written once.</strong> The board owns every card’s
+<code>CardGeometry</code>; <code>Card</code> objects are pure views.</li>
+<li><strong>Transforms are render-time.</strong> Scale and rotation apply via
+<code>gsk::Transform</code> at allocation — GTK’s own picking inverts them,
+so card controls stay interactive at any angle.</li>
+</ol>
+<h2 id="whats-inside-1"><a class="header" href="#whats-inside-1">What’s inside</a></h2>
+<ul>
+<li><strong><a href="#coordinate-spaces">Coordinate Spaces</a></strong>: workspace vs.
+widget vs. card-local — where <code>CardPosition</code> lives, how <code>View</code>
+maps between spaces, and why the center anchor matters.</li>
+<li><strong><a href="#transform-stack">Transform Stack</a></strong>: the
+<code>ScalingWidget → RotationWidget → Card</code> nesting, how displayed
+size is predicted rather than read back, and animated transitions.</li>
+<li><strong><a href="#bounds--clamping">Bounds &amp; Clamping</a></strong>: <code>min_visible</code>,
+<code>BoundsMode::Loose</code> vs <code>Contained</code>, rotated footprints and the
+pure <code>clamp_offset</code> function.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="coordinate-spaces"><a class="header" href="#coordinate-spaces">Coordinate Spaces</a></h1>
+<p>Three coordinate spaces are in play, and the crate keeps them strictly
+apart — a value from one is never silently used as another.</p>
+<figure class="diagram">
+  <img src="geometry/img/coordinates.svg" alt="A large workspace plane with cards, a highlighted view region, and the widget showing the mapped region — to_widget and to_workspace arrows between them">
+  <figcaption>workspace truth → view region → widget rendering</figcaption>
+</figure>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Space</th><th>Unit</th><th>Owner</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>workspace</strong></td><td><code>Vec2&lt;Pixels&gt;</code> on the virtual surface</td><td>domain — <code>CardGeometry</code> is stored here</td></tr>
+<tr><td><strong>widget</strong></td><td>pixels on the <code>FloatingBoard</code> allocation</td><td>view — <code>View::to_widget</code> maps workspace → widget</td></tr>
+<tr><td><strong>card-local</strong></td><td>pixels inside a card’s transform stack</td><td>GTK — gesture source coordinates</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="the-center-anchor"><a class="header" href="#the-center-anchor">The center anchor</a></h2>
+<p><code>CardPosition</code> is the card’s <strong>center</strong>, never its top-left. Rotation
+and scale apply around the center, so the point a user looks at —
+or drags — stays put while the card’s bounding box changes shape.
+<code>gtk4::Fixed</code> positions children by top-left, so the board converts on
+every placement:</p>
+<p>$$\text{top-left} = \text{center} - \frac{\text{displayed size}}{2}$$</p>
+<p>The <em>displayed size</em> is predicted, not read back: <code>RotatedLayout</code>’s
+measure reports the rotated bounding box of the natural size, and
+<code>ScalingLayout</code> multiplies by the scale — so
+<code>rotated_bounds(w·s, h·s, θ)</code> always equals what <code>GtkFixed</code> allocates
+next. The center anchor stays exact even while a rotation or scale
+transition is still pending re-allocation.</p>
+<h2 id="the-view-mapping"><a class="header" href="#the-view-mapping">The view mapping</a></h2>
+<p><code>board.view()</code> returns the effective <code>View&lt;Pixels&gt;</code> — <code>{ region, rotation }</code>. It converts both ways:</p>
+<pre><code class="language-rust ignore">let view = board.view();
+let on_screen = view.to_widget(workspace_point);
+let on_table  = view.to_workspace(widget_point);</code></pre>
+<p><code>view.shown_region(allocation)</code> reports the region actually on screen:
+the mapped workspace region aspect-expanded to the widget’s aspect
+ratio — the honest answer to “what does the user see”.</p>
+<p>Sticky cards are the deliberate exception: while <code>sticky</code>, a card’s
+stored position is in <strong>widget</strong> coordinates (also what
+<code>Card::geometry()</code> and layout snapshots report); all other cards
+always speak workspace. See <a href="#sticky-cards-1">Sticky Cards</a>.</p>
+<h2 id="diagnostics"><a class="header" href="#diagnostics">Diagnostics</a></h2>
+<p><code>board.card_alignment(&amp;card)</code> returns a <code>CardAlignment</code> — model
+position, stored <code>put</code> spot on the layer and rendered bounds in
+widget coordinates. The invariant is
+<code>rendered.center() == position</code> (rotation and scale apply around the
+center); <code>drift</code> quantifies any violation. It exists for
+input-region coverage checks and geometry debugging, not for daily
+use.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="transform-stack"><a class="header" href="#transform-stack">Transform Stack</a></h1>
+<p>Each card renders through a nested transform stack on the
+<code>gtk4::Fixed</code> layer:</p>
+<figure class="diagram">
+  <img src="geometry/img/transforms.svg" alt="Nested boxes ScalingWidget, RotationWidget and Card — gsk::Transform applied at allocation, picking inverts the stack">
+  <figcaption>outer scale, inner rotation — controls stay usable at any angle</figcaption>
+</figure>
+<ul>
+<li><strong><code>ScalingWidget</code></strong> — outer transform, applies the card’s
+<code>ScaleFactor</code> around the center via <code>ScalingLayout</code>.</li>
+<li><strong><code>RotationWidget</code></strong> (<code>smearor-wrot-rotation</code>) — inner transform,
+applies <code>SmearorRotation</code> around the center via <code>RotatedLayout</code>.</li>
+<li><strong><code>Card</code></strong> — the <code>gtk4::Box</code> with header and content.</li>
+</ul>
+<p>Both transforms are applied as <code>gsk::Transform</code> at allocation time —
+not by moving widgets. That is the trick that keeps cards usable:
+GTK4’s picking machinery automatically multiplies the pointer by the
+full inverse stack <code>scale⁻¹ · rotate⁻¹</code>, so a rotated, zoomed card’s
+buttons land exactly where the user sees them. The same stack gives
+<code>card.footprint()</code> its region — the rasterized union of scanline
+strips.</p>
+<h2 id="predicted-sizes"><a class="header" href="#predicted-sizes">Predicted sizes</a></h2>
+<p>The layouts’ <code>measure</code> is what makes the center anchor work without a
+read-back: <code>RotatedLayout</code> reports the rotated bounding box of the
+card’s natural size, <code>ScalingLayout</code> multiplies it by the scale
+factor. The board can therefore compute where the card <em>will</em> be
+allocated and keep <code>CardPosition</code> consistent mid-transition.</p>
+<h2 id="animated-transitions"><a class="header" href="#animated-transitions">Animated transitions</a></h2>
+<p>Geometry writes can animate on the frame clock instead of snapping:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Call</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>card.set_rotation_with_animation(rotation)</code></td><td>zoom-snap transition to the new angle</td></tr>
+<tr><td><code>card.glide_to(&amp;geometry)</code> / <code>board.glide_card_geometry(&amp;id, target)</code></td><td>slide position, rotation and scale together</td></tr>
+<tr><td><code>apply_layout(..., animated: true)</code></td><td>every placement glides instead of jumping</td></tr>
+<tr><td><code>goto_card(&amp;id, transition, rotation)</code></td><td>camera flight — see <a href="#goto_card-1">goto_card</a></td></tr>
+</tbody>
+</table>
+</div>
+<p>Duration comes from the card’s <code>animation_speed_ms</code> (default 500 ms).
+Animations are superseded, not queued: a new animated write to the
+same card bumps a <code>SequenceNumber</code> generation and ticks of the old
+animation notice the stale generation and stop themselves — so a
+<code>goto_card</code> during a glide, or a gesture during a <code>goto_card</code>, simply
+wins.</p>
+<p>Rotation changes (gesture snap <em>or</em> programmatic) also re-center the
+card on its anchor and re-clamp it into the bounds — the board
+connects <code>notify::rotation</code> on the <code>RotatedLayout</code> once per card —
+and emit <code>card-rotated</code> plus <code>geometry-changed</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="bounds--clamping"><a class="header" href="#bounds--clamping">Bounds &amp; Clamping</a></h1>
+<p>A card may never get lost. <code>BoundsMode</code> decides how strictly the
+card’s <strong>rotated footprint</strong> stays inside the clamp domain — live
+during gestures or only when they end.</p>
+<figure class="diagram">
+  <img src="geometry/img/clamping.svg" alt="Left: a card sticking out over the board edge with only a min_visible strip retained. Right: a card pushed fully inside the bounds">
+  <figcaption>Loose keeps a min_visible slice; Contained keeps the whole footprint</figcaption>
+</figure>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>BoundsMode</code></th><th>Rule</th><th>When</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Loose</code> (default)</td><td>at least <code>min_visible</code> px of the footprint must overlap the bounds on each axis</td><td>on drag end, rotation/scale change, resize, restore</td></tr>
+<tr><td><code>Contained</code></td><td>the full footprint must stay inside at all times</td><td>clamped <em>live</em> during drag, pinch and rotation</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>min_visible</code> defaults to 40 px — a slice a user can still grab. The
+required overlap is capped at half the bounds size, so clamping stays
+satisfiable on tiny boards.</p>
+<h2 id="the-math"><a class="header" href="#the-math">The math</a></h2>
+<p>Clamping is a pure domain function — no GTK, directly unit-testable:</p>
+<pre><code class="language-rust ignore">domain::clamp_offset(footprint: &amp;Rect, bounds: &amp;Rect, min_visible: MinVisible) -&gt; (f64, f64)</code></pre>
+<p>It returns the minimal translation that puts <code>min_visible</code> pixels of
+the axis-aligned footprint back inside <code>bounds</code> on each axis. Because
+it operates on the footprint — the AABB of the rotated, scaled card —
+the guarantee holds at any angle, not just quarter turns.</p>
+<h2 id="the-clamp-domain"><a class="header" href="#the-clamp-domain">The clamp domain</a></h2>
+<p>What “inside” means depends on the workspace:</p>
+<ul>
+<li><code>WorkspaceSize::FollowWidget</code> / <code>Fixed</code> — the workspace extent.</li>
+<li><code>WorkspaceSize::Infinite</code> — no extent exists; clamping falls back
+to the <strong>shown view region</strong>, so cards cannot be dragged off-screen
+and lost.</li>
+<li><code>SeatAnchor::View</code> — the clamp domain widens to the shown region,
+so cards may rest at seat positions beyond the workspace extent.</li>
+</ul>
+<p><code>Infinite</code> never <em>re</em>-clamps on view changes — panning the camera
+cannot drag cards along.</p>
+<h2 id="footprints-and-the-safe-area"><a class="header" href="#footprints-and-the-safe-area">Footprints and the safe area</a></h2>
+<p><code>card.footprint()</code> returns a <code>gtk4::cairo::Region</code> — the union of
+<code>rotated_region_scanlines</code> strips rasterized from the card’s rotated
+rect, the same algorithm <code>smearor-wrot-rotation</code> uses for its input
+region. <code>board.cards_region()</code> unions all footprints into the board’s
+dynamic safe area; <code>board.card_footprint(&amp;id)</code> resolves a single card.
+Useful when the content layer should avoid drawing under cards — or
+when it deliberately should.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="gestures"><a class="header" href="#gestures">Gestures</a></h1>
+<p>Cards are manipulated by several users at once, from any side of the
+table — so the gesture layer is designed for independence: every card
+carries its own controllers, every touch sequence is tracked
+separately, and nothing grabs input globally.</p>
+<pre class="mermaid">sequenceDiagram
+    actor U as User (touch)
+    participant L as EventControllerLegacy
+    participant D as GestureDrag
+    participant B as FloatingBoard
+    U-&gt;&gt;L: touch begin / update / end
+    U-&gt;&gt;D: one-finger drag on handle
+    L-&gt;&gt;B: board-space point set (unclaimed)
+    D-&gt;&gt;B: pointer samples (board space)
+    B-&gt;&gt;B: fit similarity transform / apply delta
+    B-&gt;&gt;B: clamp · update geometry
+    B--&gt;&gt;U: card-moved / card-rotated / card-scaled
+</pre>
+
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Gesture</th><th>Controller</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td>1-finger drag on handle/header/card</td><td><code>GestureDrag</code></td><td>move (live), clamp on end</td></tr>
+<tr><td>1-finger tap on card</td><td><code>GestureClick</code></td><td>raise on release</td></tr>
+<tr><td>2+ fingers on card</td><td><code>EventControllerLegacy</code> (quad tracker)</td><td>move + rotate + scale in one similarity fit</td></tr>
+<tr><td>Rotate grip swipe</td><td><code>GestureDrag</code></td><td>quarter-turn in the swipe direction</td></tr>
+<tr><td>Resize grip drag</td><td><code>GestureDrag</code></td><td>scale around the card center</td></tr>
+<tr><td>Drag on empty space</td><td><code>GestureDrag</code> (opt-in)</td><td>pan the view camera</td></tr>
+<tr><td>Pinch / twist on empty space</td><td>quad tracker (opt-in)</td><td>zoom / rotate the view camera</td></tr>
+</tbody>
+</table>
+</div>
+<p>Card gestures claim sequences before view gestures, and touches
+starting on a card are denied to the camera outright — cards always
+win.</p>
+<h2 id="whats-inside-2"><a class="header" href="#whats-inside-2">What’s inside</a></h2>
+<ul>
+<li><strong><a href="#drag--raise">Drag &amp; Raise</a></strong>: the one-finger path — how the
+board derives deltas in board space without a feedback loop, drag
+handles, grips, raise-on-release.</li>
+<li><strong><a href="#quad-transform">Quad Transform</a></strong>: the multi-touch path — the
+unclaimed point-cloud tracker, the centroid/radius/Procrustes fit,
+re-baselining and stale-touch sweeping.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="drag--raise"><a class="header" href="#drag--raise">Drag &amp; Raise</a></h1>
+<p>The one-finger path: <code>GestureDrag</code> on the configured drag surface
+moves the card live, <code>GestureClick</code> raises it on release.</p>
+<h2 id="drag-surfaces"><a class="header" href="#drag-surfaces">Drag surfaces</a></h2>
+<p><code>CardConfig::drag_handle</code> picks what the drag gesture attaches to —
+the header strip, a dedicated handle icon, or the whole card
+(<code>DragHandle</code>, see <a href="#drag-handles">Chrome</a>). The
+two corner grips are separate <code>GestureDrag</code> controllers: the
+<strong>rotate grip</strong> converts the pointer’s angular sweep around the card
+center into quarter turns in the swipe direction, and the <strong>resize
+grip</strong> converts radial distance into <code>set_scale</code> within
+<code>scale_limits</code>.</p>
+<h2 id="deltas-in-board-space"><a class="header" href="#deltas-in-board-space">Deltas in board space</a></h2>
+<p><code>GestureDrag</code> reports offsets in the coordinate space of the drag
+source — which lives <em>inside</em> the rotated, scaled transform stack and
+<em>moves</em> with the card. Mapping that delta under the current transform
+creates a feedback loop: the reference frame shifts exactly as the
+card tracks the pointer, visible as jitter and reduced pointer speed.</p>
+<p>The board therefore ignores the reported offset and derives the delta
+from two consecutive <strong>board-space pointer samples</strong>: the pointer
+position is read from <code>Gesture::current_event</code>’s surface coordinates
+and mapped through <code>Native::compute_point</code> into the card layer — a
+frame that never depends on the card’s own transform. A pure-vector
+fallback (<code>rotate_vector · scale</code>) covers the window before the first
+allocation.</p>
+<p>The same trick applies to the view camera: a pan drag on empty space
+reads board-space samples, maps them <code>to_workspace</code> and pans the
+<code>View</code> so the table follows the fingers exactly.</p>
+<h2 id="raise-on-release"><a class="header" href="#raise-on-release">Raise on release</a></h2>
+<p>A <code>GestureClick</code> that releases without a drag claims the sequence and
+re-appends the card’s transform stack on the <code>gtk4::Fixed</code> layer —
+the child order is the stacking order, so the card pops to the top.
+<code>card-raised</code> fires; a finished drag raises the same way. One card
+serves one active drag sequence at a time, but sequences on
+<em>different</em> cards are independent — two users can drag two cards
+simultaneously.</p>
+<p>On drag end (and in <code>Contained</code> mode during the drag) the card
+re-clamps into the bounds — see
+<a href="#bounds--clamping">Bounds &amp; Clamping</a> — and <code>card-moved</code> plus
+<code>geometry-changed</code> fire.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="quad-transform"><a class="header" href="#quad-transform">Quad Transform</a></h1>
+<p>Move, rotate and zoom are <strong>one</strong> gesture, not three competing ones.
+A raw <code>EventControllerLegacy</code> on each card observes every touch
+sequence — <code>TouchBegin</code>, <code>Update</code>, <code>End</code>, <code>Cancel</code> — <strong>without
+claiming any</strong>. Each live finger maps to a tracked board-space point;
+with two or more points the board fits a similarity transform between
+a baseline point cloud and the current one. (<code>GestureSingle</code>-based
+slots were abandoned: a single locks onto the first sequence it sees
+and cannot distribute touches across siblings — and unclaimed
+sequences keep buttons and content on the card working.)</p>
+<figure class="diagram">
+  <img src="gestures/img/quad.svg" alt="A card center with a baseline point cloud and a moved, enlarged, rotated current point cloud — centroid delta, radius ratio and angle arc annotated">
+  <figcaption>one similarity fit: centroid = move, radius ratio = scale, Procrustes angle = rotate</figcaption>
+</figure>
+<h2 id="the-fit"><a class="header" href="#the-fit">The fit</a></h2>
+<p>The tracker keeps <code>TrackedTouch</code> points in card-layer board space.
+Against the baseline cloud, the current cloud yields all three
+degrees of freedom at once:</p>
+<ul>
+<li><strong>Move</strong> — the card center follows the point-cloud centroid: the
+card point under the finger polygon stays fixed.</li>
+<li><strong>Scale</strong> — the RMS radius ratio of the two clouds, clamped to
+<code>scale_limits</code>; the card keeps its aspect ratio.</li>
+<li><strong>Rotate</strong> — the Procrustes angle
+<code>atan2(Σ w×u, Σ w·u)</code> between the two point sets, applied via
+<code>RotationWidget::set_rotation</code> (negated — the angle is computed in
+y-down screen coordinates).</li>
+</ul>
+<p><code>draggable</code> / <code>rotatable</code> / <code>scalable</code> gate which degrees of freedom
+apply to the fit — a card with <code>rotatable: false</code> moves and scales
+without turning.</p>
+<h2 id="re-baselining"><a class="header" href="#re-baselining">Re-baselining</a></h2>
+<p>The baseline re-snapshots whenever a finger joins or leaves, so the
+transform never jumps mid-gesture. Two safety valves handle the
+degenerate cases:</p>
+<ul>
+<li><strong>Finger crossing</strong> — a frame-to-frame angle jump beyond 60°
+usually means the point cloud passed through its own centroid;
+the tracker re-baselines instead of applying a violent twist.</li>
+<li><strong>Lost touches</strong> — a touch that gets claimed by another gesture,
+or produces no event for <code>QUAD_STALE_MS</code> (1.5 s), is swept out on
+the next update. Slot ids recycle, so a stale slot can belong to a
+<em>new</em> touch — the timestamp check is what tells them apart, and
+lost <code>TouchEnd</code> events cannot linger as phantom points.</li>
+</ul>
+<p><code>smearor-wrot-rotation</code>’s built-in rotate gesture is disabled on the
+board — the quad fit already covers rotation and keeps all three
+DOFs consistent.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="workspace--view"><a class="header" href="#workspace--view">Workspace &amp; View</a></h1>
+<p>Card geometry lives on a <strong>virtual workspace</strong> — a surface that can be
+exactly the widget, a fixed table larger than the screen, or unbounded.
+A <strong><code>View</code></strong> camera decides which part of the workspace the widget
+shows, so panning, zooming and rotating the table never touches card
+state. Sticky cards opt out: they pin to the glass instead of the
+table.</p>
+<pre class="mermaid">flowchart TB
+    subgraph wss["WorkspaceSize"]
+        fw["FollowWidget · default"]
+        fx["Fixed w × h"]
+        inf["Infinite"]
+    end
+    subgraph cam["View camera"]
+        reg["region + rotation&lt;br/&gt;pinned or following"]
+    end
+    subgraph nav["navigation"]
+        pz["pan / zoom / rotate&lt;br/&gt;gestures · buttons · API"]
+        go["goto_card · goto_view"]
+    end
+    wss --&gt; cam
+    pz --&gt; cam
+    go --&gt; cam
+</pre>
+
+<h2 id="whats-inside-3"><a class="header" href="#whats-inside-3">What’s inside</a></h2>
+<ul>
+<li><strong><a href="#workspace-size">Workspace Size</a></strong>: <code>FollowWidget</code>, <code>Fixed</code> and
+<code>Infinite</code> extents — and how each mode decides the clamp domain.</li>
+<li><strong><a href="#the-camera-1">The Camera</a></strong>: the <code>View</code> value, pinning and
+resetting, <code>pan_view</code>/<code>zoom_view</code>/<code>rotate_view</code>, opt-in view
+gestures and the overlay control buttons.</li>
+<li><strong><a href="#goto_card-1">goto_card</a></strong>: camera flights onto a card —
+<code>Snap</code>, <code>Glide</code> and the Prezi-style <code>Transit</code>, plus <code>GotoRotation</code>
+and the flight lifecycle.</li>
+<li><strong><a href="#sticky-cards-1">Sticky Cards</a></strong>: cards pinned to the screen —
+the coordinate seam, layout interactions and the release-to-table
+rules.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="workspace-size"><a class="header" href="#workspace-size">Workspace Size</a></h1>
+<p><code>WorkspaceSize&lt;Pixels&gt;</code> (from <code>smearor-commons-layout</code>) is the extent
+of the virtual surface card geometry lives on. Card positions are
+always workspace coordinates — the mode only decides where the edges
+of the world are.</p>
+<figure class="diagram">
+  <img src="workspace/img/size.svg" alt="Three panels: FollowWidget where workspace equals the widget, Fixed where a large workspace holds a small widget window, Infinite where the workspace border fades away">
+  <figcaption>three extents: mirror the widget, a fixed table, or no border at all</figcaption>
+</figure>
+<pre><code class="language-rust ignore">use smearor_commons_layout::WorkspaceSize;
+use smearor_commons_geometry::{Pixels, Vec2};
+
+board.set_workspace_size(WorkspaceSize::FollowWidget);               // default
+board.set_workspace_size(WorkspaceSize::Fixed(Vec2::&lt;Pixels&gt;::new(2000.0, 1600.0)));
+board.set_workspace_size(WorkspaceSize::Infinite);</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Extent</th><th>Clamp domain</th></tr>
+</thead>
+<tbody>
+<tr><td><code>FollowWidget</code> (default)</td><td>mirrors the widget allocation — identical to pre-workspace behavior</td><td>the allocation</td></tr>
+<tr><td><code>Fixed(size)</code></td><td>a fixed workspace in pixels, origin at (0, 0) — a table bigger than the widget</td><td>the workspace rect</td></tr>
+<tr><td><code>Infinite</code></td><td>unbounded — no extent exists</td><td>the <em>shown view region</em>, so cards cannot be lost off-screen</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>board.workspace_bounds()</code> returns the active <code>Rect&lt;Pixels&gt;</code> — the
+resolved extent for <code>FollowWidget</code>/<code>Fixed</code>, or the shown region for
+<code>Infinite</code>.</p>
+<p>The choice is persisted: <code>workspace</code> is a field of <code>BoardLayout</code>
+(<code>serde(default)</code> — files written before the workspace read back as
+<code>FollowWidget</code>, exactly the old behavior).</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="the-camera-1"><a class="header" href="#the-camera-1">The Camera</a></h1>
+<p><code>View&lt;Pixels&gt;</code> is the camera: a workspace <code>region</code> plus a <code>rotation</code>
+that decides what the widget shows. Cards never move when the camera
+does — panning, zooming and rotating the table is a pure view
+operation.</p>
+<figure class="diagram">
+  <img src="workspace/img/camera.svg" alt="A workspace with cards, a rotated highlighted view region, and pan, zoom and rotate arrows on the widget side">
+  <figcaption>the view region floats over the workspace — cards stay where they are</figcaption>
+</figure>
+<h2 id="pinning-and-resetting"><a class="header" href="#pinning-and-resetting">Pinning and resetting</a></h2>
+<pre><code class="language-rust ignore">let view = board.view();                  // the effective view, pinned or default
+board.set_view(view);                     // pin an explicit view
+board.reset_view();                       // release the pin
+board.pan_view(Vec2::&lt;Pixels&gt;::new(100.0, 0.0));
+board.zoom_view(anchor, ViewScaleFactor::new(1.25));   // zoom around a workspace point
+board.rotate_view(pivot, RotationRad::from_degrees(90.0));</code></pre>
+<p>The default view covers the workspace extent and follows the widget —
+resizes keep it covering the extent. <code>set_view</code> and every pan/zoom/
+rotate <strong>pin</strong> an explicit view: resizes no longer change zoom or
+center until <code>reset_view</code> releases the pin.</p>
+<p><code>View</code> itself offers <code>to_widget</code>/<code>to_workspace</code> for coordinate
+mapping and <code>shown_region</code> for the aspect-expanded region actually on
+screen — see <a href="#coordinate-spaces">Coordinate Spaces</a>.</p>
+<h2 id="user-control-1"><a class="header" href="#user-control-1">User control</a></h2>
+<p>Both controls are opt-in (default off) because they share the touch
+surface with card gestures:</p>
+<ul>
+<li><code>board.set_view_gestures(true)</code> — a drag on empty space pans, a
+pinch zooms around the gesture center, a two-finger twist rotates
+the table. Card gestures keep precedence: they claim sequences
+first, and touches starting on a card are denied up front.</li>
+<li><code>board.set_view_buttons(true)</code> — overlaid corner controls (zoom in,
+zoom out, reset) styled via <code>.floating-board-view-controls</code>.</li>
+</ul>
+<h2 id="custom-flights"><a class="header" href="#custom-flights">Custom flights</a></h2>
+<p><code>board.goto_view(target, transition, duration)</code> flies the camera to
+an arbitrary <code>View</code> — the same machinery <code>goto_card</code> uses, exposed
+for camera choreography that is not about a card.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="goto_card-1"><a class="header" href="#goto_card-1">goto_card</a></h1>
+<p><code>goto_card</code> is the camera’s answer to “show me that card”: it flies
+the view onto the card’s workspace footprint — and optionally turns
+the table so the card reads upright for the viewer.</p>
+<figure class="diagram">
+  <img src="workspace/img/goto.svg" alt="Three flight paths: Snap as a direct jump, Glide as one curve to the card, Transit as a pull-back to an overview waypoint then a glide down">
+  <figcaption>Snap jumps, Glide flies direct, Transit pulls back first — Prezi style</figcaption>
+</figure>
+<pre><code class="language-rust ignore">use floating_board::{GotoRotation, GotoTransition};
+
+board.goto_card(&amp;id, GotoTransition::Glide,   GotoRotation::Upright)?;
+board.goto_card(&amp;id, GotoTransition::Transit, GotoRotation::Upright)?;
+board.goto_card(&amp;id, GotoTransition::Snap,    GotoRotation::Keep)?;</code></pre>
+<h2 id="transitions"><a class="header" href="#transitions">Transitions</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>GotoTransition</code></th><th>Flight</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Snap</code></td><td>apply the target view instantly</td></tr>
+<tr><td><code>Glide</code> (default)</td><td>pan, zoom and rotation glide together on the frame clock</td></tr>
+<tr><td><code>Transit</code></td><td>Prezi-style: pull back to a region covering <em>both</em> the current and the target view, then glide down onto the card — one flight over a waypoint, not two chained animations</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="rotations"><a class="header" href="#rotations">Rotations</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>GotoRotation</code></th><th>Destination</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Keep</code></td><td>pan/zoom only — the table keeps its rotation</td></tr>
+<tr><td><code>Upright</code></td><td>rotate the view so the card reads upright for the viewer</td></tr>
+</tbody>
+</table>
+</div>
+<p>The target view centers the card’s workspace footprint with a padding
+margin (<code>GOTO_CARD_PADDING</code> = 1.5× the footprint). Flights run on the
+card’s <code>animation_speed_ms</code>.</p>
+<h2 id="lifecycle"><a class="header" href="#lifecycle">Lifecycle</a></h2>
+<p>A new <code>goto_card</code> <strong>supersedes</strong> a running one — the animation
+generation bumps and the old flight’s ticks stop themselves. Any
+programmatic or gesture view change cancels a flight in progress.
+The destination <strong>pins</strong> the view like <code>set_view</code> — <code>reset_view</code>
+releases it.</p>
+<p>A <code>sticky</code> target is pinned to the glass itself: the camera moves to
+the workspace region <em>behind</em> it, and <code>rotation</code> is ignored — turning
+the table cannot turn a card that is not on it.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="sticky-cards-1"><a class="header" href="#sticky-cards-1">Sticky Cards</a></h1>
+<p><code>CardConfig::sticky</code> pins a card to the <strong>screen</strong> instead of the
+workspace — chrome glued to the glass rather than a sheet on the
+table. A sticky card keeps its on-screen position, rotation and zoom
+no matter how the view pans, zooms or rotates; HUD-style toolbars
+are the idiomatic use.</p>
+<pre><code class="language-rust ignore">board.add_card(&amp;hud, CardConfig {
+    position: CardAnchor::Explicit(CardPosition::new(Vec2::&lt;Pixels&gt;::new(900.0, 60.0))),
+    sticky: true,
+    ..Default::default()
+});
+
+card.set_sticky(true);   // pin to the glass
+card.set_sticky(false);  // release back onto the table</code></pre>
+<h2 id="the-coordinate-seam"><a class="header" href="#the-coordinate-seam">The coordinate seam</a></h2>
+<p>Toggling never moves the card visually: at the seam, its stored
+<code>CardPosition</code> converts between workspace and widget coordinates
+through the current <code>View</code> mapping. Two consequences to keep in mind:</p>
+<ul>
+<li><strong>While pinned</strong>, <code>Card::geometry()</code> (and layout snapshots) report
+<em>widget</em> coordinates; for every other card they report workspace
+coordinates.</li>
+<li>Gestures still work — in screen coordinates — and the card still
+clamps, against the widget rect rather than the workspace.</li>
+</ul>
+<h2 id="layout-interactions"><a class="header" href="#layout-interactions">Layout interactions</a></h2>
+<p>Sticky cards are deliberately excluded from table semantics:</p>
+<ul>
+<li><code>apply_layout</code> skips them — strategies arrange table content, not
+chrome.</li>
+<li>They count as obstacles for seat passes only under
+<code>SeatAnchor::View</code> (where seats live on screen anyway).</li>
+<li>Passing a sticky card to a seat <strong>releases the pin first</strong> — a card
+handed to another user always lands on the table.</li>
+<li>A <code>goto_card</code> onto a sticky card flies to the workspace region
+behind it; <code>GotoRotation</code> is ignored.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="tabletop"><a class="header" href="#tabletop">Tabletop</a></h1>
+<p><code>floating-board</code> is built for table-top surfaces: several users stand
+around one horizontal screen, each reading from their own side. The
+<strong>tabletop</strong> vocabulary models <em>who</em> a card belongs to — independently
+of <em>which way the card is currently turned</em> — and moves cards between
+users in reading orientation.</p>
+<pre class="mermaid">flowchart LR
+    subgraph seat["Seat model"]
+        s["Seat = TableSide&lt;br/&gt;+ Option&amp;lt;Fraction&amp;gt;"]
+        sa["SeatAnchor&lt;br/&gt;View · Workspace"]
+    end
+    subgraph pass["passing"]
+        nxt["rotate_to_next_user"]
+        ros["rotate_to_next_occupied_seat"]
+    end
+    subgraph lay["layout"]
+        st["LayoutStrategy&amp;lt;Pixels&amp;gt;&lt;br/&gt;Flow · Seat · custom"]
+    end
+    s --&gt; nxt
+    s --&gt; ros
+    sa --&gt; pass
+    st -.-&gt;|"apply_layout"| seat
+</pre>
+
+<p><code>smearor-commons-layout</code> provides the generic machinery —
+<code>TableSide</code>, <code>Seat</code>, <code>LayoutStrategy</code>, <code>FlowLayout</code>, <code>SeatLayout</code> —
+and the board adapts card state to and from it. The layout crate’s
+<a href="https://smearor.github.io/smearor-commons/book/layout.html">book</a>
+documents the primitives; the chapters here document what the board
+does with them.</p>
+<h2 id="whats-inside-4"><a class="header" href="#whats-inside-4">What’s inside</a></h2>
+<ul>
+<li><strong><a href="#seats-1">Seats</a></strong>: <code>Seat</code>, pinned vs. distributed
+positions, <code>SeatAnchor</code> — whether seats live at the screen edge or
+on the virtual table.</li>
+<li><strong><a href="#passing-cards">Passing Cards</a></strong>: <code>rotate_to_next_user</code>,
+the occupied-seat roster, fan-out lanes and the <code>NoNextSeat</code> error.</li>
+<li><strong><a href="#layout-strategies">Layout Strategies</a></strong>: <code>apply_layout</code> —
+mapping cards to <code>LayoutItem</code>s, animated placement, <code>DoesNotFit</code>
+and writing custom strategies.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="seats-1"><a class="header" href="#seats-1">Seats</a></h1>
+<p>A <code>Seat</code> (from <code>smearor-commons-layout</code>) is a <code>TableSide</code> plus an
+optional <code>Fraction</code> offset along the edge. It models <em>which user a
+card belongs to</em> — deliberately decoupled from the card’s rotation,
+because the board may be rotated and users may move around.</p>
+<figure class="diagram">
+  <img src="tabletop/img/seats.svg" alt="A table surface with four side labels and cards parked at the bottom, top, left and right edges in each side&#39;s reading orientation">
+  <figcaption>seats live on the perimeter clock — cards rotate to face their side</figcaption>
+</figure>
+<pre><code class="language-rust ignore">use smearor_commons_layout::{Seat, TableSide};
+use smearor_commons_geometry::Fraction;
+
+let config = CardConfig {
+    seat: Some(Seat::new(TableSide::Bottom)),                      // assigned, strategy distributes
+    // seat: Some(Seat::at(TableSide::Top, Fraction::new(0.25))),  // pinned to a position
+    // seat: Some(Seat::center(TableSide::Left)),                  // centered on an edge
+    ..Default::default()
+};
+
+let seat = card.seat();
+card.set_seat(Some(Seat::center(TableSide::Right)));  // emits card-seat-changed
+board.set_card_seat(&amp;id, None)?;                      // clear via the board</code></pre>
+<ul>
+<li><strong>Pinned</strong> — <code>Seat::at(side, fraction)</code> takes an exact offset along
+the edge.</li>
+<li><strong>Distributed</strong> — <code>offset: None</code> lets a strategy (or the pass
+fan-out) pick a spot.</li>
+<li><strong><code>Seat::nearest</code></strong> derives the closest seat from a rotation — used
+for unassigned cards; under <code>SeatAnchor::View</code> it reads the
+<em>rendered</em> (card + view) rotation, under <code>Workspace</code> the workspace
+rotation.</li>
+</ul>
+<p>Seats serialize into <code>BoardLayout</code> via <code>CardPlacement::seat</code>.</p>
+<h2 id="where-the-edges-live"><a class="header" href="#where-the-edges-live">Where the edges live</a></h2>
+<p><code>board.set_seat_anchor</code> chooses what “the table edge” means for
+pass-to-seat operations:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>SeatAnchor</code></th><th>Edges</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>View</code> (default)</td><td>the <strong>screen</strong> edge — where the users physically sit</td><td>a passed card lands at the visible edge facing its user, however the camera is panned, zoomed or rotated; the clamp domain widens to the shown region</td></tr>
+<tr><td><code>Workspace</code></td><td>the <strong>workspace extent</strong> — fixed positions on the virtual table</td><td>the card lands at the workspace edge wherever the view currently shows it</td></tr>
+</tbody>
+</table>
+</div>
+<p>The whole pass placement — edge position, fan-out lane, margin,
+target rotation — is computed in the anchor’s space and mapped back
+through <code>to_workspace</code>, so <code>SeatAnchor::View</code> is the mode that keeps
+“the bottom seat” glued to “the user standing at the bottom of the
+screen” even while the table is turned.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="passing-cards"><a class="header" href="#passing-cards">Passing Cards</a></h1>
+<p>Passing is the tabletop signature move: a card glides to another
+user’s edge and turns into <em>their</em> reading orientation. Two entry
+points cover the two questions — “next side of the table” and “next
+person actually playing”.</p>
+<figure class="diagram">
+  <img src="tabletop/img/passing.svg" alt="A table with a card at the bottom edge and a clockwise arrow to the left edge, plus a fan-out lane of cards parked beside an occupied seat">
+  <figcaption>passing hops the perimeter and lands in the fan-out lane, rotated to read upright</figcaption>
+</figure>
+<h2 id="next-side-of-the-table"><a class="header" href="#next-side-of-the-table">Next side of the table</a></h2>
+<pre><code class="language-rust ignore">// Bottom → Left → Top → Right (CounterClockwise reverses),
+// gliding to the edge at anchor_margin and rotating into the
+// side's reading orientation:
+board.rotate_to_next_user(&amp;id, TurnDirection::Clockwise, true)?;</code></pre>
+<p><code>move_to_edge</code> (usually <code>true</code>) slides the card in front of the
+target edge; <code>false</code> rotates it in place. <code>rotate_to_next_user</code> only
+advances an <strong>explicitly assigned</strong> seat — unassigned cards derive
+their starting side from their current rotation each time, which
+still gives a sensible “turn it toward the next side”.</p>
+<h2 id="next-occupied-seat"><a class="header" href="#next-occupied-seat">Next occupied seat</a></h2>
+<pre><code class="language-rust ignore">let roster = [Seat::new(TableSide::Bottom), Seat::center(TableSide::Top)];
+board.rotate_to_next_occupied_seat(&amp;id, &amp;roster, TurnDirection::Clockwise, true)?;</code></pre>
+<p>The roster is the occupied seats — empty sides are skipped, several
+seats on one side are visited in order. The reached roster seat is
+<strong>assigned</strong> to the card (<code>card-seat-changed</code>): being passed to a
+user makes the card belong to their seat, which is what lets repeated
+passes keep hopping the roster. <code>BoardError::NoNextSeat</code> comes back
+when the roster holds no seat other than the card’s current one.</p>
+<h2 id="the-fan-out-lane"><a class="header" href="#the-fan-out-lane">The fan-out lane</a></h2>
+<p>A passed card does not stack on top of what is already there — it
+slips into the free spot nearest its seat:</p>
+<ul>
+<li>it fills gaps left by removed cards along the edge,</li>
+<li>it sits beside occupied cards without overlap,</li>
+<li>and it may take the lane <em>behind</em> the edge row when the queue there
+would reach farther from the seat than a second row — the edge lane
+is preferred, but closeness to the seat wins.</li>
+</ul>
+<p>Sticky cards are released to the table before the pass lands; other
+sticky cards count as obstacles only under <code>SeatAnchor::View</code> — see
+<a href="#where-the-edges-live">Seats</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="layout-strategies"><a class="header" href="#layout-strategies">Layout Strategies</a></h1>
+<p><code>apply_layout</code> arranges cards through a <code>LayoutStrategy&lt;Pixels&gt;</code> —
+the same contract <code>smearor-commons-layout</code> defines for headless
+tabletop layouting. The board maps cards to <code>LayoutItem</code>s, calls
+<code>arrange</code> against the workspace bounds and applies every <code>Placement</code>
+through the regular geometry path.</p>
+<pre><code class="language-rust ignore">use smearor_commons_layout::{FlowLayout, SeatLayout};
+
+// All visible cards, gliding animatedly:
+board.apply_layout(&amp;FlowLayout::default(), None, true)?;
+
+// Only a selection, snapping:
+board.apply_layout(&amp;FlowLayout::default(), Some(&amp;[id_a, id_b]), false)?;
+
+// Around the table edges:
+board.apply_layout(&amp;SeatLayout::default(), None, true)?;</code></pre>
+<h2 id="what-the-board-hands-the-strategy"><a class="header" href="#what-the-board-hands-the-strategy">What the board hands the strategy</a></h2>
+<p>Each selected card becomes a <code>LayoutItem</code> carrying its <strong>displayed
+footprint</strong> (natural size under current scale, rotated), its live
+rotation and its <code>seat</code>. The strategy sees footprints, never widgets
+— it answers <code>Placement</code>s with a target center, size, rotation and
+optionally a seat.</p>
+<p><code>Placement::size</code> is the target footprint; cards keep their
+configured <code>scale_limits</code>. Because placements flow through the normal
+geometry path, clamping, scale limits and <code>geometry-changed</code> behave
+exactly like manual manipulation — and with <code>animated: true</code> every
+placement becomes a per-card frame-clock glide.</p>
+<h2 id="doesnotfit"><a class="header" href="#doesnotfit"><code>DoesNotFit</code></a></h2>
+<p>A strategy reports the first item it cannot place
+(<code>LayoutError::DoesNotFit { index, items }</code>), surfaced as
+<code>BoardError::Layout(...)</code>. A failed arrange <strong>leaves the board
+untouched</strong> — placements are computed in full before any is applied,
+so a layout either lands completely or not at all.</p>
+<h2 id="built-in-and-custom"><a class="header" href="#built-in-and-custom">Built-in and custom</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Strategy</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>FlowLayout</code></td><td>anchored rows (<code>AnchorWeights</code> corner + <code>gap</code>), non-overlapping, <code>wrap</code> to the next line</td></tr>
+<tr><td><code>SeatLayout</code></td><td>items along table edges — pinned seats take their offset, unpinned spread centered, rotated to the side’s orientation</td></tr>
+<tr><td>custom</td><td>any <code>LayoutStrategy&lt;Pixels&gt;</code> impl — signatures in the <a href="https://smearor.github.io/smearor-commons/book/layout/strategies.html">layout book</a></td></tr>
+</tbody>
+</table>
+</div>
+<p>Sticky cards are skipped entirely — strategies arrange table
+content, not screen chrome.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="domain-model"><a class="header" href="#domain-model">Domain Model</a></h1>
+<p>The <code>floating_board::domain</code> module is the heart of the library. It contains
+<strong>no <code>gtk4</code> dependency</strong>: only newtypes, enums and pure geometry functions.
+Everything here is display-free and unit-testable — the same types appear in
+the widget API, in gesture handling, and in the persisted layout files.</p>
+<h2 id="design-principles"><a class="header" href="#design-principles">Design Principles</a></h2>
+<ol>
+<li><strong>Radically strict types.</strong> Every concept is a newtype or enum with
+semantic meaning: a <code>CardPosition</code> is never confused with a pixel offset,
+and a <code>ScaleFactor</code> can never silently become negative.</li>
+<li><strong>The board owns the state.</strong> Position, rotation and scale exist exactly
+once per card — inside the <code>FloatingBoard</code>. <code>Card</code> objects are views that
+delegate every geometry read and write to the board. Widget children never
+own geometry state.</li>
+<li><strong>Feature-gated serialization.</strong> Serde implementations on the domain types
+live behind the <code>serde</code> cargo feature (enabled by default). Building with
+<code>--no-default-features</code> removes the persistence dependency entirely.</li>
+</ol>
+<h2 id="type-reference"><a class="header" href="#type-reference">Type Reference</a></h2>
+<h3 id="identity"><a class="header" href="#identity">Identity</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>CardId</code></td><td>Newtype over <code>String</code>. Consumers assign stable, semantic keys such as <code>"controls"</code> or <code>"params"</code> that survive in persisted layouts. <code>add_card</code> generates <code>card-N</code> ids; <code>add_card_with_id</code> takes a semantic key.</td></tr>
+<tr><td><code>CardPosition</code></td><td>Newtype over <code>(f64, f64)</code> workspace pixels — the card’s <strong>center point</strong>, not its top-left corner. The center anchor stays stable under rotation and scaling. Serializes as a <code>[x, y]</code> pair. (Sticky cards are the exception: while pinned they store widget pixels.)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="geometry-1"><a class="header" href="#geometry-1">Geometry</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>CardGeometry</code></td><td><code>{ position: CardPosition, rotation: SmearorRotation, scale: ScaleFactor }</code> — the complete geometric state of a card and the unit of persistence.</td></tr>
+<tr><td><code>ScaleFactor</code></td><td>Newtype over <code>f64</code> (<code>1.0</code> = natural size). Always strictly positive; per-card limits are applied via <code>ScaleBounds</code>.</td></tr>
+<tr><td><code>ScaleBounds</code></td><td><code>{ min: f64, max: f64 }</code> — inclusive scale limits, default <code>0.5 – 2.0</code>. Arguments are normalized so <code>min &lt;= max</code>.</td></tr>
+<tr><td><code>SmearorRotation</code></td><td>Rotation enum from <code>smearor-wrot-rotation</code>: <code>Deg0</code>, <code>Deg90</code>, <code>Deg180</code>, <code>Deg270</code>, <code>Deg(f32)</code>. Re-exported by this crate. In <code>CardGeometry</code> it serializes as a plain degree value (<code>rotation = 180.0</code>).</td></tr>
+<tr><td><code>MinVisible</code></td><td>Newtype over <code>f64</code> pixels — the minimum overlap a card must keep inside the board bounds. Default <code>40.0</code>.</td></tr>
+<tr><td><code>Rect</code></td><td>GTK-free axis-aligned rectangle (<code>x</code>, <code>y</code>, <code>width</code>, <code>height</code>) used for footprints and bounds in the pure math functions.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="placement"><a class="header" href="#placement">Placement</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>CardAnchor</code></td><td>Declarative initial placement: <code>TopLeft</code> … <code>BottomRight</code> (nine anchors) plus <code>Explicit(CardPosition)</code>. Anchors are resolved once the card’s natural size and the board bounds are known.</td></tr>
+<tr><td><code>DragHandle</code></td><td>Which part of a card is the drag affordance: <code>Header</code> (default — only the title strip drags, content stays interactive), <code>WholeCard</code> (display-only cards), <code>Handle</code> (dedicated grip icon in the header).</td></tr>
+<tr><td><code>CardPlacement</code></td><td><code>{ id: CardId, geometry: CardGeometry, folded: bool, seat: Option&lt;Seat&gt;, sticky: bool }</code> — one entry of a layout, serialized flat; the non-geometry fields default via <code>serde(default)</code> for older files.</td></tr>
+<tr><td><code>BoardLayout</code></td><td><code>{ version: u8, workspace, view, seat_anchor, cards: Vec&lt;CardPlacement&gt; }</code> — the serializable snapshot produced by <code>layout_snapshot()</code> and consumed by <code>restore_layout()</code>. <code>version</code> is reserved for future migrations (currently <code>1</code>); the workspace fields default via <code>serde(default)</code> so older files parse as <code>FollowWidget</code> plus the default view — exactly the pre-workspace behavior.</td></tr>
+<tr><td><code>BoardError</code></td><td><code>UnknownCard(CardId)</code> | <code>DuplicateCard(CardId)</code> | <code>Layout(..)</code> | <code>NoNextSeat</code> — the crate’s <code>thiserror</code> error type.</td></tr>
+<tr><td><code>BoundsMode</code></td><td><code>Loose</code> (default) | <code>Contained</code> — how strictly a card’s footprint is kept inside the bounds.</td></tr>
+<tr><td><code>SeatAnchor</code></td><td><code>View</code> (default) | <code>Workspace</code> — where pass-to-seat operations anchor table edges.</td></tr>
+<tr><td><code>TurnDirection</code></td><td><code>Clockwise</code> (default) | <code>CounterClockwise</code> — the direction a card is passed around the table.</td></tr>
+<tr><td><code>GotoTransition</code></td><td><code>Snap</code> | <code>Glide</code> (default) | <code>Transit</code> — how <code>goto_card</code> moves the camera.</td></tr>
+<tr><td><code>GotoRotation</code></td><td><code>Keep</code> | <code>Upright</code> — the destination rotation of a <code>goto_card</code> flight.</td></tr>
+<tr><td><code>CardPalette</code> / <code>CardColor</code></td><td>Semantic color set per card (<code>Background</code>, <code>Foreground</code>, <code>Header</code>), turned into a scoped CSS provider.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="configuration-widget-layer"><a class="header" href="#configuration-widget-layer">Configuration (widget layer)</a></h3>
+<p><code>CardConfig</code> technically lives in the widget layer but uses only domain
+types: <code>title</code>, <code>position: CardAnchor</code>, <code>draggable</code>, <code>rotatable</code>, <code>scalable</code>,
+<code>foldable</code>, <code>closable</code>, <code>headerless</code>, <code>drag_handle</code>,
+<code>scale_limits: ScaleBounds</code>, <code>min_visible: MinVisible</code>, <code>z_index</code>.</p>
+<h2 id="pure-geometry-functions"><a class="header" href="#pure-geometry-functions">Pure Geometry Functions</a></h2>
+<p>All board math is implemented as pure functions over the domain types — no
+GTK, no display server, directly unit-testable.</p>
+<h3 id="rotated_boundswidth-height-degrees---f64-f64"><a class="header" href="#rotated_boundswidth-height-degrees---f64-f64"><code>rotated_bounds(width, height, degrees) -&gt; (f64, f64)</code></a></h3>
+<p>Axis-aligned bounding box of a rectangle rotated around its center:</p>
+<p>$$\text{bbox}_w = W |\cos\theta| + H |\sin\theta|, \qquad \text{bbox}_h = W |\sin\theta| + H |\cos\theta|$$</p>
+<p>This is exactly the size <code>gtk4::Fixed</code> allocates for a card stack, so the
+board can predict a card’s displayed size before it is realized.</p>
+<h3 id="rotate_vectorx-y-degrees---f64-f64"><a class="header" href="#rotate_vectorx-y-degrees---f64-f64"><code>rotate_vector(x, y, degrees) -&gt; (f64, f64)</code></a></h3>
+<p>Rotates a vector — used as the fallback for mapping drag offsets from card
+space into board space.</p>
+<h3 id="rotated_region_scanlineswidth-height-degrees---veci32-i32-i32"><a class="header" href="#rotated_region_scanlineswidth-height-degrees---veci32-i32-i32"><code>rotated_region_scanlines(width, height, degrees) -&gt; Vec&lt;(i32, i32, i32)&gt;</code></a></h3>
+<p>Rasterizes a rotated rectangle into horizontal scanline strips
+<code>(y, x_start, x_end)</code> relative to its center. The widget layer unions these
+into the <code>cairo::Region</code> returned by <code>card.footprint()</code> — the same
+scanline-intersection algorithm <code>smearor-wrot-rotation</code> uses for its input
+region.</p>
+<h3 id="resolve_anchoranchor-bounds-footprint_w-footprint_h---cardposition"><a class="header" href="#resolve_anchoranchor-bounds-footprint_w-footprint_h---cardposition"><code>resolve_anchor(anchor, bounds, footprint_w, footprint_h) -&gt; CardPosition</code></a></h3>
+<p>Resolves a <code>CardAnchor</code> into a center position. Edge anchors keep the card
+<code>ANCHOR_MARGIN</code> (24 px) inside the bounds; <code>Center</code> centers the card;
+<code>Explicit</code> passes its position through unchanged.</p>
+<h3 id="clamp_offsetfootprint-bounds-min_visible---f64-f64"><a class="header" href="#clamp_offsetfootprint-bounds-min_visible---f64-f64"><code>clamp_offset(footprint, bounds, min_visible) -&gt; (f64, f64)</code></a></h3>
+<p>The boundary-clamping function. Returns the minimal translation so that at
+least <code>min_visible</code> pixels of <code>footprint</code> overlap <code>bounds</code> on each axis.
+Applying the offset to a card’s position pushes it back inside. The required
+overlap is capped at half the bounds size so it stays satisfiable on tiny
+boards.</p>
+<h2 id="serialization-format"><a class="header" href="#serialization-format">Serialization Format</a></h2>
+<p><code>BoardLayout</code> serializes flat per card — designed for <code>gui-cards.toml</code>:</p>
+<pre><code class="language-toml">version = 1
+workspace = { fixed = [2000.0, 1600.0] }
+seat_anchor = "workspace"
+
+[[cards]]
+id = "controls"
+position = [480.0, 660.0]
+rotation = 180.0
+scale = 1.0
+folded = false
+sticky = false
+seat = { side = "bottom" }
+</code></pre>
+<ul>
+<li><code>position</code> is the card <strong>center</strong> in workspace coordinates, as an <code>[x, y]</code> pair.</li>
+<li><code>rotation</code> is plain degrees (independent of <code>SmearorRotation</code>’s own serde
+representation).</li>
+<li><code>scale</code> is the factor (<code>1.0</code> = natural size).</li>
+<li><code>workspace</code>, <code>view</code> and <code>seat_anchor</code> carry <code>serde(default)</code> — files from
+before the workspace read the defaults.</li>
+</ul>
+<p>Where the file lives and which format is used (TOML, JSON, …) is entirely up
+to the consumer — the library only produces and consumes the <code>BoardLayout</code>
+value. See <a href="#persistence">Usage</a> for restore semantics.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="architecture"><a class="header" href="#architecture">Architecture</a></h1>
+<p><code>floating-board</code> is split into two layers: a pure domain core and a thin GTK
+widget layer that maps GTK mechanics (gestures, layout, transforms) onto
+domain operations.</p>
+<pre class="mermaid">graph TD
+    classDef consumer fill: #00a1e4, stroke: #ffffff, stroke-width: 2px, color: #ffffff
+    classDef widget fill: #1e1e1e, stroke: #00a1e4, stroke-width: 2px, color: #ffffff
+    classDef domain fill: #89fc00, stroke: #333333, stroke-width: 2px, color: #000000
+
+    Consumer["Consumer application&lt;br/&gt;&lt;small&gt;floating_board::FloatingBoard + domain types in/out&lt;/small&gt;"]:::consumer --&gt; Widget
+    subgraph Widget["src/widget/ - ObjectSubclass glue (gestures, layout, CSS)"]
+        FB["FloatingBoard &amp;gt; Overlay &amp;lbrace; content, Fixed &amp;lbrace; card stacks &amp;rbrace; &amp;rbrace;"]
+    end
+    Widget --&gt; Domain
+    subgraph Domain["src/domain/ - pure Rust, no gtk4"]
+        DT["NewTypes, Enums, geometry math,&lt;br/&gt;BoardLayout serde"]
+    end
+</pre>
+
+<h2 id="widget-stack"><a class="header" href="#widget-stack">Widget Stack</a></h2>
+<pre class="mermaid">graph TD
+    classDef board fill: #00a1e4, stroke: #ffffff, stroke-width: 2px, color: #ffffff
+    classDef layer fill: #1e1e1e, stroke: #00a1e4, stroke-width: 2px, color: #ffffff
+    classDef card fill: #89fc00, stroke: #333333, stroke-width: 2px, color: #000000
+    classDef content fill: #dc0073, stroke: #ffffff, stroke-width: 2px, color: #ffffff
+
+    Board["FloatingBoard (gtk4::Box)"]:::board --&gt; Overlay["gtk4::Overlay"]:::layer
+    Overlay --&gt; Content["content widget (consumer)"]:::content
+    Overlay --&gt; Fixed["card layer (gtk4::Fixed)"]:::layer
+    Fixed --&gt; S1["ScalingWidget"]:::card
+    Fixed --&gt; S2["ScalingWidget"]:::card
+    S1 --&gt; R1["RotationWidget"]:::card
+    R1 --&gt; C1["Card (gtk4::Box)"]:::card
+    S2 --&gt; R2["RotationWidget"]:::card
+    R2 --&gt; C2["Card (gtk4::Box)"]:::card
+</pre>
+
+<ul>
+<li><strong><code>FloatingBoard</code></strong> is a <code>gtk4::Box</code> composite. Its internal <code>GtkOverlay</code>
+holds the consumer’s content widget as the bottom layer and a transparent
+<code>gtk4::Fixed</code> as the card layer on top. Consumers only ever see
+<code>add_card</code>/<code>remove_card</code>/<code>card</code>/<code>set_content</code> — never the overlay itself.</li>
+<li><strong>Card layer (<code>gtk4::Fixed</code>)</strong> positions each transform stack by top-left
+coordinates. It has no background of its own: its pick test only hits card
+children, so gestures on empty areas fall through to the content below.</li>
+<li><strong>Transform stack</strong> per card: <code>ScalingWidget { RotationWidget { Card } }</code> —
+outer scale, inner rotation. Both transforms are applied via
+<code>gsk::Transform</code> at allocation time, which means GTK4’s picking machinery
+automatically applies the full inverse stack <code>scale⁻¹ · rotate⁻¹</code> when
+delivering events — controls on rotated, scaled cards stay usable.</li>
+</ul>
+<h2 id="the-card"><a class="header" href="#the-card">The Card</a></h2>
+<pre class="mermaid">graph TD
+    classDef card fill: #89fc00, stroke: #333333, stroke-width: 2px, color: #000000
+    classDef header fill: #1e1e1e, stroke: #00a1e4, stroke-width: 2px, color: #ffffff
+    classDef content fill: #dc0073, stroke: #ffffff, stroke-width: 2px, color: #ffffff
+
+    subgraph CardBox["Card (gtk4::Box, .floating-card)"]
+        direction TB
+        subgraph Header["Header (.floating-card-header, drag affordance)"]
+            Chrome["&amp;#x2261; handle &amp;nbsp;&amp;nbsp; Title &amp;nbsp;&amp;nbsp; &amp;#x2B1C; fold &amp;nbsp; &amp;#x2715; close"]
+        end
+        subgraph ContentBox["Content (.floating-card-content)"]
+            Content["arbitrary consumer widget"]
+        end
+    end
+    class CardBox card
+    class Header header
+    class ContentBox content
+</pre>
+
+<ul>
+<li><code>Card</code> is a <code>gtk4::Box</code> subclass: header strip plus a content holder for the
+consumer widget. Chrome (handle icon, title, fold button, close button) is
+controlled by <code>CardConfig</code> flags (<code>foldable</code>, <code>closable</code>, <code>headerless</code>,
+<code>drag_handle</code>).</li>
+<li>The card is a <strong>view</strong>: it owns no geometry. <code>card.geometry()</code>,
+<code>set_position</code>, <code>set_rotation</code>, <code>set_scale</code>, <code>raise</code> all delegate to the
+<code>FloatingBoard</code> through a weak backlink set up at <code>add_card</code>.</li>
+</ul>
+<h2 id="coordinate-spaces-1"><a class="header" href="#coordinate-spaces-1">Coordinate Spaces</a></h2>
+<p><code>CardPosition</code> is the card’s <strong>center</strong> in board pixels. <code>gtk4::Fixed</code>
+positions children by top-left, so the board converts on every move:</p>
+<p>$$\text{top-left} = \text{center} - \frac{\text{displayed size}}{2}$$</p>
+<p>The <em>displayed size</em> is predicted, not read back: <code>RotatedLayout</code>’s measure
+reports the rotated bounding box of the card’s natural size, and
+<code>ScalingLayout</code> multiplies it by the scale factor — so
+<code>rotated_bounds(natural_w · s, natural_h · s, θ)</code> always equals the size
+<code>GtkFixed</code> will allocate next. This keeps the center anchor exact even while
+rotation or scale transitions are still pending re-allocation.</p>
+<h2 id="gestures-1"><a class="header" href="#gestures-1">Gestures</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Gesture</th><th>Controller</th><th>Effect</th><th>Conflict rule</th></tr>
+</thead>
+<tbody>
+<tr><td>1-finger drag on header/handle/card</td><td><code>GestureDrag</code></td><td>move card (live), clamp on end, <code>card-moved</code></td><td>exclusive per sequence</td></tr>
+<tr><td>1-finger touch on card</td><td><code>GestureClick</code></td><td>raise card on release, <code>card-raised</code></td><td>claims only on release without movement — also raises after a finished drag</td></tr>
+<tr><td>2+ finger transform</td><td>quad tracker (<code>EventControllerLegacy</code>)</td><td>similarity transform: centroid = move, radius = scale, point-cloud angle = rotate</td><td>one mechanism, nothing to arbitrate</td></tr>
+<tr><td>1-finger touch on empty area</td><td>—</td><td>falls through to content</td><td>pick-based, no controller needed</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="the-quad-transform-gesture"><a class="header" href="#the-quad-transform-gesture">The quad transform gesture</a></h3>
+<p>Move, rotate and zoom are <strong>one</strong> gesture, not three competing ones. A raw
+<code>EventControllerLegacy</code> on the card observes every touch sequence
+(<code>TouchBegin</code>/<code>Update</code>/<code>End</code>/<code>Cancel</code>) without claiming any — each finger
+maps to a tracked board-space point and interactive content keeps working.
+(<code>GestureSingle</code>-based slots were abandoned: a single locks onto the first
+sequence it sees and cannot distribute touches across siblings.)</p>
+<p>With <code>QUAD_MIN_POINTS</code> (2) or more live points the board fits a transform
+between the baseline point cloud and the current points:</p>
+<ul>
+<li><strong>Move</strong>: the card center follows the point-cloud centroid (the card point
+under the finger polygon stays fixed).</li>
+<li><strong>Scale</strong>: the RMS radius ratio of the two point sets, clamped to
+<code>scale_limits</code> — the card keeps its aspect ratio.</li>
+<li><strong>Rotate</strong>: the Procrustes angle <code>atan2(Σ w×u, Σ w·u)</code> between the two
+point sets, applied via <code>RotationWidget::set_rotation</code> (negated — the
+angle is computed in y-down screen coordinates).</li>
+</ul>
+<p>The baseline re-snapshots whenever a finger joins or leaves, so the
+transform never jumps; a frame-to-frame angle jump beyond <code>60°</code> is treated
+as a degenerate finger crossing (points through the centroid) and re-baselines
+instead of applying. Tracked touches that get claimed by another gesture or
+produce no event for <code>1.5 s</code> are swept out, so lost <code>TouchEnd</code> events cannot
+linger as phantom points. smearor-wrot-rotation’s built-in rotate gesture is
+disabled; <code>rotatable</code>/<code>scalable</code>/<code>draggable</code> gate which transform degrees of
+freedom apply.
+| 1-finger touch on empty area | — | falls through to content | pick-based, no controller needed |</p>
+<h3 id="drag-deltas-in-board-space"><a class="header" href="#drag-deltas-in-board-space">Drag deltas in board space</a></h3>
+<p><code>GestureDrag</code> reports offsets in the coordinate space of the drag source —
+which lives <em>inside</em> the rotated/scaled transform stack and <em>moves</em> with the
+card. Mapping that delta under the current transform creates a feedback loop
+(the reference frame shifts as the card tracks the pointer), visible as
+jitter and reduced pointer speed. The board therefore derives the drag delta
+from two <strong>board-space pointer samples</strong>: the pointer position is read from
+<code>Gesture::current_event</code>’s surface coordinates and mapped through
+<code>Native::compute_point</code> into the card layer — independent of the card’s own
+transform. A pure-vector fallback (<code>rotate_vector · scale</code>) covers the window
+before the first allocation.</p>
+<h3 id="surface-input-region"><a class="header" href="#surface-input-region">Surface input region</a></h3>
+<p><code>smearor-wrot-rotation</code> is built for layer-shell surfaces and narrows the
+surface input region to each card’s footprint on every allocation. Inside a
+regular window that would make everything outside the last-allocated card
+input-dead, so the board restores the full input region (<code>None</code>) at the end
+of its <code>size_allocate</code> — every card allocation runs inside that call, so the
+reset always wins.</p>
+<h3 id="rotation-tracking"><a class="header" href="#rotation-tracking">Rotation tracking</a></h3>
+<p><code>RotatedLayout</code> exposes <code>rotation</code> as a notify-able GObject property. The
+board connects <code>notify::rotation</code> once per card: any rotation change —
+gesture snap or programmatic — re-centers the card on its anchor, re-clamps
+it into the bounds, and emits <code>card-rotated</code> plus <code>geometry-changed</code>.</p>
+<h2 id="boundary-clamping"><a class="header" href="#boundary-clamping">Boundary Clamping</a></h2>
+<p>After a drag ends and whenever rotation, scale or the board size changes,
+each card is pushed back so that at least <code>CardConfig::min_visible</code> pixels of
+its footprint overlap the board bounds on each axis. The math is the pure
+function <code>domain::clamp_offset(footprint, bounds, min_visible) -&gt; (dx, dy)</code>
+— see <a href="#clamp_offsetfootprint-bounds-min_visible---f64-f64">Domain Model</a>.</p>
+<h2 id="z-order-1"><a class="header" href="#z-order-1">z-Order</a></h2>
+<p>The child order of the <code>gtk4::Fixed</code> layer is the stacking order. A released
+click (or finished drag) removes and re-appends the card’s transform stack,
+raising it to the top. At <code>add_card</code>, an optional <code>CardConfig::z_index</code> sorts
+the layer stably by insertion sequence.</p>
+<h2 id="anchor-resolution"><a class="header" href="#anchor-resolution">Anchor Resolution</a></h2>
+<p><code>CardConfig::position</code> is a <code>CardAnchor</code> stored as <em>pending</em> until the board
+is first allocated (the card’s natural size and the board bounds must be
+known). <code>domain::resolve_anchor</code> then computes the center — edge anchors hold
+the card <code>ANCHOR_MARGIN</code> inside the bounds — and the card is moved into
+place. <code>CardAnchor::Explicit</code> resolves eagerly at <code>add_card</code>.</p>
+<h2 id="multi-user"><a class="header" href="#multi-user">Multi-User</a></h2>
+<p>GTK touch sequences are independent per <code>EventController</code>, hence per card:
+different users can drive different cards simultaneously. Simultaneous
+rotate+pinch on the same card is allowed; one card serves one active drag
+sequence at a time.</p>
+<h2 id="state-flow"><a class="header" href="#state-flow">State Flow</a></h2>
+<pre class="mermaid">sequenceDiagram
+    actor User
+    participant G as Gesture controllers
+    participant B as FloatingBoard (CardEntry)
+    participant L as gtk4::Fixed / layouts
+    participant C as Consumer
+
+    User-&gt;&gt;G: drag / pinch / rotate
+    G-&gt;&gt;B: domain-space delta
+    B-&gt;&gt;B: update position / scale cells
+    B-&gt;&gt;L: Fixed::move_, set_scale, (RotatedLayout::rotation)
+    B-&gt;&gt;C: geometry-changed
+    User-&gt;&gt;B: layout_snapshot()
+    B-&gt;&gt;C: BoardLayout (serde)
+    C-&gt;&gt;B: restore_layout()
+    B-&gt;&gt;B: clamp to bounds, warn on unknown ids
+    B-&gt;&gt;L: apply positions, rotation, scale
+</pre>
+
+<p>All mutations flow through the board; signals (<code>card-moved</code>, <code>card-rotated</code>,
+<code>card-scaled</code>, <code>card-raised</code>, <code>card-folded</code> on the card; <code>card-added</code>,
+<code>card-removed</code>, <code>geometry-changed</code> on the board) are emitted after state
+updates so consumers can debounce persistence on a single channel.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="license"><a class="header" href="#license">License</a></h1>
+<p>MIT License</p>
+<p>Copyright (c) 2026 Smearor</p>
+<p>Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:</p>
+<p>The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.</p>
+<p>THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="code-of-conduct"><a class="header" href="#code-of-conduct">Code of Conduct</a></h1>
+<h1 id="contributor-covenant-code-of-conduct"><a class="header" href="#contributor-covenant-code-of-conduct">Contributor Covenant Code of Conduct</a></h1>
+<h2 id="our-pledge"><a class="header" href="#our-pledge">Our Pledge</a></h2>
+<p>We as members, contributors, and leaders pledge to make participation in our
+community a harassment-free experience for everyone, regardless of age, body
+size, visible or invisible disability, ethnicity, sex characteristics, gender
+identity and expression, level of experience, education, socio-economic status,
+nationality, personal appearance, race, caste, color, religion, or sexual
+identity and orientation.</p>
+<p>We pledge to act and interact in ways that contribute to an open, welcoming,
+diverse, inclusive, and healthy community.</p>
+<h2 id="our-standards"><a class="header" href="#our-standards">Our Standards</a></h2>
+<p>Examples of behavior that contributes to a positive environment for our
+community include:</p>
+<ul>
+<li>Demonstrating empathy and kindness toward other people</li>
+<li>Being respectful of differing opinions, viewpoints, and experiences</li>
+<li>Giving and gracefully accepting constructive feedback</li>
+<li>Accepting responsibility and apologizing to those affected by our mistakes,
+and learning from the experience</li>
+<li>Focusing on what is best not just for us as individuals, but for the overall
+community</li>
+</ul>
+<p>Examples of unacceptable behavior include:</p>
+<ul>
+<li>The use of sexualized language or imagery, and sexual attention or advances of
+any kind</li>
+<li>Trolling, insulting or derogatory comments, and personal or political attacks</li>
+<li>Public or private harassment</li>
+<li>Publishing others’ private information, such as a physical or email address,
+without their explicit permission</li>
+<li>Other conduct which could reasonably be considered inappropriate in a
+professional setting</li>
+</ul>
+<h2 id="enforcement-responsibilities"><a class="header" href="#enforcement-responsibilities">Enforcement Responsibilities</a></h2>
+<p>Community leaders are responsible for clarifying and enforcing our standards of
+acceptable behavior and will take appropriate and fair corrective action in
+response to any behavior that they deem inappropriate, threatening, offensive,
+or harmful.</p>
+<p>Community leaders have the right and responsibility to remove, edit, or reject
+comments, commits, code, wiki edits, issues, and other contributions that are
+not aligned to this Code of Conduct, and will communicate reasons for moderation
+decisions when appropriate.</p>
+<h2 id="scope"><a class="header" href="#scope">Scope</a></h2>
+<p>This Code of Conduct applies within all community spaces, and also applies when
+an individual is officially representing the community in public spaces.
+Examples of representing our community include using an official email address,
+posting via an official social media account, or acting as an appointed
+representative at an online or offline event.</p>
+<h2 id="enforcement"><a class="header" href="#enforcement">Enforcement</a></h2>
+<p>Instances of abusive, harassing, or otherwise unacceptable behavior may be
+reported to the community leaders responsible for enforcement at
+hanack@nooblounge.net.</p>
+<p>All complaints will be reviewed and investigated promptly and fairly.</p>
+<p>All community leaders are obligated to respect the privacy and security of the
+reporter of any incident.</p>
+<h2 id="enforcement-guidelines"><a class="header" href="#enforcement-guidelines">Enforcement Guidelines</a></h2>
+<p>Community leaders will follow these Community Impact Guidelines in determining
+the consequences for any action they deem in violation of this Code of Conduct:</p>
+<h3 id="1-correction"><a class="header" href="#1-correction">1. Correction</a></h3>
+<p><strong>Community Impact</strong>: Use of inappropriate language or other behavior deemed
+unprofessional or unwelcome in the community.</p>
+<p><strong>Consequence</strong>: A private, written warning from community leaders, providing
+clarity around the nature of the violation and an explanation of why the
+behavior was inappropriate. A public apology may be requested.</p>
+<h3 id="2-warning"><a class="header" href="#2-warning">2. Warning</a></h3>
+<p><strong>Community Impact</strong>: A violation through a single incident or series of
+actions.</p>
+<p><strong>Consequence</strong>: A warning with consequences for continued behavior. No
+interaction with the people involved, including unsolicited interaction with
+those enforcing the Code of Conduct, for a specified period of time. This
+includes avoiding interactions in community spaces as well as external channels
+like social media. Violating these terms may lead to a temporary or permanent
+ban.</p>
+<h3 id="3-temporary-ban"><a class="header" href="#3-temporary-ban">3. Temporary Ban</a></h3>
+<p><strong>Community Impact</strong>: A serious violation of community standards, including
+sustained inappropriate behavior.</p>
+<p><strong>Consequence</strong>: A temporary ban from any sort of interaction or public
+communication with the community for a specified period of time. No public or
+private interaction with the people involved, including unsolicited interaction
+with those enforcing the Code of Conduct, is allowed during this period.
+Violating these terms may lead to a permanent ban.</p>
+<h3 id="4-permanent-ban"><a class="header" href="#4-permanent-ban">4. Permanent Ban</a></h3>
+<p><strong>Community Impact</strong>: Demonstrating a pattern of violation of community
+standards, including sustained inappropriate behavior, harassment of an
+individual, or aggression toward or disparagement of classes of individuals.</p>
+<p><strong>Consequence</strong>: A permanent ban from any sort of public interaction within the
+community.</p>
+<h2 id="attribution"><a class="header" href="#attribution">Attribution</a></h2>
+<p>This Code of Conduct is adapted from the <a href="https://www.contributor-covenant.org">Contributor Covenant</a>,
+version 2.1, available at
+<a href="https://www.contributor-covenant.org/version/2/1/code_of_conduct.html">https://www.contributor-covenant.org/version/2/1/code_of_conduct.html</a>.</p>
+<p>Community Impact Guidelines were inspired by
+<a href="https://github.com/mozilla/diversity">Mozilla’s code of conduct enforcement ladder</a>.</p>
+<p>For answers to common questions about this code of conduct, see the FAQ at
+<a href="https://www.contributor-covenant.org/faq">https://www.contributor-covenant.org/faq</a>. Translations are available at
+<a href="https://www.contributor-covenant.org/translations">https://www.contributor-covenant.org/translations</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="security"><a class="header" href="#security">Security</a></h1>
+<h1 id="security-policy"><a class="header" href="#security-policy">Security Policy</a></h1>
+<h2 id="supported-versions"><a class="header" href="#supported-versions">Supported Versions</a></h2>
+<p>The project is in early development (<code>0.x</code>). Security fixes land on the
+<code>main</code> branch only; there are no maintained release branches yet.</p>
+<h2 id="reporting-a-vulnerability"><a class="header" href="#reporting-a-vulnerability">Reporting a Vulnerability</a></h2>
+<p>Please report security issues privately:</p>
+<ul>
+<li>Email: hanack@nooblounge.net</li>
+<li>Or open a private security advisory on GitHub
+(Security → Advisories → “Report a vulnerability”)</li>
+</ul>
+<p>Please do <strong>not</strong> file public issues for vulnerabilities. We aim to
+acknowledge reports within a few days and to coordinate a fix and
+disclosure timeline with you.</p>
 
                     </main>
 
