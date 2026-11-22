@@ -24,6 +24,22 @@ impl ChromeSlot {
         }
     }
 
+    /// The element mounted inline at the header's leading (`start`) end.
+    pub const fn inline_start(element: ChromeElement) -> Self {
+        Self {
+            element,
+            placement: ChromePlacement::InlineStart,
+        }
+    }
+
+    /// The element mounted inline at the header's trailing (`end`) end.
+    pub const fn inline_end(element: ChromeElement) -> Self {
+        Self {
+            element,
+            placement: ChromePlacement::InlineEnd,
+        }
+    }
+
     /// The element mounted as a satellite.
     pub const fn satellite(element: ChromeElement) -> Self {
         Self {
@@ -40,6 +56,8 @@ mod tests {
     #[test]
     fn constructors() {
         assert_eq!(ChromeSlot::inline(ChromeElement::Close).placement, ChromePlacement::Inline);
+        assert_eq!(ChromeSlot::inline_start(ChromeElement::Close).placement, ChromePlacement::InlineStart);
+        assert_eq!(ChromeSlot::inline_end(ChromeElement::Close).placement, ChromePlacement::InlineEnd);
         assert_eq!(ChromeSlot::satellite(ChromeElement::Close).placement, ChromePlacement::Satellite);
     }
 }

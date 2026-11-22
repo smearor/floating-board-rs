@@ -544,17 +544,18 @@ fn build_ui(application: &gtk4::Application) {
                 seat: Some(Seat::new(TableSide::Bottom)),
                 chrome_style: ChromeStyle::Adwaita,
                 // The explicit list reproduces the legacy flags
-                // (foldable/closable/resizable/rotate_grip) and adds the
-                // quarter-step rotate plus geometric seat-pass actions
-                // as inline controls.
+                // (foldable/closable/resizable/rotate_grip). The
+                // rotate/pass actions flank the titlebar ends via
+                // `InlineStart`/`InlineEnd`: pass outermost, rotate
+                // next to them - a directional pair per side.
                 chrome: Some(vec![
+                    ChromeSlot::inline_start(ChromeElement::NextSeat),
+                    ChromeSlot::inline_start(ChromeElement::RotateClockwise),
                     ChromeSlot::inline(ChromeElement::Title),
                     ChromeSlot::inline(ChromeElement::Minimize),
                     ChromeSlot::inline(ChromeElement::Close),
-                    ChromeSlot::inline(ChromeElement::RotateClockwise),
-                    ChromeSlot::inline(ChromeElement::RotateCounterClockwise),
-                    ChromeSlot::inline(ChromeElement::NextSeat),
-                    ChromeSlot::inline(ChromeElement::PreviousSeat),
+                    ChromeSlot::inline_end(ChromeElement::RotateCounterClockwise),
+                    ChromeSlot::inline_end(ChromeElement::PreviousSeat),
                     ChromeSlot::inline(ChromeElement::ResizeGrip),
                     ChromeSlot::inline(ChromeElement::RotateGrip),
                 ]),

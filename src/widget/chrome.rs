@@ -32,6 +32,7 @@ use gtk4::Button;
 use gtk4::DrawingArea;
 use gtk4::Label;
 use gtk4::Orientation;
+use gtk4::Widget;
 use gtk4::cairo::LineCap;
 use gtk4::pango::EllipsizeMode;
 use gtk4::prelude::BoxExt;
@@ -105,53 +106,55 @@ impl Card {
         let header = gtk4::Box::new(Orientation::Horizontal, 6);
         header.add_css_class(CLASS_HEADER);
         header.set_hexpand(true);
-        let mut header_children = 0usize;
+        // Header children are grouped by placement: `InlineStart`
+        // children land before the neutral `Inline` run (which keeps
+        // slot order), `InlineEnd` children after it - so ends of the
+        // strip are controllable independent of slot order.
+        let mut start_children: Vec<Widget> = Vec::new();
+        let mut middle_children: Vec<Widget> = Vec::new();
+        let mut end_children: Vec<Widget> = Vec::new();
         for slot in slots {
-            match (slot.element, slot.placement) {
-                (ChromeElement::DragHandle, ChromePlacement::Inline) => {
-                    let handle = drag_handle_label();
-                    header.append(&handle);
-                    let _ = imp.handle_label.set(handle);
-                    header_children += 1;
-                }
-                (ChromeElement::Title, ChromePlacement::Inline) => {
-                    let label = title_label(title);
-                    header.append(&label);
-                    let _ = imp.title_label.set(label);
-                    header_children += 1;
-                }
-                (ChromeElement::Minimize, ChromePlacement::Inline) => {
-                    let button = self.build_minimize_button(ICON_MINIMIZE_INLINE);
-                    header.append(&button);
-                    let _ = imp.fold_button.set(button);
-                    header_children += 1;
-                }
-                (ChromeElement::Close, ChromePlacement::Inline) => {
-                    let button = self.build_close_button();
-                    header.append(&button);
-                    let _ = imp.close_button.set(button);
-                    header_children += 1;
-                }
-                (ChromeElement::RotateClockwise, ChromePlacement::Inline) => {
-                    header.append(&self.build_rotate_button(RotationDirection::Clockwise));
-                    header_children += 1;
-                }
-                (ChromeElement::RotateCounterClockwise, ChromePlacement::Inline) => {
-                    header.append(&self.build_rotate_button(RotationDirection::CounterClockwise));
-                    header_children += 1;
-                }
-                (ChromeElement::NextSeat, ChromePlacement::Inline) => {
-                    header.append(&self.build_pass_button(TurnDirection::Clockwise));
-                    header_children += 1;
-                }
-                (ChromeElement::PreviousSeat, ChromePlacement::Inline) => {
-                    header.append(&self.build_pass_button(TurnDirection::CounterClockwise));
-                    header_children += 1;
-                }
-                (ChromeElement::ResizeGrip, ChromePlacement::Inline) => self.mount_grip(ChromeElement::ResizeGrip),
-                (ChromeElement::RotateGrip, ChromePlacement::Inline) => self.mount_grip(ChromeElement::RotateGrip),
-                (_, ChromePlacement::Satellite) => skip_satellite(slot.element),
+            if slot.placement == ChromePlacement::Satellite {
+                skip_satellite(slot.element);
+                continue;
             }
+            let target = match slot.placement {
+                ChromePlacement::InlineStart => &mut start_children,
+                ChromePlacement::InlineEnd => &mut end_children,
+                _ => &mut middle_children,
+            };
+            match slot.element {
+                ChromeElement::DragHandle => {
+                    let handle = drag_handle_label();
+                    target.push(handle.clone().upcast());
+                    let _ = imp.handle_label.set(handle);
+                }
+                ChromeElement::Title => {
+                    let label = title_label(title);
+                    target.push(label.clone().upcast());
+                    let _ = imp.title_label.set(label);
+                }
+                ChromeElement::Minimize => {
+                    let button = self.build_minimize_button(ICON_MINIMIZE_INLINE);
+                    target.push(button.clone().upcast());
+                    let _ = imp.fold_button.set(button);
+                }
+                ChromeElement::Close => {
+                    let button = self.build_close_button();
+                    target.push(button.clone().upcast());
+                    let _ = imp.close_button.set(button);
+                }
+                ChromeElement::RotateClockwise => target.push(self.build_rotate_button(RotationDirection::Clockwise).upcast()),
+                ChromeElement::RotateCounterClockwise => target.push(self.build_rotate_button(RotationDirection::CounterClockwise).upcast()),
+                ChromeElement::NextSeat => target.push(self.build_pass_button(TurnDirection::Clockwise).upcast()),
+                ChromeElement::PreviousSeat => target.push(self.build_pass_button(TurnDirection::CounterClockwise).upcast()),
+                ChromeElement::ResizeGrip => self.mount_grip(ChromeElement::ResizeGrip),
+                ChromeElement::RotateGrip => self.mount_grip(ChromeElement::RotateGrip),
+            }
+        }
+        let header_children = start_children.len() + middle_children.len() + end_children.len();
+        for child in start_children.iter().chain(&middle_children).chain(&end_children) {
+            header.append(child);
         }
         // A header without children is skipped entirely: no dead strip
         // is drawn and `drag_source(DragHandle::Header)` falls back to
@@ -486,82 +489,90 @@ mod adwaita {
             // `pack_window_controls` afterwards: side and order follow
             // the `gtk-decoration-layout` setting (themes like Rewaita
             // move window buttons to the left).
+            // Control buttons route by placement: `InlineStart`
+            // collects into the start `windowcontrols` container,
+            // `InlineEnd` into the end container, neutral `Inline`
+            // keeps the historical behavior - `Minimize`/`Close`
+            // follow `gtk-decoration-layout`, other actions append to
+            // the end controls.
             let mut minimize_button: Option<gtk4::Button> = None;
             let mut close_button: Option<gtk4::Button> = None;
-            let mut action_buttons: Vec<gtk4::Button> = Vec::new();
+            let mut start_extras: Vec<gtk4::Button> = Vec::new();
+            let mut end_extras: Vec<gtk4::Button> = Vec::new();
             let mut header_children = 0usize;
             for slot in slots {
-                match (slot.element, slot.placement) {
-                    (ChromeElement::DragHandle, ChromePlacement::Inline) => {
+                if slot.placement == ChromePlacement::Satellite {
+                    skip_satellite(slot.element);
+                    continue;
+                }
+                match slot.element {
+                    ChromeElement::DragHandle => {
                         let handle = drag_handle_label();
-                        header.pack_start(&handle);
+                        match slot.placement {
+                            ChromePlacement::InlineEnd => header.pack_end(&handle),
+                            _ => header.pack_start(&handle),
+                        }
                         let _ = imp.handle_label.set(handle);
                         header_children += 1;
                     }
-                    (ChromeElement::Title, ChromePlacement::Inline) => {
+                    ChromeElement::Title => {
                         let title_widget = adw::WindowTitle::new(title, "");
                         title_widget.set_visible(!config.headerless);
-                        header.set_title_widget(Some(&title_widget));
+                        match slot.placement {
+                            ChromePlacement::InlineStart => header.pack_start(&title_widget),
+                            ChromePlacement::InlineEnd => header.pack_end(&title_widget),
+                            _ => header.set_title_widget(Some(&title_widget)),
+                        }
                         header_children += 1;
                     }
-                    (ChromeElement::Minimize, ChromePlacement::Inline) => {
+                    _ => {
+                        let (button, class) = match slot.element {
+                            ChromeElement::Minimize => (self.build_minimize_button(ICON_MINIMIZE_SYMBOLIC), "minimize"),
+                            ChromeElement::Close => (self.build_close_button(), "close"),
+                            ChromeElement::RotateClockwise => (self.build_rotate_button(RotationDirection::Clockwise), "rotate-clockwise"),
+                            ChromeElement::RotateCounterClockwise => {
+                                (self.build_rotate_button(RotationDirection::CounterClockwise), "rotate-counter-clockwise")
+                            }
+                            ChromeElement::NextSeat => (self.build_pass_button(TurnDirection::Clockwise), "next-seat"),
+                            ChromeElement::PreviousSeat => (self.build_pass_button(TurnDirection::CounterClockwise), "previous-seat"),
+                            ChromeElement::ResizeGrip => {
+                                self.mount_grip(ChromeElement::ResizeGrip);
+                                continue;
+                            }
+                            ChromeElement::RotateGrip => {
+                                self.mount_grip(ChromeElement::RotateGrip);
+                                continue;
+                            }
+                            ChromeElement::DragHandle | ChromeElement::Title => continue,
+                        };
                         // A real wired button: `WindowControls` buttons
                         // are decorative (they target a real toplevel).
-                        let button = self.build_minimize_button(ICON_MINIMIZE_SYMBOLIC);
                         // Let the `windowcontrols` node rules own the
                         // look (the `flat` class would fight their
-                        // padding/hover styling).
+                        // padding/hover styling), and carry the role
+                        // class themes key colors off.
                         button.remove_css_class("flat");
-                        // Real window controls carry their role as a CSS
-                        // class - themes (e.g. Rewaita) key button colors
-                        // off `windowcontrols button.minimize`.
-                        button.add_css_class("minimize");
-                        let _ = imp.fold_button.set(button.clone());
-                        minimize_button = Some(button);
+                        button.add_css_class(class);
+                        match slot.placement {
+                            ChromePlacement::InlineStart => start_extras.push(button.clone()),
+                            ChromePlacement::InlineEnd => end_extras.push(button.clone()),
+                            _ => match slot.element {
+                                ChromeElement::Minimize => minimize_button = Some(button.clone()),
+                                ChromeElement::Close => close_button = Some(button.clone()),
+                                _ => end_extras.push(button.clone()),
+                            },
+                        }
+                        if slot.element == ChromeElement::Minimize {
+                            let _ = imp.fold_button.set(button.clone());
+                        }
+                        if slot.element == ChromeElement::Close {
+                            let _ = imp.close_button.set(button);
+                        }
                         header_children += 1;
                     }
-                    (ChromeElement::Close, ChromePlacement::Inline) => {
-                        let button = self.build_close_button();
-                        button.remove_css_class("flat");
-                        button.add_css_class("close");
-                        let _ = imp.close_button.set(button.clone());
-                        close_button = Some(button);
-                        header_children += 1;
-                    }
-                    (ChromeElement::RotateClockwise, ChromePlacement::Inline) => {
-                        let button = self.build_rotate_button(RotationDirection::Clockwise);
-                        button.remove_css_class("flat");
-                        button.add_css_class("rotate-clockwise");
-                        action_buttons.push(button);
-                        header_children += 1;
-                    }
-                    (ChromeElement::RotateCounterClockwise, ChromePlacement::Inline) => {
-                        let button = self.build_rotate_button(RotationDirection::CounterClockwise);
-                        button.remove_css_class("flat");
-                        button.add_css_class("rotate-counter-clockwise");
-                        action_buttons.push(button);
-                        header_children += 1;
-                    }
-                    (ChromeElement::NextSeat, ChromePlacement::Inline) => {
-                        let button = self.build_pass_button(TurnDirection::Clockwise);
-                        button.remove_css_class("flat");
-                        button.add_css_class("next-seat");
-                        action_buttons.push(button);
-                        header_children += 1;
-                    }
-                    (ChromeElement::PreviousSeat, ChromePlacement::Inline) => {
-                        let button = self.build_pass_button(TurnDirection::CounterClockwise);
-                        button.remove_css_class("flat");
-                        button.add_css_class("previous-seat");
-                        action_buttons.push(button);
-                        header_children += 1;
-                    }
-                    (ChromeElement::ResizeGrip, ChromePlacement::Inline) => self.mount_grip(ChromeElement::ResizeGrip),
-                    (ChromeElement::RotateGrip, ChromePlacement::Inline) => self.mount_grip(ChromeElement::RotateGrip),
-                    (_, ChromePlacement::Satellite) => skip_satellite(slot.element),
                 }
             }
-            pack_window_controls(&header, minimize_button, close_button, action_buttons);
+            pack_window_controls(&header, minimize_button, close_button, start_extras, end_extras);
             strip_foreign_gestures(&header);
             // Same rule as the builtin renderer: no children, no header -
             // `drag_source(DragHandle::Header)` falls back to the card.
@@ -597,9 +608,16 @@ mod adwaita {
     /// layout order; slotted buttons the layout does not mention append to
     /// the end side (a configured slot is never dropped, only reordered).
     /// `extras` are card actions outside the window-button vocabulary
-    /// (rotate steps) - they append to the end controls after the
-    /// standard buttons and get the same control styling.
-    fn pack_window_controls(header: &adw::HeaderBar, minimize: Option<gtk4::Button>, close: Option<gtk4::Button>, extras: Vec<gtk4::Button>) {
+    /// (rotate/pass steps): `start_extras` lead the start controls
+    /// (outermost first, like GNOME's app-buttons-left convention),
+    /// `end_extras` trail the end controls.
+    fn pack_window_controls(
+        header: &adw::HeaderBar,
+        minimize: Option<gtk4::Button>,
+        close: Option<gtk4::Button>,
+        start_extras: Vec<gtk4::Button>,
+        end_extras: Vec<gtk4::Button>,
+    ) {
         let (start_names, end_names) = decoration_layout_names();
         let start_controls = ChromeControls::new();
         let end_controls = ChromeControls::new();
@@ -610,6 +628,9 @@ mod adwaita {
             "close" => close.take(),
             _ => None,
         };
+        for extra in &start_extras {
+            start_controls.append(extra);
+        }
         for name in &start_names {
             if let Some(button) = take(name) {
                 start_controls.append(&button);
@@ -627,8 +648,8 @@ mod adwaita {
         if let Some(button) = close.take() {
             end_controls.append(&button);
         }
-        for extra in extras {
-            end_controls.append(&extra);
+        for extra in &end_extras {
+            end_controls.append(extra);
         }
         if start_controls.first_child().is_some() {
             // `start`/`end` mirror what GtkWindowControls' own boxes
