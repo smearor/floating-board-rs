@@ -454,9 +454,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.17.1"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+checksum = "735eaa21a6a5ffb2e84362faaeb90c05ba8e19797ca30428478cb6ea3a4921bc"
 
 [[package]]
 name = "heck"
@@ -744,7 +744,7 @@ checksum = "3244542535d5de959d90ec55d1b5ff0fd2bb7b1310223907d5f11932847f7b59"
 [[package]]
 name = "smearor-commons-animation"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#bd5663872b6325c4b0fd1548a55f83602aa14af6"
+source = "git+https://github.com/smearor/smearor-commons.git#fec8b977ec0b6457aa05cf63b88c3257bcf912d3"
 dependencies = [
  "gtk4",
  "serde",
@@ -754,7 +754,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-color"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#bd5663872b6325c4b0fd1548a55f83602aa14af6"
+source = "git+https://github.com/smearor/smearor-commons.git#fec8b977ec0b6457aa05cf63b88c3257bcf912d3"
 dependencies = [
  "serde",
  "thiserror",
@@ -763,7 +763,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-geometry"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#bd5663872b6325c4b0fd1548a55f83602aa14af6"
+source = "git+https://github.com/smearor/smearor-commons.git#fec8b977ec0b6457aa05cf63b88c3257bcf912d3"
 dependencies = [
  "cairo-rs",
  "gtk4",
@@ -774,7 +774,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-layer"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#bd5663872b6325c4b0fd1548a55f83602aa14af6"
+source = "git+https://github.com/smearor/smearor-commons.git#fec8b977ec0b6457aa05cf63b88c3257bcf912d3"
 dependencies = [
  "serde",
  "smearor-commons-geometry",
@@ -784,7 +784,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-layout"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#bd5663872b6325c4b0fd1548a55f83602aa14af6"
+source = "git+https://github.com/smearor/smearor-commons.git#fec8b977ec0b6457aa05cf63b88c3257bcf912d3"
 dependencies = [
  "serde",
  "smearor-commons-animation",
