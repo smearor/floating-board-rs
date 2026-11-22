@@ -246,8 +246,8 @@ impl Card {
     /// a passed card lands at the seat's edge lane.
     pub(crate) fn build_pass_button(&self, direction: TurnDirection) -> Button {
         let (icon_name, tooltip) = match direction {
-            TurnDirection::Clockwise => ("go-next-symbolic", "card-next-seat"),
-            TurnDirection::CounterClockwise => ("go-previous-symbolic", "card-previous-seat"),
+            TurnDirection::Clockwise => ("go-previous-symbolic", "card-next-seat"),
+            TurnDirection::CounterClockwise => ("go-next-symbolic", "card-previous-seat"),
         };
         let button = Button::from_icon_name(icon_name);
         button.add_css_class("flat");
