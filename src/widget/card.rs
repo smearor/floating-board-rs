@@ -28,8 +28,10 @@ use gtk4::prelude::FixedExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::QuarterTurn;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
+use smearor_commons_geometry::RotationDirection;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
 use smearor_commons_layout::Seat;
@@ -141,6 +143,23 @@ impl Card {
         if let Some(board) = self.board() {
             board.set_card_rotation_animated(&self.id(), rotation);
         }
+    }
+
+    /// Rotates one snap step in `direction` with the zoom-snap
+    /// transition. `QuarterTurn::snap_target` semantics: snap zones
+    /// reach 45 degrees either side of each turn, so a card already
+    /// past halfway steps to the turn after the engaged zone - every
+    /// call produces a visible ~90 degree step. This is the wiring
+    /// behind `ChromeElement::RotateClockwise`/`RotateCounterClockwise`.
+    pub fn rotate_to_next_quarter(&self, direction: RotationDirection) {
+        let target = QuarterTurn::snap_target(self.rotation().to_rotation_rad(), direction);
+        self.set_rotation_with_animation(Rotation::QuarterTurn(target));
+    }
+
+    /// Snaps the rotation back to `Rotation::ZERO` with the zoom-snap
+    /// transition.
+    pub fn rotate_to_zero(&self) {
+        self.set_rotation_with_animation(Rotation::ZERO);
     }
 
     /// Glides the card to `target` on the frame clock - the animated
