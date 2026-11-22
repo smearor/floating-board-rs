@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>floating-board — API documentation</title>
+<meta name="description" content="Rust API documentation for the floating-board crate.">
+<link rel="icon" type="image/png" href="../images/smearor-avatar.png">
+<link rel="stylesheet" href="../fonts/fonts.css">
+<style>
+:root {
+  --bg: #05070b;
+  --surface: #0a0e16;
+  --surface-2: #10151f;
+  --line: #1c2433;
+  --text: #e8ecf4;
+  --muted: #8b98ad;
+  --blue: #00a1e4;
+  --pink: #dc0073;
+  --yellow: #f5b700;
+  --green: #04e762;
+  --radius: 14px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Metropolis", system-ui, sans-serif;
+  font-weight: 300;
+  line-height: 1.6;
+}
+::selection { background: var(--pink); color: #fff; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(5, 7, 11, 0.85);
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+}
+.tiles { display: inline-flex; gap: 3px; text-decoration: none; }
+.tiles span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  font-family: "Source Code Pro", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+.tiles span:nth-child(1) { background: var(--green); }
+.tiles span:nth-child(2) { background: var(--yellow); color: #0a0e16; }
+.tiles span:nth-child(3) { background: var(--blue); }
+.tiles span:nth-child(4) { background: var(--pink); }
+.tiles span:nth-child(5) { background: var(--green); }
+.tiles span:nth-child(6) { background: var(--yellow); color: #0a0e16; }
+.tiles span:nth-child(7) { background: var(--pink); }
+.topbar .path {
+  font-family: "Source Code Pro", monospace;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+.topbar .path em { color: var(--blue); font-style: normal; }
+.topbar .spacer { flex: 1; }
+.topbar a.nav {
+  font-family: "Source Code Pro", monospace;
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 14px;
+  transition: color .15s, border-color .15s;
+}
+.topbar a.nav:hover { color: var(--blue); border-color: var(--blue); }
+
+main { max-width: 880px; margin: 0 auto; padding: 56px 28px 80px; }
+h1 {
+  font-family: "Roboto", "Metropolis", system-ui, sans-serif;
+  font-weight: 300;
+  font-size: 2.4rem;
+  margin: 0 0 10px;
+}
+h1 .slash { color: var(--blue); }
+p.lede { color: var(--muted); font-size: 1.05rem; margin: 0 0 40px; max-width: 60ch; }
+p.lede code {
+  font-family: "Source Code Pro", monospace;
+  font-size: .85em;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 6px;
+  color: var(--yellow);
+}
+p.lede a { color: var(--blue); }
+
+.crates { display: grid; gap: 12px; }
+a.crate {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  padding: 18px 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  text-decoration: none;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+a.crate:hover {
+  border-color: var(--blue);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(0, 161, 228, 0.12);
+}
+a.crate .name {
+  font-family: "Source Code Pro", monospace;
+  font-size: 15px;
+  color: var(--text);
+  min-width: 300px;
+}
+a.crate .name b { color: var(--blue); font-weight: 600; }
+a.crate .desc { color: var(--muted); font-size: 0.92rem; flex: 1; }
+a.crate .arrow { color: var(--line); transition: color .15s; }
+a.crate:hover .arrow { color: var(--blue); }
+
+footer {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px 28px 40px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-family: "Source Code Pro", monospace;
+}
+footer a { color: var(--blue); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="tiles" href="../" aria-label="floating-board home">
+    <span>S</span><span>M</span><span>E</span><span>A</span><span>R</span><span>O</span><span>R</span>
+  </a>
+  <span class="path">/ <em>docs</em></span>
+  <span class="spacer"></span>
+  <a class="nav" href="../book/">book</a>
+  <a class="nav" href="../">site</a>
+  <a class="nav" href="https://github.com/smearor/floating-board-rs" target="_blank" rel="noopener">github</a>
+</header>
+
+<main>
+  <h1>API <span class="slash">/</span> documentation</h1>
+  <p class="lede">
+    <code>rustdoc</code> for the floating-board crate — built with
+    <code>cargo doc --all-features</code>. The
+    <a href="../book/">book</a> explains how the pieces fit together.
+  </p>
+
+  <div class="crates">
+    <a class="crate" href="./floating_board/">
+      <span class="name"><b>floating</b>-board</span>
+      <span class="desc">GTK4 widget with floating, rotatable and scalable cards — an in-app window manager for tabletop multitouch surfaces.</span>
+      <span class="arrow">&nearr;</span>
+    </a>
+  </div>
+</main>
+
+<footer>
+  floating-board · <a href="../">landing page</a> · <a href="../book/">book</a> ·
+  <a href="https://github.com/smearor/floating-board-rs">github.com/smearor/floating-board-rs</a>
+</footer>
+
+</body>
+</html>

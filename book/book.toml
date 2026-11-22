@@ -9,4 +9,7 @@ command = "mdbook-mermaid"
 
 [output.html]
 git-repository-url = "https://github.com/smearor/floating-board-rs"
-additional-js = ["mermaid.min.js", "mermaid-init.js"]
+additional-js = ["mermaid.min.js", "mermaid-init.js", "smearor.js"]
+default-theme = "coal"
+preferred-dark-theme = "coal"
+additional-css = ["smearor.css"]

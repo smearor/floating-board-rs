@@ -27,8 +27,14 @@ jobs:
           toolchain: stable
       - name: Build docs
         run: cargo doc --workspace --all-features --no-deps
+      # `cargo doc` emits one index.html per crate but no page at the
+      # docs/ root - add the curated crates index so that the site's
+      # `docs/` link resolves.
+      - name: Install crates index
+        run: cp docs/rustdoc/index.html target/doc/index.html
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./target/doc
+          destination_dir: docs

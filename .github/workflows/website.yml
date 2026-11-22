@@ -1,0 +1,29 @@
+name: Website
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "docs/main/**"
+      - ".github/workflows/website.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  website:
+    name: website to GitHub Pages
+    runs-on: ubuntu-26.04
+    steps:
+      - name: VCS Checkout
+        uses: actions/checkout@v7
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/main
+          # Keep the `docs/` and `book/` subfolders that the other
+          # workflows publish - only files inside the site root are
+          # added or overwritten.
+          keep_files: true
