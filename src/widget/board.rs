@@ -51,6 +51,7 @@ use gtk4::gio::prelude::ListModelExtManual;
 use gtk4::glib;
 use gtk4::prelude::BoxExt;
 use gtk4::prelude::ButtonExt;
+use gtk4::prelude::EventControllerExt;
 use gtk4::prelude::FixedExt;
 use gtk4::prelude::GestureDragExt;
 use gtk4::prelude::GestureExt;
@@ -1536,6 +1537,10 @@ impl FloatingBoard {
         let mut card_drag: Option<GestureDrag> = None;
         if config.draggable {
             let drag = GestureDrag::new();
+            // Name tag: the adwaita chrome strips foreign gestures off
+            // the HeaderBar (its internal window-move drag fights the
+            // card drag) but spares controllers carrying this name.
+            drag.set_name(Some(crate::widget::chrome::CARD_GESTURE_NAME));
             drag.set_button(0);
             let board_weak = self.downgrade();
             let card_id = id.clone();
@@ -1566,9 +1571,7 @@ impl FloatingBoard {
         // affordance scales the card around its center. The grip sits deeper
         // in the bubble chain than the card drag and the `scaling` click, so
         // its press wins the sequence claim before either can react.
-        if config.resizable
-            && let Some(grip) = card.resize_grip()
-        {
+        if let Some(grip) = card.resize_grip() {
             let resize = GestureDrag::new();
             resize.set_button(0);
             // Mark claimed sequences immediately: the grip drag claims a
@@ -1616,9 +1619,7 @@ impl FloatingBoard {
         // swipe direction. Like the resize grip it sits deeper in the
         // bubble chain than the card drag and the `scaling` click, so
         // its press wins the sequence claim before either can react.
-        if config.rotate_grip
-            && let Some(grip) = card.rotate_grip()
-        {
+        if let Some(grip) = card.rotate_grip() {
             let rotate = GestureDrag::new();
             rotate.set_button(0);
             // Same phantom-touch guard as the resize grip: mark claimed

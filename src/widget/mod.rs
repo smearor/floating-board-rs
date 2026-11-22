@@ -11,6 +11,7 @@ mod card_close_action;
 mod card_config;
 mod card_layer;
 mod card_signal;
+pub(crate) mod chrome;
 mod floating_board_layout;
 mod scaling;
 

@@ -3,6 +3,10 @@
 
 mod anchor;
 mod bounds;
+mod chrome_element;
+mod chrome_placement;
+mod chrome_slot;
+mod chrome_style;
 mod color;
 mod geometry;
 mod handle;
@@ -18,6 +22,10 @@ mod turn_direction;
 pub use anchor::ANCHOR_MARGIN;
 pub use anchor::CardAnchor;
 pub use bounds::BoundsMode;
+pub use chrome_element::ChromeElement;
+pub use chrome_placement::ChromePlacement;
+pub use chrome_slot::ChromeSlot;
+pub use chrome_style::ChromeStyle;
 pub use color::CardColor;
 pub use geometry::CardGeometry;
 pub use handle::DragHandle;

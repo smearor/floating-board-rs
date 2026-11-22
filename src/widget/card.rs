@@ -67,45 +67,13 @@ impl Card {
         if let Some(palette) = &config.palette {
             install_palette(&card, palette);
         }
-        let title = config.title.clone().unwrap_or_else(|| l10n().message("card-untitled"));
+        // Chrome is composed from `config.effective_chrome_slots()`:
+        // inline elements mount into a header strip prepended to the
+        // card, grips onto the content overlay, satellite placements
+        // are validated and deferred to Phase 2/3.
+        card.mount_chrome(config);
         if let Some(label) = imp.title_label.get() {
-            label.set_text(&title);
             label.set_visible(!config.headerless);
-        }
-        if let Some(handle) = imp.handle_label.get() {
-            handle.set_visible(config.drag_handle == DragHandle::Handle);
-            handle.set_tooltip_text(Some(&l10n().message("card-handle")));
-        }
-        if let Some(fold_button) = imp.fold_button.get() {
-            fold_button.set_visible(config.foldable);
-            fold_button.set_tooltip_text(Some(&l10n().message("card-fold")));
-            let card_weak = card.downgrade();
-            fold_button.connect_clicked(move |_| {
-                if let Some(card) = card_weak.upgrade() {
-                    card.fold();
-                }
-            });
-        }
-        if let Some(close_button) = imp.close_button.get() {
-            close_button.set_visible(config.closable);
-            close_button.set_tooltip_text(Some(&l10n().message("card-close")));
-            let board_weak = board.downgrade();
-            let id = id.clone();
-            close_button.connect_clicked(move |_| {
-                if let Some(board) = board_weak.upgrade() {
-                    let _ = board.close_card(&id);
-                }
-            });
-        }
-        if let Some(grip) = imp.resize_grip.get() {
-            imp.resizable.set(config.resizable);
-            grip.set_visible(config.resizable);
-            grip.set_tooltip_text(Some(&l10n().message("card-resize")));
-        }
-        if let Some(grip) = imp.rotate_grip.get() {
-            imp.rotate_grip_enabled.set(config.rotate_grip);
-            grip.set_visible(config.rotate_grip);
-            grip.set_tooltip_text(Some(&l10n().message("card-rotate")));
         }
         if let Some(holder) = imp.content_holder.get() {
             // Configured as margin on our own holder rather than padding on
@@ -132,7 +100,7 @@ impl Card {
     /// The title rendered in the header strip (the resolved `CardConfig`
     /// title or the localized fallback).
     pub fn title(&self) -> String {
-        self.imp().title_label.get().map(|label| label.text().to_string()).unwrap_or_default()
+        self.imp().title_text.borrow().clone()
     }
 
     /// The board this card belongs to, if it is still on one.
@@ -359,7 +327,7 @@ impl Card {
         if let Some(header) = imp.header.get()
             && collapsed
         {
-            header.set_visible(!folded);
+            header.set_visible(!folded && imp.header_shown.get());
         }
         if let Some(holder) = imp.folded_holder.get() {
             holder.set_visible(folded && collapsed);
@@ -372,7 +340,11 @@ impl Card {
             grip.set_visible(!folded && imp.rotate_grip_enabled.get());
         }
         if let Some(button) = imp.fold_button.get() {
-            button.set_icon_name(if folded { "go-up-symbolic" } else { "go-down-symbolic" });
+            // Only the builtin `go-*` icon pair toggles - adwaita and
+            // satellite minimize buttons keep their symbolic icon.
+            if button.icon_name().is_some_and(|icon| icon.starts_with("go-")) {
+                button.set_icon_name(if folded { "go-up-symbolic" } else { "go-down-symbolic" });
+            }
             button.set_tooltip_text(Some(&l10n().message(if folded { "card-unfold" } else { "card-fold" })));
         }
         if folded {
@@ -451,7 +423,7 @@ impl Card {
     /// Widget acting as the drag affordance for the given handle mode.
     pub(crate) fn drag_source(&self, drag_handle: DragHandle) -> Widget {
         match drag_handle {
-            DragHandle::Header => self.imp().header.get().cloned().map(|h| h.upcast()).unwrap_or_else(|| self.clone().upcast()),
+            DragHandle::Header => self.imp().header.get().cloned().unwrap_or_else(|| self.clone().upcast()),
             DragHandle::WholeCard => self.clone().upcast(),
             DragHandle::Handle => self
                 .imp()

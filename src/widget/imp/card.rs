@@ -4,25 +4,16 @@ use crate::widget::card::Card;
 use crate::widget::card_signal::CARD_SIGNALS;
 use crate::widget::css::CLASS_CARD;
 use crate::widget::css::CLASS_CONTENT;
-use crate::widget::css::CLASS_HANDLE;
-use crate::widget::css::CLASS_HEADER;
-use crate::widget::css::CLASS_RESIZE_GRIP;
-use crate::widget::css::CLASS_ROTATE_GRIP;
 use glib::WeakRef;
 use glib::subclass::Signal;
-use gtk4::Align;
 use gtk4::Button;
 use gtk4::DrawingArea;
 use gtk4::Label;
 use gtk4::Orientation;
 use gtk4::Overflow;
 use gtk4::Overlay;
-use gtk4::cairo::LineCap;
 use gtk4::glib;
-use gtk4::pango::EllipsizeMode;
 use gtk4::prelude::BoxExt;
-use gtk4::prelude::DrawingAreaExt;
-use gtk4::prelude::DrawingAreaExtManual;
 use gtk4::prelude::OrientableExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::BoxImpl;
@@ -36,7 +27,6 @@ use smearor_commons_geometry::Pixels;
 use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
-use std::f64::consts::FRAC_PI_2;
 use std::sync::LazyLock;
 
 /// Widget implementation for [`Card`].
@@ -48,11 +38,22 @@ pub struct CardImpl {
     pub id: RefCell<CardId>,
     /// Weak backlink to the owning board.
     pub board: RefCell<WeakRef<FloatingBoard>>,
-    /// Header strip (drag affordance), built in `constructed`.
-    pub header: OnceCell<gtk4::Box>,
+    /// Header strip (drag affordance) - built by `chrome::mount_chrome`
+    /// during `Card::build`; `gtk4::Box` for the builtin style,
+    /// `adw::HeaderBar` for adwaita.
+    pub header: OnceCell<gtk4::Widget>,
+    /// Whether the header has chrome children (and may be shown);
+    /// `set_folded` restores to this instead of unconditionally
+    /// revealing an empty strip.
+    pub header_shown: Cell<bool>,
+    /// Overlay stacking the resize/rotate grips over the content.
+    pub content_overlay: OnceCell<Overlay>,
     /// Container for the consumer's content widget.
     pub content_holder: OnceCell<gtk4::Box>,
-    /// Title label inside the header.
+    /// Resolved title - source of truth for `Card::title` regardless
+    /// of which chrome renderer displays it.
+    pub title_text: RefCell<String>,
+    /// Title label inside the header (builtin style only).
     pub title_label: OnceCell<Label>,
     /// Grip icon used in `DragHandle::Handle` mode.
     pub handle_label: OnceCell<Label>,
@@ -89,7 +90,10 @@ impl Default for CardImpl {
             id: RefCell::new(CardId::new("")),
             board: RefCell::new(WeakRef::new()),
             header: OnceCell::new(),
+            header_shown: Cell::new(false),
+            content_overlay: OnceCell::new(),
             content_holder: OnceCell::new(),
+            title_text: RefCell::new(String::new()),
             title_label: OnceCell::new(),
             handle_label: OnceCell::new(),
             fold_button: OnceCell::new(),
@@ -124,60 +128,27 @@ impl ObjectImpl for CardImpl {
         card.set_overflow(Overflow::Hidden);
         card.add_css_class(CLASS_CARD);
 
-        let header = gtk4::Box::new(Orientation::Horizontal, 6);
-        header.add_css_class(CLASS_HEADER);
-        header.set_hexpand(true);
-
-        let handle_label = Label::new(Some("\u{2261}"));
-        handle_label.add_css_class(CLASS_HANDLE);
-        handle_label.set_visible(false);
-        header.append(&handle_label);
-
-        let title_label = Label::new(None);
-        title_label.set_hexpand(true);
-        title_label.set_halign(Align::Start);
-        title_label.set_ellipsize(EllipsizeMode::End);
-        header.append(&title_label);
-
-        let fold_button = Button::from_icon_name("go-down-symbolic");
-        fold_button.add_css_class("flat");
-        fold_button.set_visible(false);
-        header.append(&fold_button);
-
-        let close_button = Button::from_icon_name("window-close-symbolic");
-        close_button.add_css_class("flat");
-        close_button.set_visible(false);
-        header.append(&close_button);
-
+        // The header strip is NOT built here: `chrome::mount_chrome`
+        // composes it during `Card::build` from the config's chrome
+        // slot list (and prepends it before the content overlay).
         let content_holder = gtk4::Box::new(Orientation::Vertical, 0);
         content_holder.add_css_class(CLASS_CONTENT);
         content_holder.set_vexpand(true);
 
-        // The overlay stacks the resize grip over the content's
-        // bottom-right corner without claiming layout space.
+        // The overlay stacks the resize/rotate grips over the
+        // content's corners without claiming layout space.
         let content_overlay = Overlay::new();
         content_overlay.set_child(Some(&content_holder));
-        let resize_grip = resize_grip();
-        content_overlay.add_overlay(&resize_grip);
-        let rotate_grip = rotate_grip();
-        content_overlay.add_overlay(&rotate_grip);
 
         let folded_holder = gtk4::Box::new(Orientation::Horizontal, 0);
         folded_holder.add_css_class(crate::widget::css::CLASS_FOLDED_CONTENT);
         folded_holder.set_visible(false);
 
-        card.append(&header);
         card.append(&content_overlay);
         card.append(&folded_holder);
 
-        let _ = self.header.set(header);
+        let _ = self.content_overlay.set(content_overlay);
         let _ = self.content_holder.set(content_holder);
-        let _ = self.title_label.set(title_label);
-        let _ = self.handle_label.set(handle_label);
-        let _ = self.fold_button.set(fold_button);
-        let _ = self.close_button.set(close_button);
-        let _ = self.resize_grip.set(resize_grip);
-        let _ = self.rotate_grip.set(rotate_grip);
         let _ = self.folded_holder.set(folded_holder);
     }
 
@@ -185,82 +156,6 @@ impl ObjectImpl for CardImpl {
         static SIGNALS: LazyLock<Vec<Signal>> = LazyLock::new(|| CARD_SIGNALS.iter().map(|signal| signal.signal()).collect());
         &SIGNALS
     }
-}
-
-/// Edge length of the resize grip's diagonal strokes (px).
-const RESIZE_GRIP_SIZE: i32 = 18;
-
-/// Builds the bottom-right resize affordance: three diagonal strokes in
-/// the card's foreground color, `nwse-resize` cursor on hover.
-fn resize_grip() -> DrawingArea {
-    let grip = DrawingArea::new();
-    grip.add_css_class(CLASS_RESIZE_GRIP);
-    // Overlay children default to `Align::Fill` - without End
-    // alignment the grip would cover the whole content area.
-    grip.set_halign(Align::End);
-    grip.set_valign(Align::End);
-    grip.set_content_width(RESIZE_GRIP_SIZE);
-    grip.set_content_height(RESIZE_GRIP_SIZE);
-    grip.set_cursor_from_name(Some("nwse-resize"));
-    grip.set_visible(false);
-    grip.set_draw_func(|grip, cr, _, _| {
-        let color = grip.color();
-        let width = f64::from(grip.width());
-        let height = f64::from(grip.height());
-        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
-        cr.set_line_width(1.5);
-        cr.set_line_cap(LineCap::Round);
-        for inset in [4.0, 8.0, 12.0] {
-            cr.move_to(width - inset, height - 2.0);
-            cr.line_to(width - 2.0, height - inset);
-            let _ = cr.stroke();
-        }
-    });
-    grip
-}
-
-/// Edge length of the rotate grip's circular arrow (px).
-const ROTATE_GRIP_SIZE: i32 = 18;
-
-/// Builds the bottom-left rotate affordance: a circular arrow in the
-/// card's foreground color, `grab` cursor on hover.
-fn rotate_grip() -> DrawingArea {
-    let grip = DrawingArea::new();
-    grip.add_css_class(CLASS_ROTATE_GRIP);
-    // Overlay children default to `Align::Fill` - without Start/End
-    // alignment the grip would cover the whole content area.
-    grip.set_halign(Align::Start);
-    grip.set_valign(Align::End);
-    grip.set_content_width(ROTATE_GRIP_SIZE);
-    grip.set_content_height(ROTATE_GRIP_SIZE);
-    grip.set_cursor_from_name(Some("grab"));
-    grip.set_visible(false);
-    grip.set_draw_func(|grip, cr, _, _| {
-        let color = grip.color();
-        let width = f64::from(grip.width());
-        let height = f64::from(grip.height());
-        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
-        cr.set_line_width(1.5);
-        cr.set_line_cap(LineCap::Round);
-        // A three-quarter clockwise arc with an arrowhead on its tip:
-        // the circular arrow suggests turning in either direction.
-        let radius = width.min(height) / 2.0 - 3.0;
-        let center_x = width / 2.0;
-        let center_y = height / 2.0;
-        let start = -FRAC_PI_2 + 0.7;
-        let end = start + 3.0 * FRAC_PI_2;
-        cr.arc(center_x, center_y, radius, start, end);
-        let _ = cr.stroke();
-        let tip_x = center_x + radius * end.cos();
-        let tip_y = center_y + radius * end.sin();
-        let tangent = end + FRAC_PI_2;
-        for spread in [-0.7, 0.7] {
-            cr.move_to(tip_x, tip_y);
-            cr.line_to(tip_x - 4.0 * (tangent + spread).cos(), tip_y - 4.0 * (tangent + spread).sin());
-        }
-        let _ = cr.stroke();
-    });
-    grip
 }
 
 impl WidgetImpl for CardImpl {

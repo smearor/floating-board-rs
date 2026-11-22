@@ -2,6 +2,9 @@ use crate::domain::ANCHOR_MARGIN;
 use crate::domain::BoundsMode;
 use crate::domain::CardAnchor;
 use crate::domain::CardPalette;
+use crate::domain::ChromeElement;
+use crate::domain::ChromeSlot;
+use crate::domain::ChromeStyle;
 use crate::domain::DragHandle;
 use crate::domain::MinVisible;
 use crate::domain::ScaleBounds;
@@ -122,6 +125,25 @@ pub struct CardConfig {
     /// `apply_layout`, and passing one to a seat releases the pin.
     #[cfg_attr(feature = "serde", serde(default))]
     pub sticky: bool,
+    /// Explicit chrome composition as an ordered slot list
+    /// (`CardConfig::chrome`).
+    ///
+    /// - `None` (default): derive slots from the legacy flags
+    ///   (`title`/`title_label` -> `Title`, `foldable` -> `Minimize`,
+    ///   `closable` -> `Close`, `resizable` -> `ResizeGrip`,
+    ///   `rotate_grip` -> `RotateGrip`,
+    ///   `drag_handle == Handle` -> `DragHandle`; all `Inline`).
+    /// - `Some(slots)`: overrides the legacy-derived chrome entirely -
+    ///   the list is the complete chrome description. `Satellite`
+    ///   placements are validated at build time; until satellite
+    ///   mounting lands they are skipped (no inline fallback).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub chrome: Option<Vec<ChromeSlot>>,
+    /// Which renderer draws the chrome (`CardConfig::chrome_style`):
+    /// `Builtin` (default) or `Adwaita` (requires the `adwaita`
+    /// feature; falls back to `Builtin` without it).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub chrome_style: ChromeStyle,
 }
 
 impl Default for CardConfig {
@@ -152,7 +174,47 @@ impl Default for CardConfig {
             seat: None,
             folded_content: None,
             sticky: false,
+            chrome: None,
+            chrome_style: ChromeStyle::default(),
         }
+    }
+}
+
+impl CardConfig {
+    /// The effective ordered chrome slots - either the explicit
+    /// `CardConfig::chrome` list or the list derived from the legacy
+    /// flags (default: `DragHandle`, `Title`, `Minimize`, `Close`,
+    /// `ResizeGrip`, `RotateGrip`, all `Inline`; elements whose flag
+    /// is off are absent).
+    pub fn effective_chrome_slots(&self) -> Vec<ChromeSlot> {
+        if let Some(chrome) = &self.chrome {
+            return chrome.clone();
+        }
+        self.legacy_chrome_slots()
+    }
+
+    /// Slots derived from the legacy boolean flags, in the historical
+    /// header order (leading: handle + title, trailing: minimize +
+    /// close; grips mount onto the content overlay).
+    fn legacy_chrome_slots(&self) -> Vec<ChromeSlot> {
+        let mut slots = Vec::with_capacity(6);
+        if self.drag_handle == DragHandle::Handle {
+            slots.push(ChromeSlot::inline(ChromeElement::DragHandle));
+        }
+        slots.push(ChromeSlot::inline(ChromeElement::Title));
+        if self.foldable {
+            slots.push(ChromeSlot::inline(ChromeElement::Minimize));
+        }
+        if self.closable {
+            slots.push(ChromeSlot::inline(ChromeElement::Close));
+        }
+        if self.resizable {
+            slots.push(ChromeSlot::inline(ChromeElement::ResizeGrip));
+        }
+        if self.rotate_grip {
+            slots.push(ChromeSlot::inline(ChromeElement::RotateGrip));
+        }
+        slots
     }
 }
 
@@ -169,4 +231,124 @@ fn default_animation_speed_ms() -> u64 {
 #[cfg(feature = "serde")]
 fn default_content_padding() -> Pixels {
     DEFAULT_CONTENT_PADDING
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::ChromeElement;
+    use crate::domain::ChromePlacement;
+
+    fn elements(config: &CardConfig) -> Vec<ChromeElement> {
+        config.effective_chrome_slots().iter().map(|slot| slot.element).collect()
+    }
+
+    #[test]
+    fn legacy_default_chrome_is_title_only() {
+        let config = CardConfig::default();
+        assert_eq!(elements(&config), vec![ChromeElement::Title]);
+        assert!(config.effective_chrome_slots().iter().all(|slot| slot.placement == ChromePlacement::Inline));
+    }
+
+    #[test]
+    fn legacy_flags_derive_full_chrome() {
+        let config = CardConfig {
+            drag_handle: DragHandle::Handle,
+            foldable: true,
+            closable: true,
+            resizable: true,
+            rotate_grip: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            elements(&config),
+            vec![
+                ChromeElement::DragHandle,
+                ChromeElement::Title,
+                ChromeElement::Minimize,
+                ChromeElement::Close,
+                ChromeElement::ResizeGrip,
+                ChromeElement::RotateGrip,
+            ]
+        );
+    }
+
+    #[test]
+    fn drag_handle_header_mode_adds_no_handle_slot() {
+        let config = CardConfig {
+            drag_handle: DragHandle::Header,
+            ..Default::default()
+        };
+        assert!(!elements(&config).contains(&ChromeElement::DragHandle));
+    }
+
+    #[test]
+    fn explicit_chrome_overrides_legacy_flags() {
+        let config = CardConfig {
+            // Legacy flags ask for everything; the explicit list wins.
+            foldable: true,
+            closable: true,
+            resizable: true,
+            chrome: Some(vec![ChromeSlot::inline(ChromeElement::Close)]),
+            ..Default::default()
+        };
+        assert_eq!(elements(&config), vec![ChromeElement::Close]);
+    }
+
+    #[test]
+    fn explicit_chrome_accepts_satellite_placement() {
+        let config = CardConfig {
+            chrome: Some(vec![ChromeSlot::satellite(ChromeElement::Minimize)]),
+            ..Default::default()
+        };
+        assert_eq!(config.effective_chrome_slots()[0].placement, ChromePlacement::Satellite);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn old_config_without_chrome_fields_deserializes() {
+        // A legacy serialization lacks `chrome`/`chrome_style` - emulate
+        // it by serializing a current config and stripping the new keys.
+        let source = CardConfig {
+            title: Some("Hi".into()),
+            foldable: true,
+            closable: true,
+            ..Default::default()
+        };
+        let mut value: serde_json::Value = serde_json::from_str(&serde_json::to_string(&source).unwrap()).unwrap();
+        if let Some(object) = value.as_object_mut() {
+            object.remove("chrome");
+            object.remove("chrome_style");
+        }
+        let config: CardConfig = serde_json::from_value(value).unwrap();
+        assert!(config.chrome.is_none());
+        assert_eq!(config.chrome_style, ChromeStyle::Builtin);
+        assert_eq!(elements(&config), vec![ChromeElement::Title, ChromeElement::Minimize, ChromeElement::Close]);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn chrome_slots_roundtrip() {
+        let config = CardConfig {
+            chrome: Some(vec![
+                ChromeSlot::inline(ChromeElement::Title),
+                ChromeSlot::satellite(ChromeElement::Minimize),
+                ChromeSlot::inline(ChromeElement::Close),
+            ]),
+            chrome_style: ChromeStyle::Adwaita,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let back: CardConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.effective_chrome_slots(), config.effective_chrome_slots());
+        assert_eq!(back.chrome_style, ChromeStyle::Adwaita);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn chrome_slot_serializes_kebab_case() {
+        let slot = ChromeSlot::satellite(ChromeElement::RotateGrip);
+        let json = serde_json::to_string(&slot).unwrap();
+        assert_eq!(json, r#"{"element":"rotate-grip","placement":"satellite"}"#);
+    }
 }

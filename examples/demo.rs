@@ -5,6 +5,9 @@ use floating_board::CardConfig;
 use floating_board::CardId;
 use floating_board::CardPalette;
 use floating_board::CardPosition;
+use floating_board::ChromeElement;
+use floating_board::ChromeSlot;
+use floating_board::ChromeStyle;
 use floating_board::DragHandle;
 use floating_board::FloatingBoard;
 use floating_board::GotoRotation;
@@ -147,6 +150,12 @@ fn seat_for_point(x: f64, y: f64, width: f64, height: f64) -> Seat {
 /// Run with `cargo run --example demo`.
 fn main() {
     tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+    // Optional Adwaita chrome (`ChromeStyle::Adwaita` on the "chrome"
+    // card): `cargo run --example demo --features adwaita`.
+    #[cfg(feature = "adwaita")]
+    if let Err(error) = floating_board::adw::init() {
+        panic!("libadwaita init failed: {error}");
+    }
     let application = gtk4::Application::new(Some("io.smearor.floating-board.demo"), Default::default());
     application.connect_activate(build_ui);
     application.run();
@@ -621,6 +630,59 @@ fn build_ui(application: &gtk4::Application) {
             },
         )
         .unwrap_or_else(|_| CardId::new("parameters"));
+
+    // Card 5: "chrome" - Phase-1 showcase for `CardConfig::chrome`: an
+    // explicit slot list overrides the legacy flags entirely. `closable`
+    // keeps its default `false`, yet the explicit `Close` slot renders a
+    // working close button; the explicit `Minimize` slot folds the card.
+    let chrome = gtk4::Box::new(Orientation::Vertical, 8);
+    chrome.append(&Label::new(Some(
+        "Explicit chrome: title, minimize, close, grips
+(closable flag is ignored)",
+    )));
+    // Interactive content exercises hit-testing inside the card: widget
+    // input (clicks, slider drags, text selection) must not be eaten by
+    // the card's own gestures.
+    chrome.append(&Scale::with_range(Orientation::Horizontal, 0.0, 100.0, 1.0));
+    let entry = gtk4::Entry::new();
+    entry.set_placeholder_text(Some("Type here"));
+    chrome.append(&entry);
+    let switch_row = gtk4::Box::new(Orientation::Horizontal, 8);
+    switch_row.append(&Label::new(Some("Toggle:")));
+    let chrome_switch = Switch::new();
+    switch_row.append(&chrome_switch);
+    chrome.append(&switch_row);
+    let counter = Label::new(Some("Clicked: 0"));
+    let click_button = Button::with_label("Click me");
+    chrome.append(&click_button);
+    chrome.append(&counter);
+    let clicks = std::rc::Rc::new(std::cell::Cell::new(0u32));
+    click_button.connect_clicked(move |_| {
+        let count = clicks.get() + 1;
+        clicks.set(count);
+        counter.set_label(&format!("Clicked: {count}"));
+    });
+    let _chrome_id = board
+        .add_card_with_id(
+            "chrome",
+            &chrome,
+            CardConfig {
+                title: Some("Chrome".to_string()),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(1230.0, 420.0))),
+                foldable: true,
+                max_width: Some(Pixels::new(300.0)),
+                chrome: Some(vec![
+                    ChromeSlot::inline(ChromeElement::Title),
+                    ChromeSlot::inline(ChromeElement::Minimize),
+                    ChromeSlot::inline(ChromeElement::Close),
+                    ChromeSlot::inline(ChromeElement::RotateGrip),
+                    ChromeSlot::inline(ChromeElement::ResizeGrip),
+                ]),
+                chrome_style: ChromeStyle::Adwaita,
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|_| CardId::new("chrome"));
 
     // Shared pass helper used by the toolbar button and the Prev/Next
     // buttons on dynamic cards: in "Seats" mode the card hops to the
