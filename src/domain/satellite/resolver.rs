@@ -333,6 +333,30 @@ mod tests {
         }
     }
 
+    /// Orbit center coincides with the card's position (the card
+    /// center) for a card away from the origin.
+    #[test]
+    fn radial_orbit_centered_on_card() {
+        let items: Vec<SatelliteItem> = ["a", "b", "c", "d"].iter().map(|id| item(id, 30.0, 30.0)).collect();
+        let placements = resolve(
+            &card(330.0, 400.0, 0.0, 1.0),
+            Vec2::new(227.0, 135.0),
+            &radial(SatelliteDistribution::Even),
+            SatelliteRotationMode::CoRotate,
+            &items,
+        )
+        .expect("resolves");
+        // Even on FULL: the mean of all positions is the orbit center.
+        let sum = placements
+            .iter()
+            .fold(Vec2::<Pixels>::ZERO, |acc, placement| acc + Vec2::<Pixels>::from(placement.geometry.position));
+        let mean = sum / placements.len() as f64;
+        assert!(
+            (mean.x - 330.0).abs() < 1e-9 && (mean.y - 400.0).abs() < 1e-9,
+            "orbit center {mean:?} != card center (330,400)"
+        );
+    }
+
     /// `Anchored` pins anchored satellites to their card-local angle
     /// verbatim while flexible ones fill the gaps; `Even` ignores
     /// anchors entirely.

@@ -167,8 +167,14 @@ impl FloatingBoard {
         satellite.rotation_widget.set_rotation(SmearorRotation::from(rendered_rotation));
         let rendered_scale = placement.geometry.scale.value() * self.card_view_zoom(entry);
         satellite.scaling.set_scale(rendered_scale);
-        let (_, natural) = satellite.widget.measure_size();
-        let rendered_size = (natural.to_f64().with_unit::<Pixels>() * rendered_scale).rotated_bounds(rendered_rotation);
+        // `gtk4::Fixed` allocates (minimum width, natural height), so
+        // centering on the natural size would displace the rendered
+        // widget by (nat - min) / 2 - same contract the card stack
+        // follows via `stack_top_left`.
+        let (minimum, natural) = satellite.widget.measure_size();
+        let min_size = (minimum.to_f64().with_unit::<Pixels>() * rendered_scale).rotated_bounds(rendered_rotation);
+        let nat_size = (natural.to_f64().with_unit::<Pixels>() * rendered_scale).rotated_bounds(rendered_rotation);
+        let rendered_size = Vec2::<Pixels>::new(min_size.x, nat_size.y);
         let widget = self.widget_bounds();
         let center = match widget.is_degenerate() {
             true => Vec2::<Pixels>::from(placement.geometry.position),

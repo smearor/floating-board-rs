@@ -681,7 +681,7 @@ impl FloatingBoard {
             let Some(entry) = cards.get(id) else {
                 return;
             };
-            let top_left = self.rendered_footprint(entry).min;
+            let top_left = self.stack_top_left(entry);
             layer.remove(&entry.scaling);
             layer.put(&entry.scaling, top_left.x, top_left.y);
             self.restack_satellites(entry, &layer);
@@ -1524,7 +1524,7 @@ impl FloatingBoard {
         let mut ordered: Vec<&CardEntry> = cards.values().collect();
         ordered.sort_by_key(|entry| (entry.config.z_index.unwrap_or(i32::MAX), entry.sequence));
         for entry in ordered {
-            let top_left = self.rendered_footprint(entry).min;
+            let top_left = self.stack_top_left(entry);
             layer.remove(&entry.scaling);
             layer.put(&entry.scaling, top_left.x, top_left.y);
             self.restack_satellites(entry, &layer);
@@ -2364,6 +2364,31 @@ impl FloatingBoard {
         Rect::centered(center, size)
     }
 
+    /// The size `gtk4::Fixed` allocates a transform stack at
+    /// `geometry`: minimum width plus natural height at that width -
+    /// Fixed's child contract is `(min, natural)`, not `(natural,
+    /// natural)`. `ScalingLayout` then centers the natural-size child
+    /// inside that allocation, so a stack moved to the *natural*
+    /// footprint min renders displaced by `(nat - min) / 2`.
+    fn stack_alloc_size(&self, entry: &CardEntry, geometry: &CardGeometry) -> Vec2<Pixels> {
+        let (minimum, natural) = entry.card.measure_size();
+        let scale = geometry.scale.value() * self.card_view_zoom(entry);
+        let rotation = geometry.rotation.to_rotation_rad() + self.card_view(entry).rotation;
+        let min_size = (minimum.to_f64().with_unit::<Pixels>() * scale).rotated_bounds(rotation);
+        let nat_size = (natural.to_f64().with_unit::<Pixels>() * scale).rotated_bounds(rotation);
+        Vec2::new(min_size.x, nat_size.y)
+    }
+
+    /// Top-left for `entry.scaling` on the card layer that centers the
+    /// rendered stack on the view-mapped card position: the footprint
+    /// center minus half the [`Self::stack_alloc_size`].
+    fn stack_top_left(&self, entry: &CardEntry) -> Vec2<Pixels> {
+        let footprint = self.rendered_footprint(entry);
+        let center = footprint.center();
+        let alloc = self.stack_alloc_size(entry, &self.entry_geometry(entry));
+        Vec2::new(center.x - alloc.x / 2.0, center.y - alloc.y / 2.0)
+    }
+
     /// The geometry a card is effectively at for obstacle purposes:
     /// its in-flight glide target while the glide runs (its
     /// `layout_generation` still matches), otherwise the live
@@ -2384,7 +2409,7 @@ impl FloatingBoard {
         let Some(layer) = self.card_layer() else {
             return;
         };
-        let target = self.rendered_footprint(entry).min;
+        let target = self.stack_top_left(entry);
         let current = Vec2::<Pixels>::from(layer.child_position(&entry.scaling));
         let delta = current - target;
         if delta.x.abs() > 0.5 || delta.y.abs() > 0.5 {

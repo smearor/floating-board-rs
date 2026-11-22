@@ -90,14 +90,17 @@ fn build_ui(application: &gtk4::Application) {
     window.set_title(Some("floating-board satellites"));
     window.set_default_size(1100, 800);
 
-    // Example-local styling: the colored dot satellites and a dark
-    // backdrop so the orbit reads clearly.
+    // Example-local styling: FAB-styled radial satellites (thumb
+    // size, icon size untouched) plus a dark backdrop so the orbit
+    // reads clearly. Border at 80% opacity stays visible; background
+    // at 20% opacity reads as glass; the color dots keep their color
+    // in the same translucency logic.
     let css = gtk4::CssProvider::new();
     css.load_from_string(
-        ".memo-dot { min-width: 20px; min-height: 20px; padding: 0; }\
-         .memo-green { background: #33d17a; }\
-         .memo-red { background: #e01b24; }\
-         .memo-yellow { background: #f6d32d; }\
+        ".floating-card-satellite-radial { min-width: 56px; min-height: 56px; padding: 0; border-radius: 9999px; border-width: 2px; border-style: solid; border-color: rgba(255, 255, 255, 0.8); background: rgba(255, 255, 255, 0.5); }\
+         .memo-green { background: rgba(51, 209, 122, 0.5); border-color: rgba(51, 209, 122, 0.8); }\
+         .memo-red { background: rgba(224, 27, 36, 0.5); border-color: rgba(224, 27, 36, 0.8); }\
+         .memo-yellow { background: rgba(246, 211, 45, 0.5); border-color: rgba(246, 211, 45, 0.8); }\
          .backdrop { background: #241f31; }",
     );
     if let Some(display) = gtk4::gdk::Display::default() {
