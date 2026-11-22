@@ -1,0 +1,623 @@
+<!DOCTYPE HTML>
+<html lang="en" class="coal sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Usage - floating-board Documentation</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-abbc3ec8.svg">
+        <link rel="shortcut icon" href="favicon-43e50b9e.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-76eb0608.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="smearor-1a1cd9eb.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "coal";
+            const default_dark_theme = "coal";
+            window.path_to_searchindex_js = "searchindex-d736a8bc.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-932eff1a.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('coal')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">floating-board Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/smearor/floating-board-rs" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="usage"><a class="header" href="#usage">Usage</a></h1>
+<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
+<pre><code class="language-toml">[dependencies]
+floating-board = "0.1"
+</code></pre>
+<p>Serde support (layout snapshots) is enabled by default. Disable it for a
+leaner dependency tree — all widget functionality still works:</p>
+<pre><code class="language-toml">[dependencies]
+floating-board = { version = "0.1", default-features = false }
+</code></pre>
+<h2 id="creating-a-board"><a class="header" href="#creating-a-board">Creating a Board</a></h2>
+<p><code>FloatingBoard::new</code> takes the widget that forms the bottom layer. Everything
+the board renders floats above it; gestures on empty areas fall through.</p>
+<pre><code class="language-rust ignore">use floating_board::FloatingBoard;
+
+let content = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+// ... fill content ...
+let board = FloatingBoard::new(&amp;content);
+
+board.set_content(&amp;other_widget); // swap the bottom layer later
+let overlay = board.overlay();    // internal GtkOverlay (edge cases)</code></pre>
+<h2 id="adding-cards"><a class="header" href="#adding-cards">Adding Cards</a></h2>
+<p>Every card wraps an arbitrary consumer widget. <code>add_card</code> generates a
+<code>card-N</code> id; <code>add_card_with_id</code> assigns a stable semantic key — preferred
+whenever you persist layouts, because ids are the keys in <code>BoardLayout</code>.</p>
+<pre><code class="language-rust ignore">use floating_board::CardAnchor;
+use floating_board::CardConfig;
+use floating_board::DragHandle;
+use floating_board::ScaleBounds;
+
+let controls_id = board.add_card_with_id(
+    "controls",
+    &amp;controls_widget,
+    CardConfig {
+        title: Some("Controls".into()),
+        position: CardAnchor::BottomCenter,
+        draggable: true,
+        rotatable: true,
+        scalable: true,
+        foldable: true,
+        closable: true,
+        drag_handle: DragHandle::Header,
+        scale_limits: ScaleBounds::new(0.5, 2.0),
+        ..Default::default()
+    },
+)?;</code></pre>
+<h3 id="cardconfig-reference"><a class="header" href="#cardconfig-reference"><code>CardConfig</code> Reference</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>title</code></td><td><code>Option&lt;String&gt;</code></td><td><code>None</code></td><td>Header text; a localized fallback is used when the header is shown without a title</td></tr>
+<tr><td><code>position</code></td><td><code>CardAnchor</code></td><td><code>Center</code></td><td>Initial anchor (resolved at first allocation) or <code>Explicit(CardPosition)</code></td></tr>
+<tr><td><code>draggable</code></td><td><code>bool</code></td><td><code>true</code></td><td>Enable the drag gesture</td></tr>
+<tr><td><code>rotatable</code></td><td><code>bool</code></td><td><code>true</code></td><td>Enable the two-finger rotate gesture</td></tr>
+<tr><td><code>scalable</code></td><td><code>bool</code></td><td><code>true</code></td><td>Enable the pinch gesture</td></tr>
+<tr><td><code>resizable</code></td><td><code>bool</code></td><td><code>false</code></td><td>Show a bottom-right resize grip that scales around the center</td></tr>
+<tr><td><code>rotate_grip</code></td><td><code>bool</code></td><td><code>false</code></td><td>Show a bottom-left rotate grip that quarter-turns in the swipe direction</td></tr>
+<tr><td><code>foldable</code></td><td><code>bool</code></td><td><code>false</code></td><td>Show a fold button; folds the card to its header</td></tr>
+<tr><td><code>closable</code></td><td><code>bool</code></td><td><code>false</code></td><td>Show a close button; removes the card (<code>card-removed</code>)</td></tr>
+<tr><td><code>headerless</code></td><td><code>bool</code></td><td><code>false</code></td><td>Collapse the header to a slim grip</td></tr>
+<tr><td><code>drag_handle</code></td><td><code>DragHandle</code></td><td><code>Header</code></td><td><code>Header</code>, <code>WholeCard</code> or <code>Handle</code> (grip icon)</td></tr>
+<tr><td><code>scale_limits</code></td><td><code>ScaleBounds</code></td><td><code>0.5 – 2.0</code></td><td>Inclusive pinch zoom limits</td></tr>
+<tr><td><code>min_visible</code></td><td><code>MinVisible</code></td><td><code>40.0</code></td><td>Pixels that must stay inside the bounds (<code>Loose</code> mode)</td></tr>
+<tr><td><code>bounds_mode</code></td><td><code>BoundsMode</code></td><td><code>Loose</code></td><td><code>Loose</code> clamps on drag end; <code>Contained</code> keeps the whole footprint inside, live</td></tr>
+<tr><td><code>anchor_margin</code></td><td><code>Pixels</code></td><td><code>24.0</code></td><td>Margin edge/corner anchors keep to the board edge</td></tr>
+<tr><td><code>palette</code></td><td><code>Option&lt;CardPalette&gt;</code></td><td><code>None</code></td><td>Per-card color scheme (<code>CardColor::Background</code>, <code>Foreground</code>, <code>Header</code>)</td></tr>
+<tr><td><code>content_padding</code></td><td><code>Pixels</code></td><td><code>10.0</code></td><td>Space between the card border and the content widget</td></tr>
+<tr><td><code>max_width</code> / <code>max_height</code></td><td><code>Option&lt;i32&gt;</code></td><td><code>None</code></td><td>Hard cap on the measured size — keeps the card stable when content changes size</td></tr>
+<tr><td><code>animation_speed_ms</code></td><td><code>u64</code></td><td><code>500</code></td><td>Duration of rotation and layout animations</td></tr>
+<tr><td><code>seat</code></td><td><code>Option&lt;Seat&gt;</code></td><td><code>None</code></td><td>Tabletop seat the card is assigned to — independent of its visual rotation</td></tr>
+<tr><td><code>sticky</code></td><td><code>bool</code></td><td><code>false</code></td><td>Pin the card to the screen: it keeps position, rotation and zoom while the view moves</td></tr>
+<tr><td><code>folded_content</code></td><td><code>Option&lt;Widget&gt;</code></td><td><code>None</code></td><td>Custom widget shown while folded instead of the header strip (round button, compact view)</td></tr>
+<tr><td><code>z_index</code></td><td><code>Option&lt;i32&gt;</code></td><td><code>None</code></td><td>Initial stacking order; <code>None</code> appends on top</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>CardConfig::default()</code> yields a fully interactive card anchored at the board
+center.</p>
+<h2 id="working-with-cards"><a class="header" href="#working-with-cards">Working with Cards</a></h2>
+<pre><code class="language-rust ignore">let card = board.card(&amp;controls_id)?;   // Result&lt;Card, BoardError&gt;
+let all = board.cards();                // Vec&lt;Card&gt;
+
+// Geometry — the board is the single state owner.
+let geometry = card.geometry();
+card.set_position(CardPosition::new(480.0, 300.0));
+card.set_scale(ScaleFactor::new(1.5));
+card.set_rotation(SmearorRotation::Deg180);                // immediate
+card.set_rotation_with_animation(SmearorRotation::Deg180); // zoom-snap transition
+card.set_geometry(&amp;CardGeometry { position, rotation, scale });
+
+// Ordering and chrome.
+card.raise();
+card.set_folded(true);   // or card.fold() to toggle
+let folded = card.folded();
+card.close();            // runs the configured close action (remove or hide)</code></pre>
+<p><code>CardConfig::folded_content</code> replaces the whole card while folded,
+header included: folding hides the chrome and shows that widget
+instead (<code>.floating-card-collapsed</code> makes the card background
+transparent). Wire the folded widget to <code>set_folded(false)</code> or
+<code>fold()</code> - the card’s own fold button hides with the header. A round
+icon button or a compact mini toolbar both work:</p>
+<pre><code class="language-rust ignore">let collapsed = Button::from_icon_name("open-menu-symbolic");
+board.add_card(&amp;body, CardConfig {
+    foldable: true,
+    folded_content: Some(collapsed.clone().upcast()),
+    ..Default::default()
+});
+let card = board.card(&amp;id)?;
+collapsed.connect_clicked(move |_| card.set_folded(false));
+
+
+// The rotated footprint in board coordinates — union of all footprints is
+// the dynamic safe-area of the board.
+let region: gtk4::cairo::Region = card.footprint();
+
+board.remove_card(&amp;controls_id)?;</code></pre>
+<h2 id="layouts-and-seats"><a class="header" href="#layouts-and-seats">Layouts and Seats</a></h2>
+<p><code>smearor-commons-layout</code> provides the generic machinery — the board only
+adapts card state to and from it.</p>
+<h3 id="applying-a-layout-strategy"><a class="header" href="#applying-a-layout-strategy">Applying a layout strategy</a></h3>
+<pre><code class="language-rust ignore">use smearor_commons_layout::FlowLayout;
+
+// Line up all visible cards without overlap, gliding them animatedly:
+board.apply_layout(&amp;FlowLayout::default(), None, true)?;
+
+// Or only a selection of cards:
+board.apply_layout(&amp;FlowLayout::default(), Some(&amp;[id_a, id_b]), false)?;
+
+// Any `LayoutStrategy&lt;Pixels&gt;` works - `SeatLayout`, or your own:
+board.apply_layout(&amp;SeatLayout::default(), None, true)?;</code></pre>
+<p><code>apply_layout</code> maps each card to a <code>LayoutItem</code> (displayed footprint,
+live rotation, <code>seat</code>), calls <code>arrange</code> against the board bounds and
+applies every <code>Placement</code> through the regular geometry path — clamping,
+scale limits and <code>geometry-changed</code> behave like manual manipulation.
+<code>Placement::size</code> is the target footprint; cards keep their configured
+scale. A <code>BoardError::Layout(DoesNotFit)</code> leaves the board untouched.</p>
+<h3 id="seats"><a class="header" href="#seats">Seats</a></h3>
+<p>A <code>Seat</code> is a <code>TableSide</code> plus an optional <code>Fraction</code> offset along the
+edge. It models <em>which user a card belongs to</em> — deliberately decoupled
+from the card’s rotation, because the board may be rotated and users
+may move:</p>
+<pre><code class="language-rust ignore">let config = CardConfig {
+    seat: Some(Seat::new(TableSide::Bottom)),            // assigned, strategy distributes along the edge
+    // seat: Some(Seat::at(TableSide::Top, Fraction::new(0.25))), // pinned position
+    // seat: Some(Seat::center(TableSide::Left)),                // centered on an edge
+    ..Default::default()
+};
+
+let seat = card.seat();            // Option&lt;Seat&gt;
+card.set_seat(Some(Seat::center(TableSide::Right)));  // emits card-seat-changed
+board.set_card_seat(&amp;id, None)?;   // clear via the board</code></pre>
+<p>Seats are part of <code>layout_snapshot()</code>/<code>restore_layout()</code> via
+<code>CardPlacement::seat</code>.</p>
+<h3 id="passing-a-card-to-the-next-user"><a class="header" href="#passing-a-card-to-the-next-user">Passing a card to the next user</a></h3>
+<pre><code class="language-rust ignore">// Step one table side (Bottom -&gt; Left -&gt; Top -&gt; Right), gliding to the
+// edge and rotating into that side's reading orientation:
+board.rotate_to_next_user(&amp;id, TurnDirection::Clockwise, true)?;
+
+// Or hop between *occupied* seats of a roster — empty sides are
+// skipped, several seats on one side are visited in order:
+let roster = [Seat::new(TableSide::Bottom), Seat::center(TableSide::Top)];
+board.rotate_to_next_occupied_seat(&amp;id, &amp;roster, TurnDirection::Clockwise, true)?;</code></pre>
+<p><code>move_to_edge</code> (usually <code>true</code>) slides the card in front of the target
+edge at <code>anchor_margin</code>; <code>false</code> rotates in place.
+<code>rotate_to_next_occupied_seat</code> assigns the reached roster seat to the
+card (<code>card-seat-changed</code>) — being passed to a user makes it belong to
+their seat, which is what lets repeated passes keep hopping the roster.
+<code>rotate_to_next_user</code> only advances an explicitly assigned seat;
+unassigned cards derive their starting side from their rotation each
+time. A passed card slips into the free spot nearest its seat: it
+fills gaps left by removed cards along the edge, sits beside occupied
+cards without overlap, and may take the lane behind the edge row when
+the queue there reaches farther from the seat than a second row would
+— the edge lane is preferred.
+<code>BoardError::NoNextSeat</code> is returned when the roster holds no seat
+other than the card’s current one.</p>
+<h2 id="workspace-and-view"><a class="header" href="#workspace-and-view">Workspace and View</a></h2>
+<p>Card geometry — position, rotation and scale — is stored in <em>workspace
+coordinates</em> on a virtual surface. A <code>View</code> camera decides which part of
+the workspace maps onto the widget, so panning, zooming or rotating the
+table never touches card state. The defaults make the widget a window
+exactly covering the workspace — pre-workspace behavior.</p>
+<h3 id="workspace-extent"><a class="header" href="#workspace-extent">Workspace extent</a></h3>
+<pre><code class="language-rust ignore">use smearor_commons_layout::WorkspaceSize;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Vec2;
+
+board.set_workspace_size(WorkspaceSize::FollowWidget);                     // default: mirrors the allocation
+board.set_workspace_size(WorkspaceSize::Fixed(Vec2::&lt;Pixels&gt;::new(2000.0, 1600.0))); // a table bigger than the widget
+board.set_workspace_size(WorkspaceSize::Infinite);                          // unbounded</code></pre>
+<ul>
+<li><code>FollowWidget</code> (default): the workspace extent tracks the widget
+allocation — identical behavior to pre-workspace versions.</li>
+<li><code>Fixed(size)</code>: a fixed workspace extent in pixels, origin at (0,0).</li>
+<li><code>Infinite</code>: no extent; clamping falls back to the shown view region
+(so cards cannot be dragged off-screen and lost).</li>
+</ul>
+<h3 id="the-camera"><a class="header" href="#the-camera">The camera</a></h3>
+<pre><code class="language-rust ignore">let view = board.view();                 // effective View { region, rotation }
+board.set_view(view);                    // pin an explicit view
+board.reset_view();                      // back to the default covering the extent
+
+board.pan_view(Vec2::&lt;Pixels&gt;::new(100.0, 0.0));                // shift by workspace pixels
+board.zoom_view(anchor, ScaleFactor::new(1.25));                // zoom in around a workspace point
+board.rotate_view(pivot, RotationRad::from_degrees(90.0));      // turn the table around a point</code></pre>
+<p>The default view covers the workspace extent and follows the widget.
+<code>set_view</code>, <code>pan_view</code>, <code>zoom_view</code> and <code>rotate_view</code> pin an explicit
+view — resizes no longer change zoom or center until <code>reset_view</code>
+releases the pin. <code>View</code> itself (<code>smearor_commons_layout</code>) offers
+<code>to_widget</code>/<code>to_workspace</code> for coordinate mapping and <code>shown_region</code>
+for the aspect-expanded region actually on screen.</p>
+<h3 id="user-control"><a class="header" href="#user-control">User control</a></h3>
+<p>Both controls are opt-in (default off) because they share the touch
+surface with card gestures:</p>
+<ul>
+<li><code>board.set_view_gestures(true)</code> — drag on empty space pans, a pinch
+zooms around the gesture center and a two-finger twist rotates the
+table. Card gestures keep precedence: they claim sequences first,
+and touches starting on a card are denied up front.</li>
+<li><code>board.set_view_buttons(true)</code> — overlaid corner controls (zoom in,
+zoom out, reset) styled via <code>.floating-board-view-controls</code>.</li>
+</ul>
+<h3 id="goto_card"><a class="header" href="#goto_card"><code>goto_card</code></a></h3>
+<pre><code class="language-rust ignore">use floating_board::GotoRotation;
+use floating_board::GotoTransition;
+
+// Fly the camera onto a card, turning it readable for the viewer:
+board.goto_card(&amp;id, GotoTransition::Glide, GotoRotation::Upright)?;
+
+// Prezi-style: pull back to an overview of both regions first,
+// then glide down onto the card:
+board.goto_card(&amp;id, GotoTransition::Transit, GotoRotation::Upright)?;
+
+// Or just bring it on screen without turning the table:
+board.goto_card(&amp;id, GotoTransition::Snap, GotoRotation::Keep)?;</code></pre>
+<p>The target view centers the card’s workspace footprint with a padding
+margin. <code>GotoTransition</code> picks the flight (<code>Snap</code>, <code>Glide</code>, <code>Transit</code>),
+<code>GotoRotation</code> the destination rotation (<code>Upright</code> rotates so the card
+reads upright, <code>Keep</code> pans/zooms only). Flights run on the frame clock
+over the card’s <code>animation_speed_ms</code>; a new <code>goto_card</code> supersedes a
+running one and any programmatic or gesture view change cancels it.
+The destination pins like <code>set_view</code> — <code>reset_view</code> releases it.
+A <code>sticky</code> target is pinned to the glass itself, so the camera moves
+to the workspace region behind it and <code>rotation</code> is ignored.</p>
+<h3 id="sticky-cards"><a class="header" href="#sticky-cards">Sticky cards</a></h3>
+<p><code>CardConfig::sticky</code> (or <code>card.set_sticky(true)</code>) pins a card to the
+screen instead of the workspace. A sticky card keeps its on-screen
+position, rotation and zoom no matter how the view pans, zooms or
+rotates — like chrome glued to the glass rather than a sheet on the
+table. It still clamps against the widget rect, and its gestures work
+in screen coordinates.</p>
+<pre><code class="language-rust ignore">board.add_card("sticky-hud", &amp;content, CardConfig {
+    position: CardAnchor::Explicit(CardPosition::new(Vec2::&lt;Pixels&gt;::new(900.0, 60.0))),
+    sticky: true,
+    ..Default::default()
+});
+
+// Toggling never moves the card visually: the stored geometry
+// converts between workspace and widget coordinates at the seam.
+card.set_sticky(false); // release back onto the table</code></pre>
+<p>While pinned, the card’s stored position is in widget pixels (also in
+<code>Card::geometry()</code> and layout snapshots); all other cards use
+workspace coordinates. Sticky cards are skipped by <code>apply_layout</code>,
+count as obstacles for seat passes only under <code>SeatAnchor::View</code>, and
+passing one to a seat releases the pin first — a card handed to
+another user always lands on the table.</p>
+<h3 id="seats-and-the-camera"><a class="header" href="#seats-and-the-camera">Seats and the camera</a></h3>
+<p><code>board.set_seat_anchor</code> chooses where pass-to-seat operations anchor
+their table edges:</p>
+<ul>
+<li><code>SeatAnchor::View</code> (default): seats sit at the <em>screen</em> edge — a
+passed card lands where the user actually sits, however the camera
+is panned, zoomed or rotated.</li>
+<li><code>SeatAnchor::Workspace</code>: seats are fixed positions on the virtual
+table — they stay where the workspace puts them.</li>
+</ul>
+<h3 id="persistence-and-clamping"><a class="header" href="#persistence-and-clamping">Persistence and clamping</a></h3>
+<p><code>BoardLayout</code> persists <code>workspace</code> and <code>view</code> (via <code>serde(default)</code> —
+snapshots from before the workspace read the defaults). Cards stored
+out of bounds are clamped on restore as usual. <code>Infinite</code> workspaces
+clamp card <em>operations</em> against the shown view region but never
+re-clamp on view changes, so panning cannot drag cards along.</p>
+<h2 id="persistence"><a class="header" href="#persistence">Persistence</a></h2>
+<p>Snapshots are value objects; file location and format belong to the consumer.</p>
+<pre><code class="language-rust ignore">// Capture
+let layout: BoardLayout = board.layout_snapshot();
+let toml = toml::to_string_pretty(&amp;layout)?;
+
+// Restore (e.g. on startup or --reset-gui-layout)
+let layout: BoardLayout = toml::from_str(&amp;file_contents)?;
+board.restore_layout(&amp;layout);</code></pre>
+<p><strong>Restore semantics:</strong></p>
+<ul>
+<li>Unknown <code>CardId</code>s are skipped with a <code>warn!</code> log — profiles may reference
+cards that no longer exist; this is not an error.</li>
+<li>Geometry is clamped to the current bounds, so nothing restores off-screen.</li>
+<li>Cards missing from the layout keep their current geometry.</li>
+</ul>
+<p>Example <code>gui-cards.toml</code>:</p>
+<pre><code class="language-toml">version = 1
+
+[[cards]]
+id = "controls"
+position = [480.0, 660.0]
+rotation = 180.0
+scale = 1.0
+</code></pre>
+<h2 id="signals"><a class="header" href="#signals">Signals</a></h2>
+<p>Connect with <code>connect_closure</code> or the generated <code>connect_*</code> helpers:</p>
+<pre><code class="language-rust ignore">// Aggregate channel — debounce your persistence here.
+board.connect_closure("geometry-changed", false,
+    gtk4::glib::closure_local!(move |board: FloatingBoard| {
+        save(board.layout_snapshot());
+    }),
+);
+
+// Per-card lifecycle.
+card.connect_closure("card-moved", false,
+    gtk4::glib::closure_local!(|card: floating_board::Card| {
+        println!("{} moved", card.id());
+    }),
+);</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Signal</th><th>Source</th><th>Fires on</th></tr>
+</thead>
+<tbody>
+<tr><td><code>card-moved</code></td><td><code>Card</code></td><td>drag end</td></tr>
+<tr><td><code>card-rotated</code></td><td><code>Card</code></td><td>any rotation change (gesture or programmatic)</td></tr>
+<tr><td><code>card-scaled</code></td><td><code>Card</code></td><td>transform end or <code>set_scale</code></td></tr>
+<tr><td><code>card-raised</code></td><td><code>Card</code></td><td>raise to top</td></tr>
+<tr><td><code>card-folded</code></td><td><code>Card</code></td><td>fold state toggles</td></tr>
+<tr><td><code>card-seat-changed</code></td><td><code>Card</code></td><td>seat assignment changes (<code>set_seat</code>, pass to user)</td></tr>
+<tr><td><code>card-added</code> / <code>card-removed</code></td><td><code>FloatingBoard</code></td><td>card lifecycle (carries the <code>Card</code>)</td></tr>
+<tr><td><code>geometry-changed</code></td><td><code>FloatingBoard</code></td><td>aggregate: any geometry mutation</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="styling"><a class="header" href="#styling">Styling</a></h2>
+<p>The crate ships a default stylesheet registered with
+<code>STYLE_PROVIDER_PRIORITY_FALLBACK</code> — every rule is overridable by your theme:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Class</th><th>Element</th></tr>
+</thead>
+<tbody>
+<tr><td><code>.floating-board</code></td><td>the board itself</td></tr>
+<tr><td><code>.floating-card-layer</code></td><td>the transparent card layer</td></tr>
+<tr><td><code>.floating-card</code></td><td>every card</td></tr>
+<tr><td><code>.floating-card-header</code></td><td>the header strip</td></tr>
+<tr><td><code>.floating-card-content</code></td><td>the content area</td></tr>
+<tr><td><code>.floating-card-handle</code></td><td>the grip icon (<code>DragHandle::Handle</code>)</td></tr>
+<tr><td><code>.floating-card-folded</code></td><td>added while folded</td></tr>
+<tr><td><code>.floating-card-collapsed</code></td><td>added while folded with <code>folded_content</code> (chrome stripped)</td></tr>
+<tr><td><code>.floating-card-folded-content</code></td><td>wrapper around <code>folded_content</code> while folded</td></tr>
+<tr><td><code>.floating-card-headerless</code></td><td>added for <code>headerless</code> cards</td></tr>
+</tbody>
+</table>
+</div>
+<p>The few crate-owned strings (untitled fallback, fold/close tooltips) are
+localized via Fluent (<code>i18n/{en,de}/main.ftl</code>, selected by <code>LANGUAGE</code>/<code>LANG</code>).
+All card content is consumer-owned and unaffected.</p>
+<h2 id="demo"><a class="header" href="#demo">Demo</a></h2>
+<pre><code class="language-bash">cargo run --example demo
+</code></pre>
+<p>Shows four cards on a drawing area inside the board’s content area —
+the toolbar and status line sit outside, so cards can never cover them.
+The controls card is foldable/closable (<code>Header</code> drag), the info card is
+rotated 90° (<code>Handle</code> drag, <code>min_visible = 60</code>), the display card is
+headerless (<code>WholeCard</code> drag) and the parameters card folds.</p>
+<p>Four demo users sit at seats around the table edge — colored markers on
+the background, a matching seat badge on each card. The toolbar adds
+cards at runtime, exercises <code>layout_snapshot</code>/<code>restore_layout</code> and
+drives the layouting API: “Arrange” flows the visible cards into a
+non-overlapping row, “Pass card →” sends the controls card to the next
+user — hopping the occupied seats when the “Seats” switch is on
+(<code>rotate_to_next_occupied_seat</code>), stepping table sides when off. In
+seat mode the markers themselves are draggable along the table edge.
+“View gestures”/“View buttons”/“Seats @ view” toggle the camera and
+seat anchoring live; “Goto card” and each dynamic card’s “Goto” fly
+the camera onto a card — “Prezi goto” selects the transit flight,
+“Goto upright” turns the card readable.
+A status line shows signals live.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="architecture.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="architecture.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="mermaid-eefea253.min.js"></script>
+        <script src="mermaid-init-288c78f7.js"></script>
+        <script src="smearor-f2f84156.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

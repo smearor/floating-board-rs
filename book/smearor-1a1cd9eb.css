@@ -1,0 +1,358 @@
+/* ==========================================================================
+   floating-board book — Smearor design language for mdBook
+   Mirrors the landing page: neon palette, dark surfaces, glow accents.
+   ========================================================================== */
+
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/metropolis@5/300.css');
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/metropolis@5/index.css');
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/metropolis@5/600.css');
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/metropolis@5/900.css');
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/roboto@5/300.css');
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/roboto@5/400.css');
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/source-code-pro@5/500.css');
+
+:root {
+    --menu-bar-height: 62px;
+
+    --malachite: #04e762;
+    --selective-yellow: #f5b700;
+    --celestial-blue: #00a1e4;
+    --mexican-pink: #dc0073;
+    --chartreuse: #89fc00;
+
+    --sm-bg: #05070b;
+    --sm-bg-2: #0a0e16;
+    --sm-surface: #10151f;
+    --sm-surface-2: #161c28;
+    --sm-line: #222b3b;
+    --sm-text-1: #eef2f8;
+    --sm-text-2: #9aa7bd;
+
+    --sm-font-sans: 'Metropolis', 'Roboto', sans-serif;
+    --sm-font-heading: 'Roboto Light', 'Roboto', sans-serif;
+    --sm-font-mono: 'Source Code Pro', Consolas, Menlo, monospace;
+
+    --mono-font: var(--sm-font-mono);
+}
+
+/* Map every built-in theme to the Smearor palette so the book always
+   matches the brand, no matter which theme was selected or restored. */
+.ayu, .coal, .light, .navy, .rust, html:not(.js) {
+    --bg: var(--sm-bg);
+    --fg: var(--sm-text-2);
+
+    --sidebar-bg: var(--sm-bg-2);
+    --sidebar-fg: var(--sm-text-2);
+    --sidebar-non-existant: #5a6577;
+    --sidebar-active: var(--celestial-blue);
+    --sidebar-spacer: var(--sm-line);
+
+    --scrollbar: #2a303b;
+
+    --icons: #5a6577;
+    --icons-hover: var(--sm-text-1);
+
+    --links: var(--celestial-blue);
+
+    --inline-code-color: var(--selective-yellow);
+
+    --theme-popup-bg: var(--sm-surface);
+    --theme-popup-border: var(--sm-line);
+    --theme-hover: var(--sm-surface-2);
+
+    --quote-bg: var(--sm-bg-2);
+    --quote-border: var(--sm-line);
+
+    --warning-border: var(--selective-yellow);
+
+    --table-border-color: var(--sm-line);
+    --table-header-bg: var(--sm-surface-2);
+    --table-alternate-bg: var(--sm-bg-2);
+
+    --searchbar-border-color: var(--sm-line);
+    --searchbar-bg: var(--sm-surface);
+    --searchbar-fg: var(--sm-text-1);
+    --searchbar-shadow-color: var(--celestial-blue);
+    --searchresults-header-fg: var(--sm-text-2);
+    --searchresults-border-color: var(--sm-line);
+    --searchresults-li-bg: var(--sm-surface-2);
+    --search-mark-bg: var(--mexican-pink);
+
+    --color-scheme: dark;
+
+    --copy-button-filter: invert(62%) sepia(8%) saturate(800%) hue-rotate(190deg) brightness(95%) contrast(90%);
+    --copy-button-filter-hover: invert(66%) sepia(95%) saturate(3000%) hue-rotate(160deg) brightness(100%) contrast(105%);
+
+    --footnote-highlight: var(--celestial-blue);
+
+    --overlay-bg: rgba(5, 7, 11, 0.5);
+
+    --blockquote-note-color: var(--celestial-blue);
+    --blockquote-tip-color: var(--malachite);
+    --blockquote-important-color: var(--mexican-pink);
+    --blockquote-warning-color: var(--selective-yellow);
+    --blockquote-caution-color: var(--mexican-pink);
+
+    --sidebar-header-border-color: var(--celestial-blue);
+}
+
+/* ---------- base typography ---------- */
+
+body {
+    font-family: var(--sm-font-sans);
+    font-weight: 300;
+    letter-spacing: 0.01em;
+}
+
+::selection {
+    background: var(--mexican-pink);
+    color: #fff;
+}
+
+#mdbook-content h1,
+#mdbook-content h2,
+#mdbook-content h3,
+#mdbook-content h4 {
+    font-family: var(--sm-font-heading);
+    font-weight: 300;
+    letter-spacing: -0.01em;
+    color: var(--sm-text-1);
+}
+
+#mdbook-content h3,
+#mdbook-content h4 {
+    font-family: var(--sm-font-sans);
+    font-weight: 600;
+}
+
+/* ---------- menu bar ---------- */
+
+#mdbook-menu-bar {
+    background: color-mix(in srgb, var(--sm-bg) 82%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--sm-line);
+}
+
+#mdbook-menu-bar .menu-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-family: var(--sm-font-sans);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--sm-text-1);
+}
+
+/* SMEAROR mini letter tiles (website nav brand) */
+
+#mdbook-menu-bar .nav-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    text-decoration: none;
+}
+
+.mini-tiles {
+    display: inline-flex;
+    gap: 3px;
+}
+
+.mini-tile {
+    display: inline-grid;
+    place-content: center;
+    width: 1.45rem;
+    height: 1.45rem;
+    border-radius: 4px;
+    font-family: var(--sm-font-sans);
+    font-weight: 900;
+    font-size: 0.9rem;
+    line-height: 1;
+    color: #06080c;
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+    transition: transform 0.18s ease;
+}
+
+.nav-brand:hover .mini-tile { transform: translateY(-2px); }
+.nav-brand:hover .mini-tile:nth-child(2n) { transform: translateY(-1px) rotate(-4deg); }
+.nav-brand:hover .mini-tile:nth-child(3n) { transform: translateY(-3px) rotate(3deg); }
+
+.mini-tile.t-green  { background: var(--malachite); }
+.mini-tile.t-yellow { background: var(--selective-yellow); }
+.mini-tile.t-blue   { background: var(--celestial-blue); }
+.mini-tile.t-pink   { background: var(--mexican-pink); }
+.mini-tile.t-lime   { background: var(--chartreuse); }
+
+.nav-sub {
+    font-family: var(--sm-font-mono);
+    font-weight: 500;
+    font-size: 0.8rem;
+    color: var(--sm-text-2);
+    letter-spacing: 0.04em;
+}
+
+.menu-title-text {
+    font-family: var(--sm-font-mono);
+    font-weight: 500;
+    font-size: 0.8rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--sm-text-2);
+    padding-left: 0.75rem;
+    border-left: 1px solid var(--sm-line);
+}
+
+.icon-button:hover,
+.menu-bar a .fa-svg:hover {
+    color: var(--celestial-blue);
+    text-shadow: 0 0 12px var(--celestial-blue);
+}
+
+/* The brand is dark-only: no theme switcher. */
+#mdbook-theme-toggle,
+#mdbook-theme-list {
+    display: none !important;
+}
+
+/* ---------- sidebar ---------- */
+
+.sidebar {
+    border-right: 1px solid var(--sm-line);
+}
+
+.sidebar .chapter li a {
+    font-family: var(--sm-font-sans);
+    font-weight: 300;
+    letter-spacing: 0.02em;
+    border-radius: 6px;
+    transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.sidebar .chapter li a strong {
+    font-family: var(--sm-font-mono);
+    font-weight: 500;
+    color: var(--mexican-pink);
+}
+
+.sidebar .chapter li a.active {
+    text-shadow: 0 0 12px color-mix(in srgb, var(--celestial-blue) 55%, transparent);
+}
+
+.sidebar .chapter li a:hover {
+    color: var(--sm-text-1);
+    text-shadow: 0 0 10px color-mix(in srgb, var(--celestial-blue) 45%, transparent);
+}
+
+.sidebar .part-title,
+.spacer {
+    font-family: var(--sm-font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+/* ---------- content ---------- */
+
+#mdbook-content a {
+    text-decoration: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--celestial-blue) 40%, transparent);
+    transition: text-shadow 0.2s ease;
+}
+
+#mdbook-content a.header {
+    border-bottom: none;
+}
+
+#mdbook-content a:hover {
+    text-shadow: 0 0 12px var(--celestial-blue);
+}
+
+#mdbook-content code {
+    font-family: var(--sm-font-mono);
+}
+
+#mdbook-content pre {
+    border: 1px solid var(--sm-line);
+    border-radius: 10px;
+    background: var(--sm-bg-2);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+#mdbook-content pre code {
+    background: transparent;
+}
+
+#mdbook-content blockquote {
+    border-radius: 0 8px 8px 0;
+    border-left: 4px solid var(--quote-border);
+}
+
+#mdbook-content table {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#mdbook-content table thead th {
+    font-family: var(--sm-font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+/* ---------- navigation buttons ---------- */
+
+a.nav-chapters,
+a.mobile-nav-chapters {
+    border-radius: 8px;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+a.nav-chapters:hover,
+a.mobile-nav-chapters:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--celestial-blue) 35%, transparent);
+}
+
+/* ---------- search ---------- */
+
+#mdbook-searchbar {
+    border-radius: 8px;
+    font-family: var(--sm-font-mono);
+}
+
+mark {
+    border-radius: 3px;
+}
+
+/* ---------- content headings: website typography ---------- */
+
+#mdbook-content h1 {
+    font-size: clamp(1.9rem, 4.6vw, 3rem);
+    line-height: 1.1;
+}
+
+@media (max-width: 860px) {
+    .menu-title-text { display: none; }
+}
+
+/* ---------- figures / diagrams ---------- */
+
+.diagram {
+    margin: 1.6em 0;
+    text-align: center;
+}
+
+.diagram img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+}
+
+.diagram figcaption {
+    margin-top: .6em;
+    font-family: var(--sm-font-mono);
+    font-size: .72rem;
+    letter-spacing: .05em;
+    color: var(--sm-muted);
+}
