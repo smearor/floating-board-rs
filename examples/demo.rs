@@ -806,8 +806,17 @@ minimize docked below, star = custom
                 CardConfig {
                     title: Some(format!("Card {number}")),
                     position: CardAnchor::Center,
-                    closable: true,
-                    foldable: true,
+                    chrome_style: ChromeStyle::Adwaita,
+                    // Explicit chrome replaces the foldable/closable
+                    // flags: the quarter-step rotate actions flank the
+                    // titlebar ends (CCW left, CW right).
+                    chrome: Some(vec![
+                        ChromeSlot::inline_start(ChromeElement::RotateCounterClockwise),
+                        ChromeSlot::inline(ChromeElement::Title),
+                        ChromeSlot::inline(ChromeElement::Minimize),
+                        ChromeSlot::inline(ChromeElement::Close),
+                        ChromeSlot::inline_end(ChromeElement::RotateClockwise),
+                    ]),
                     ..Default::default()
                 },
             );
