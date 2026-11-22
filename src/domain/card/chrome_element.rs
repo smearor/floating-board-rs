@@ -18,6 +18,13 @@ pub enum ChromeElement {
     /// The close button performing `CardConfig::close_action`
     /// (`CardConfig::closable`).
     Close,
+    /// The button stepping the card one snap step clockwise
+    /// (`Card::rotate_to_next_quarter`) - the precise, tap-friendly
+    /// counterpart of [`ChromeElement::RotateGrip`].
+    RotateClockwise,
+    /// The button stepping the card one snap step counter-clockwise
+    /// (`Card::rotate_to_next_quarter`).
+    RotateCounterClockwise,
     /// The bottom-right resize affordance (`CardConfig::resizable`).
     ResizeGrip,
     /// The bottom-left rotate affordance (`CardConfig::rotate_grip`).
@@ -27,14 +34,14 @@ pub enum ChromeElement {
 impl ChromeElement {
     /// Whether the element may be mounted as a satellite.
     ///
-    /// `Minimize` and `Close` are actions and translate naturally to
-    /// satellite buttons. `DragHandle` and `Title` are place-bound
-    /// chrome (an affordance away from the card cannot drag or label
-    /// it sensibly), and the grips are drag *areas* - they may return
-    /// later as resize/rotate *actions*, not as satellites of their
-    /// current form.
+    /// `Minimize`, `Close` and the rotate steps are actions and
+    /// translate naturally to satellite buttons. `DragHandle` and
+    /// `Title` are place-bound chrome (an affordance away from the
+    /// card cannot drag or label it sensibly), and the grips are
+    /// drag *areas* - the rotate steps are exactly the "grips return
+    /// as actions" variant noted in the concept.
     pub fn supports_satellite(&self) -> bool {
-        matches!(self, Self::Minimize | Self::Close)
+        matches!(self, Self::Minimize | Self::Close | Self::RotateClockwise | Self::RotateCounterClockwise)
     }
 }
 
@@ -48,6 +55,8 @@ mod tests {
         assert!(!ChromeElement::Title.supports_satellite());
         assert!(ChromeElement::Minimize.supports_satellite());
         assert!(ChromeElement::Close.supports_satellite());
+        assert!(ChromeElement::RotateClockwise.supports_satellite());
+        assert!(ChromeElement::RotateCounterClockwise.supports_satellite());
         assert!(!ChromeElement::ResizeGrip.supports_satellite());
         assert!(!ChromeElement::RotateGrip.supports_satellite());
     }

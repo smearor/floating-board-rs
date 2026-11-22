@@ -39,6 +39,7 @@ use gtk4::prelude::DrawingAreaExt;
 use gtk4::prelude::DrawingAreaExtManual;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use smearor_commons_geometry::RotationDirection;
 use std::f64::consts::FRAC_PI_2;
 use tracing::debug;
 use tracing::warn;
@@ -130,6 +131,14 @@ impl Card {
                     let _ = imp.close_button.set(button);
                     header_children += 1;
                 }
+                (ChromeElement::RotateClockwise, ChromePlacement::Inline) => {
+                    header.append(&self.build_rotate_button(RotationDirection::Clockwise));
+                    header_children += 1;
+                }
+                (ChromeElement::RotateCounterClockwise, ChromePlacement::Inline) => {
+                    header.append(&self.build_rotate_button(RotationDirection::CounterClockwise));
+                    header_children += 1;
+                }
                 (ChromeElement::ResizeGrip, ChromePlacement::Inline) => self.mount_grip(ChromeElement::ResizeGrip),
                 (ChromeElement::RotateGrip, ChromePlacement::Inline) => self.mount_grip(ChromeElement::RotateGrip),
                 (_, ChromePlacement::Satellite) => skip_satellite(slot.element),
@@ -192,6 +201,27 @@ impl Card {
         button.connect_clicked(move |_| {
             if let Some(board) = board_weak.upgrade() {
                 let _ = board.close_card(&id);
+            }
+        });
+        button
+    }
+
+    /// Mount-agnostic rotate button stepping the card one snap step in
+    /// `direction` per click (`Card::rotate_to_next_quarter`) - the
+    /// shared builder for `ChromeElement::RotateClockwise` and
+    /// `RotateCounterClockwise`, inline and satellite mounts alike.
+    pub(crate) fn build_rotate_button(&self, direction: RotationDirection) -> Button {
+        let (icon_name, tooltip) = match direction {
+            RotationDirection::Clockwise => ("object-rotate-right-symbolic", "card-rotate-clockwise"),
+            RotationDirection::CounterClockwise => ("object-rotate-left-symbolic", "card-rotate-counter-clockwise"),
+        };
+        let button = Button::from_icon_name(icon_name);
+        button.add_css_class("flat");
+        button.set_tooltip_text(Some(&l10n().message(tooltip)));
+        let card_weak = self.downgrade();
+        button.connect_clicked(move |_| {
+            if let Some(card) = card_weak.upgrade() {
+                card.rotate_to_next_quarter(direction);
             }
         });
         button
@@ -339,6 +369,7 @@ mod adwaita {
     use gtk4::prelude::WidgetExt;
     use gtk4::subclass::prelude::ObjectSubclassIsExt;
     use libadwaita as adw;
+    use smearor_commons_geometry::RotationDirection;
     use tracing::debug;
 
     pub mod imp {
@@ -425,6 +456,7 @@ mod adwaita {
             // move window buttons to the left).
             let mut minimize_button: Option<gtk4::Button> = None;
             let mut close_button: Option<gtk4::Button> = None;
+            let mut rotate_buttons: Vec<gtk4::Button> = Vec::new();
             let mut header_children = 0usize;
             for slot in slots {
                 match (slot.element, slot.placement) {
@@ -464,12 +496,26 @@ mod adwaita {
                         close_button = Some(button);
                         header_children += 1;
                     }
+                    (ChromeElement::RotateClockwise, ChromePlacement::Inline) => {
+                        let button = self.build_rotate_button(RotationDirection::Clockwise);
+                        button.remove_css_class("flat");
+                        button.add_css_class("rotate-clockwise");
+                        rotate_buttons.push(button);
+                        header_children += 1;
+                    }
+                    (ChromeElement::RotateCounterClockwise, ChromePlacement::Inline) => {
+                        let button = self.build_rotate_button(RotationDirection::CounterClockwise);
+                        button.remove_css_class("flat");
+                        button.add_css_class("rotate-counter-clockwise");
+                        rotate_buttons.push(button);
+                        header_children += 1;
+                    }
                     (ChromeElement::ResizeGrip, ChromePlacement::Inline) => self.mount_grip(ChromeElement::ResizeGrip),
                     (ChromeElement::RotateGrip, ChromePlacement::Inline) => self.mount_grip(ChromeElement::RotateGrip),
                     (_, ChromePlacement::Satellite) => skip_satellite(slot.element),
                 }
             }
-            pack_window_controls(&header, minimize_button, close_button);
+            pack_window_controls(&header, minimize_button, close_button, rotate_buttons);
             strip_foreign_gestures(&header);
             // Same rule as the builtin renderer: no children, no header -
             // `drag_source(DragHandle::Header)` falls back to the card.
@@ -504,7 +550,10 @@ mod adwaita {
     /// following the decoration layout: a button goes to its named side in
     /// layout order; slotted buttons the layout does not mention append to
     /// the end side (a configured slot is never dropped, only reordered).
-    fn pack_window_controls(header: &adw::HeaderBar, minimize: Option<gtk4::Button>, close: Option<gtk4::Button>) {
+    /// `extras` are card actions outside the window-button vocabulary
+    /// (rotate steps) - they append to the end controls after the
+    /// standard buttons and get the same control styling.
+    fn pack_window_controls(header: &adw::HeaderBar, minimize: Option<gtk4::Button>, close: Option<gtk4::Button>, extras: Vec<gtk4::Button>) {
         let (start_names, end_names) = decoration_layout_names();
         let start_controls = ChromeControls::new();
         let end_controls = ChromeControls::new();
@@ -531,6 +580,9 @@ mod adwaita {
         }
         if let Some(button) = close.take() {
             end_controls.append(&button);
+        }
+        for extra in extras {
+            end_controls.append(&extra);
         }
         if start_controls.first_child().is_some() {
             // `start`/`end` mirror what GtkWindowControls' own boxes

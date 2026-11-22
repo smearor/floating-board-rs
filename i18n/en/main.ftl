@@ -8,3 +8,5 @@ card-rotate = Rotate card
 view-zoom-in = Zoom view in
 view-zoom-out = Zoom view out
 view-reset = Reset view
+card-rotate-clockwise = Rotate clockwise
+card-rotate-counter-clockwise = Rotate counter-clockwise

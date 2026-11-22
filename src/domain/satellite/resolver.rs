@@ -8,10 +8,11 @@ use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::Vec2;
-use smearor_commons_layout::{EdgeStripLayout, SideSet};
+use smearor_commons_layout::EdgeStripLayout;
 use smearor_commons_layout::LayoutError;
 use smearor_commons_layout::LayoutItem;
 use smearor_commons_layout::LayoutStrategy;
+use smearor_commons_layout::SideSet;
 
 /// Pure placement resolution: card geometry + footprint + layout +
 /// measured items -> one [`SatellitePlacement`] per item, in workspace

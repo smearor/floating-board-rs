@@ -150,18 +150,6 @@ fn seat_for_point(x: f64, y: f64, width: f64, height: f64) -> Seat {
 /// Three pre-configured cards plus dynamic cards added at runtime. The toolbar
 /// exercises snapshot/restore; a status line shows live signal feedback.
 /// Run with `cargo run --example demo`.
-/// Snaps `rotation` to the next quarter turn in `direction`; an angle
-/// already on a quarter step advances one full step further. Positive
-/// degrees rotate clockwise in screen coordinates.
-fn next_quarter_turn(rotation: Rotation, direction: TurnDirection) -> Rotation {
-    let quarters = rotation.degrees() / 90.0;
-    let next = match direction {
-        TurnDirection::Clockwise => quarters.floor() + 1.0,
-        TurnDirection::CounterClockwise => quarters.ceil() - 1.0,
-    };
-    Rotation::from_degrees(next * 90.0)
-}
-
 fn main() {
     tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
     // Optional Adwaita chrome (`ChromeStyle::Adwaita` on the "chrome"
@@ -680,11 +668,9 @@ minimize docked below, star = custom
     // A custom satellite: the consumer owns the widget and its wiring,
     // the board owns placement and lifetime.
     let star = Button::with_label("\u{2605}");
-    // Rotation satellites exercising the follow-transform: each click
-    // rotates the card (and its satellites) via the animated path.
+    // `0°` stays a custom satellite (board-zero is dev semantics); the
+    // quarter-step buttons are standard chrome below.
     let rotate_zero = Button::with_label("0\u{b0}");
-    let rotate_clockwise = Button::from_icon_name("object-rotate-right-symbolic");
-    let rotate_counter = Button::from_icon_name("object-rotate-left-symbolic");
     let chrome_id = board
         .add_card_with_id(
             "chrome",
@@ -701,16 +687,17 @@ minimize docked below, star = custom
                     ChromeSlot::inline(ChromeElement::RotateGrip),
                     ChromeSlot::inline(ChromeElement::ResizeGrip),
                     // Phase-2 showcase: `Minimize` docked as a satellite
-                    // on the default sidebar below the card.
+                    // on the default sidebar below the card, plus the
+                    // standard quarter-step rotate actions.
                     ChromeSlot::satellite(ChromeElement::Minimize),
+                    ChromeSlot::satellite(ChromeElement::RotateClockwise),
+                    ChromeSlot::satellite(ChromeElement::RotateCounterClockwise),
                 ]),
                 chrome_style: ChromeStyle::Adwaita,
                 satellites: Some(CardSatellites {
                     satellites: vec![
                         SatelliteConfig::custom("star", star.clone()),
                         SatelliteConfig::custom("rotate-zero", rotate_zero.clone()),
-                        SatelliteConfig::custom("rotate-cw", rotate_clockwise.clone()),
-                        SatelliteConfig::custom("rotate-ccw", rotate_counter.clone()),
                     ],
                     ..Default::default()
                 }),
@@ -723,15 +710,7 @@ minimize docked below, star = custom
             let card = card.clone();
             move |_| card.fold()
         });
-        rotate_zero.connect_clicked({
-            let card = card.clone();
-            move |_| card.set_rotation_with_animation(Rotation::ZERO)
-        });
-        rotate_clockwise.connect_clicked({
-            let card = card.clone();
-            move |_| card.set_rotation_with_animation(next_quarter_turn(card.rotation(), TurnDirection::Clockwise))
-        });
-        rotate_counter.connect_clicked(move |_| card.set_rotation_with_animation(next_quarter_turn(card.rotation(), TurnDirection::CounterClockwise)));
+        rotate_zero.connect_clicked(move |_| card.rotate_to_zero());
     }
 
     // Shared pass helper used by the toolbar button and the Prev/Next

@@ -8,3 +8,5 @@ card-rotate = Karte drehen
 view-zoom-in = Ansicht vergrößern
 view-zoom-out = Ansicht verkleinern
 view-reset = Ansicht zurücksetzen
+card-rotate-clockwise = Im Uhrzeigersinn drehen
+card-rotate-counter-clockwise = Gegen den Uhrzeigersinn drehen

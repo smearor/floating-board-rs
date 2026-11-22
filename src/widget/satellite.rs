@@ -30,6 +30,7 @@ use gtk4::Widget;
 use gtk4::prelude::FixedExt;
 use gtk4::prelude::WidgetExt;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::RotationDirection;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
 use smearor_wrot_rotation::RotationControlHandler;
@@ -177,6 +178,8 @@ fn satellite_widget(card: &Card, config: &SatelliteConfig) -> Option<Widget> {
     let widget = match config.kind {
         SatelliteKind::Chrome(ChromeElement::Minimize) => card.build_minimize_button(ICON_MINIMIZE_SYMBOLIC).upcast(),
         SatelliteKind::Chrome(ChromeElement::Close) => card.build_close_button().upcast(),
+        SatelliteKind::Chrome(ChromeElement::RotateClockwise) => card.build_rotate_button(RotationDirection::Clockwise).upcast(),
+        SatelliteKind::Chrome(ChromeElement::RotateCounterClockwise) => card.build_rotate_button(RotationDirection::CounterClockwise).upcast(),
         SatelliteKind::Chrome(element) => {
             warn!(satellite = %config.id, element = ?element, "chrome element is not satellite-capable - satellite skipped");
             return None;
