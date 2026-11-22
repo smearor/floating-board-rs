@@ -546,16 +546,17 @@ fn build_ui(application: &gtk4::Application) {
                 // The explicit list reproduces the legacy flags
                 // (foldable/closable/resizable/rotate_grip). The
                 // rotate/pass actions flank the titlebar ends via
-                // `InlineStart`/`InlineEnd`: pass outermost, rotate
-                // next to them - a directional pair per side.
+                // `InlineStart`/`InlineEnd`, directionally consistent:
+                // the left pair counter-rotates/passes, the right pair
+                // rotates/passes the other way.
                 chrome: Some(vec![
+                    ChromeSlot::inline_start(ChromeElement::RotateCounterClockwise),
                     ChromeSlot::inline_start(ChromeElement::NextSeat),
-                    ChromeSlot::inline_start(ChromeElement::RotateClockwise),
                     ChromeSlot::inline(ChromeElement::Title),
                     ChromeSlot::inline(ChromeElement::Minimize),
                     ChromeSlot::inline(ChromeElement::Close),
-                    ChromeSlot::inline_end(ChromeElement::RotateCounterClockwise),
                     ChromeSlot::inline_end(ChromeElement::PreviousSeat),
+                    ChromeSlot::inline_end(ChromeElement::RotateClockwise),
                     ChromeSlot::inline(ChromeElement::ResizeGrip),
                     ChromeSlot::inline(ChromeElement::RotateGrip),
                 ]),
