@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ANCHOR_MARGIN"],"enum":["BoardError","BoundsMode","CardAnchor","CardColor","DragHandle","GotoRotation","GotoTransition","SeatAnchor","TurnDirection"],"struct":["BoardLayout","CardGeometry","CardId","CardPalette","CardPlacement","CardPosition","GenerationCounter","MinVisible","ScaleBounds","ScaleFactor","SequenceNumber"]};

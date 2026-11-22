@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["CardCloseAction"],"struct":["Card","CardAlignment","CardConfig","CardLayer","FloatingBoard","ScalingLayout","ScalingWidget"]};
