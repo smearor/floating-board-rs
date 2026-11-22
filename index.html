@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="floating-board — a GTK4 widget with floating, rotatable and scalable cards: an in-app window manager for multi-touch tabletop surfaces.">
+    <title>floating-board — Floating cards for GTK4 tabletop UIs</title>
+    <link rel="icon" type="image/png" href="images/smearor-avatar.png">
+    <link rel="apple-touch-icon" href="images/smearor-avatar.png">
+    <link rel="stylesheet" href="fonts/fonts.css">
+    <link rel="stylesheet" href="css/open-props-normalize.min.css">
+    <link rel="stylesheet" href="css/open-props.min.css">
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<nav class="nav" id="nav">
+    <a class="nav-brand" href="#top" aria-label="floating-board home">
+        <span class="mini-tiles" aria-hidden="true">
+            <span class="mini-tile t-green">S</span><span class="mini-tile t-yellow">M</span><span class="mini-tile t-blue">E</span><span class="mini-tile t-pink">A</span><span class="mini-tile t-lime">R</span><span class="mini-tile t-green">O</span><span class="mini-tile t-yellow">R</span>
+        </span>
+        <span class="nav-sub">/ floating-board</span>
+    </a>
+    <div class="nav-links">
+        <a href="#documentation">Docs</a>
+        <a href="#features">Features</a>
+        <a href="#stack">Stack</a>
+        <a href="#start">Get Started</a>
+    </div>
+    <a class="nav-github" href="https://github.com/smearor/floating-board-rs" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span>
+    </a>
+</nav>
+
+<header class="hero" id="top">
+    <canvas id="tilefield" aria-hidden="true"></canvas>
+    <div class="hero-inner">
+        <p class="eyebrow">// gtk4 widget · smearor smart desk</p>
+        <div class="wordmark" aria-label="Floating">
+            <span class="tile t-green">F</span>
+            <span class="tile t-yellow">L</span>
+            <span class="tile t-blue">O</span>
+            <span class="tile t-pink">A</span>
+            <span class="tile t-lime">T</span>
+            <span class="tile t-green">I</span>
+            <span class="tile t-yellow">N</span>
+            <span class="tile t-blue">G</span>
+        </div>
+        <h1>Cards that float,<br>turn for <em>everyone</em>.</h1>
+        <p class="lead">
+            <strong>floating-board</strong> is a GTK4 widget that renders freely movable, rotatable
+            and scalable cards on a transparent layer above your content — an in-app window manager
+            for multi-touch <em>tabletop</em> surfaces where every side of the table is the front.
+        </p>
+        <div class="hero-cta">
+            <a class="btn btn-primary" href="docs/">API Docs</a>
+            <a class="btn btn-ghost" href="book/">Read the Book</a>
+        </div>
+        <ul class="hero-chips">
+            <li>Rust edition 2024</li>
+            <li>MSRV 1.98</li>
+            <li>GTK4 v4_20</li>
+            <li>MIT licensed</li>
+        </ul>
+    </div>
+    <a class="scroll-hint" href="#documentation" aria-label="Scroll down"><span></span></a>
+</header>
+
+<main>
+
+<section class="section docs" id="documentation">
+    <div class="wrap">
+        <p class="kicker reveal">Documentation</p>
+        <h2 class="reveal">Two ways in.</h2>
+        <p class="section-copy reveal">
+            Both sites are built in CI on every push to <code>main</code> and deployed to this
+            GitHub Pages site — the API reference straight from the source, and the book as its
+            prose companion.
+        </p>
+        <div class="doc-grid">
+            <a class="doc-card doc-card--rustdoc reveal" href="docs/">
+                <div class="doc-head">
+                    <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 5l-2 14"/></svg></div>
+                    <div>
+                        <h3>API Reference</h3>
+                        <span class="doc-sub">cargo doc &middot; rustdoc</span>
+                    </div>
+                </div>
+                <p>
+                    The complete rustdoc for the <code>floating-board</code> crate, built with
+                    <code>--all-features</code>. Every widget, configuration newtype and error
+                    enum — searchable and cross-linked.
+                </p>
+                <span class="doc-path">smearor.github.io/floating-board-rs/docs/</span>
+                <span class="card-link">Open the API docs &nearr;</span>
+            </a>
+            <a class="doc-card doc-card--book reveal" href="book/">
+                <div class="doc-head">
+                    <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg></div>
+                    <div>
+                        <h3>The Book</h3>
+                        <span class="doc-sub">mdBook &middot; guides &amp; rationale</span>
+                    </div>
+                </div>
+                <p>
+                    A guided tour of the widget: the domain model, the architecture behind the
+                    overlay board and the full <code>CardConfig</code> walkthrough — the prose
+                    companion to the API reference.
+                </p>
+                <span class="doc-path">smearor.github.io/floating-board-rs/book/</span>
+                <span class="card-link">Open the book &nearr;</span>
+            </a>
+        </div>
+    </div>
+</section>
+
+<section class="section design" id="features">
+    <div class="wrap">
+        <p class="kicker reveal">The widget</p>
+        <h2 class="reveal">An in-app window manager,<br>made for tables.</h2>
+        <p class="section-copy reveal">
+            On a table-top multitouch surface there is no &quot;up&quot; and no &quot;down&quot; —
+            several users stand on different sides and interact with the same surface at once.
+            <code>FloatingBoard</code> makes that practical.
+        </p>
+        <div class="feature-grid">
+            <article class="feature-card reveal">
+                <div class="feature-icon i-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg></div>
+                <h3>Free card manipulation</h3>
+                <p>Every card moves, rotates and scales independently through multi-touch gestures — drag, two-finger rotate, pinch, and an N-point transform tracker that combines all three at once.</p>
+            </article>
+            <article class="feature-card reveal">
+                <div class="feature-icon i-yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg></div>
+                <h3>Card chrome</h3>
+                <p>Optional title header, fold-to-header, close button, resize and rotate grips, and selectable drag handles — headerless and fully chrome-less cards are supported too.</p>
+            </article>
+            <article class="feature-card reveal">
+                <div class="feature-icon i-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18M3.5 9h17M3.5 15h17"/></svg></div>
+                <h3>Virtual workspace &amp; camera</h3>
+                <p>Card geometry lives in workspace coordinates — <code>FollowWidget</code>, <code>Fixed</code> or <code>Infinite</code>. A <code>View</code> camera pans, zooms and rotates, with <code>goto_card</code> flights that center a card Prezi-style.</p>
+            </article>
+            <article class="feature-card reveal">
+                <div class="feature-icon i-pink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="12" cy="2.5" r="1.4"/><circle cx="12" cy="21.5" r="1.4"/><circle cx="2.5" cy="12" r="1.4"/><circle cx="21.5" cy="12" r="1.4"/></svg></div>
+                <h3>Tabletop seats</h3>
+                <p>A <code>Seat</code> assigns cards to users on a table side — cards can be passed to the next player, landing in front of their seat in the right reading orientation.</p>
+            </article>
+            <article class="feature-card reveal">
+                <div class="feature-icon i-lime"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+                <h3>Layout strategies</h3>
+                <p><code>apply_layout</code> arranges cards through <code>smearor-commons-layout</code> strategies — <code>FlowLayout</code>, <code>SeatLayout</code> or your own — animated via per-card frame-clock glides.</p>
+            </article>
+            <article class="feature-card reveal">
+                <div class="feature-icon i-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 3l-9 9"/><path d="M15 3h6v6"/></svg></div>
+                <h3>Boundary clamping</h3>
+                <p>Cards keep a configurable minimum of their rotated footprint inside the bounds — live (<code>Contained</code>) or on gesture end (<code>Loose</code>). No card ever gets lost off-screen.</p>
+            </article>
+            <article class="feature-card reveal">
+                <div class="feature-icon i-yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg></div>
+                <h3>Serializable state</h3>
+                <p><code>layout_snapshot()</code> / <code>restore_layout()</code> produce a <code>BoardLayout</code> — geometry, fold state, seats, workspace and view — ready for TOML or JSON persistence.</p>
+            </article>
+            <article class="feature-card reveal">
+                <div class="feature-icon i-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 11.5a2.5 2.5 0 0 1 5 0V17a2.5 2.5 0 0 1-5 0z"/><path d="M12 11.5V4.5a2 2 0 0 0-4 0V11M16 11.5V4.5a2 2 0 0 1 4 0V13"/><path d="M9 17c0 3 1.5 5 5.5 5s5.5-2 5.5-5v-4"/></svg></div>
+                <h3>Transparent overlay</h3>
+                <p>Cards float above your content; gestures that miss every card fall through to the widgets underneath. No input grab, no modal layer — and independent touch sequences per card.</p>
+            </article>
+        </div>
+    </div>
+</section>
+
+<section class="section" id="stack">
+    <div class="wrap">
+        <p class="kicker reveal">The stack</p>
+        <h2 class="reveal">Built on Smearor<br>commons.</h2>
+        <p class="section-copy reveal">
+            The widget ties together the shared, headless libraries of the Smearor ecosystem —
+            geometry, animation and tabletop layouting — plus <code>smearor-wrot-rotation</code>
+            for rotated GTK4 widgets.
+        </p>
+        <div class="crate-grid">
+            <a class="crate-card reveal" href="https://smearor.github.io/smearor-commons/docs/smearor_commons_animation/" target="_blank" rel="noopener">
+                <span class="crate-name">smearor-commons-animation</span>
+                <span class="crate-desc"><code>TimedAnimation</code> machinery and a GTK4 frame-clock driver — powers camera flights and layout glides.</span>
+                <span class="crate-meta"><em>gtk4</em></span>
+            </a>
+            <a class="crate-card reveal" href="https://smearor.github.io/smearor-commons/docs/smearor_commons_color/" target="_blank" rel="noopener">
+                <span class="crate-name">smearor-commons-color</span>
+                <span class="crate-desc">Channel-generic colors — the per-card palette system behind card chrome theming.</span>
+                <span class="crate-meta"><em>serde</em></span>
+            </a>
+            <a class="crate-card reveal" href="https://smearor.github.io/smearor-commons/docs/smearor_commons_geometry/" target="_blank" rel="noopener">
+                <span class="crate-name">smearor-commons-geometry</span>
+                <span class="crate-desc">Unit-tagged vectors, rotations and rectangles — the workspace coordinate math.</span>
+                <span class="crate-meta"><em>cairo</em><em>gtk4</em></span>
+            </a>
+            <a class="crate-card reveal" href="https://smearor.github.io/smearor-commons/docs/smearor_commons_layout/" target="_blank" rel="noopener">
+                <span class="crate-name">smearor-commons-layout</span>
+                <span class="crate-desc"><code>TableSide</code>/<code>Seat</code>, the <code>LayoutStrategy</code> trait, <code>FlowLayout</code> and <code>SeatLayout</code>.</span>
+                <span class="crate-meta"><em>serde</em></span>
+            </a>
+            <a class="crate-card reveal" href="https://github.com/smearor/smearor-wrot-rotation" target="_blank" rel="noopener">
+                <span class="crate-name">smearor-wrot-rotation</span>
+                <span class="crate-desc">Rotated rendering for GTK4 widgets — cards stay fully interactive at any angle.</span>
+                <span class="crate-meta"><em>gtk4</em></span>
+            </a>
+        </div>
+    </div>
+</section>
+
+<section class="section" id="start">
+    <div class="wrap">
+        <p class="kicker reveal">Get started</p>
+        <h2 class="reveal">Deal your first card.</h2>
+        <p class="section-copy reveal">
+            Add the dependency, wrap your content in a <code>FloatingBoard</code> and put a card on
+            the table.
+        </p>
+        <div class="code-block reveal">
+            <div class="code-head">
+                <span class="code-title">Cargo.toml</span>
+                <span class="window-controls" aria-hidden="true">
+                    <span class="wc-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 12h7"/></svg></span>
+                    <span class="wc-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="8" height="8" rx="1"/></svg></span>
+                    <span class="wc-btn wc-close"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></span>
+                </span>
+            </div>
+            <pre><code><span class="k">[dependencies]</span>
+<span class="s">floating-board</span> = <span class="s">"0.1"</span></code></pre>
+        </div>
+        <div class="code-block reveal" style="margin-top: var(--size-4);">
+            <div class="code-head">
+                <span class="code-title">main.rs</span>
+                <span class="window-controls" aria-hidden="true">
+                    <span class="wc-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 12h7"/></svg></span>
+                    <span class="wc-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="8" height="8" rx="1"/></svg></span>
+                    <span class="wc-btn wc-close"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></span>
+                </span>
+            </div>
+            <pre><code><span class="k">let</span> board = FloatingBoard::new(&amp;content_widget);
+board.add_card(
+    &amp;controls_widget,
+    CardConfig { title: <span class="s">Some</span>(<span class="s">"Controls"</span>.into()), ..Default::default() },
+);</code></pre>
+        </div>
+        <p class="section-copy reveal" style="margin-top: var(--size-5);">
+            A full demo ships with the repository: <code>cargo run --example demo</code>.
+        </p>
+    </div>
+</section>
+
+<section class="section outro">
+    <div class="wrap outro-inner reveal">
+        <p class="kicker">Free &amp; open source</p>
+        <h2>The table has no top.<br>Every seat is first.</h2>
+        <div class="hero-cta">
+            <a class="btn btn-primary" href="https://github.com/smearor/floating-board-rs" target="_blank" rel="noopener">Star on GitHub</a>
+            <a class="btn btn-ghost" href="https://crates.io/crates/floating-board" target="_blank" rel="noopener">crates.io</a>
+        </div>
+    </div>
+</section>
+
+</main>
+
+<footer class="footer">
+    <div class="wrap footer-inner">
+        <img class="footer-logo" src="images/smearor-logo.png" alt="Smearor" width="240" height="46">
+        <div class="footer-links">
+            <a href="docs/">API Docs</a>
+            <a href="book/">Book</a>
+            <a href="https://github.com/smearor/floating-board-rs" target="_blank" rel="noopener">GitHub</a>
+            <a href="https://crates.io/crates/floating-board" target="_blank" rel="noopener">crates.io</a>
+            <a href="https://www.smearor.io/" target="_blank" rel="noopener">smearor.io</a>
+        </div>
+        <p class="footer-note">MIT licensed · Rust, GTK4 &amp; Wayland · © <span id="year">2026</span> The Smearor Project</p>
+    </div>
+</footer>
+
+<script src="js/main.js"></script>
+</body>
+</html>
