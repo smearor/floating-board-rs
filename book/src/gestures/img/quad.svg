@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 380" font-family="'Source Code Pro',ui-monospace,monospace">
+  <rect width="660" height="380" rx="14" fill="#0a0e16" stroke="#1c2433"/>
+
+  <text x="330" y="34" fill="#8b98ad" font-size="11" letter-spacing="2" text-anchor="middle">QUAD TRANSFORM — one similarity fit, three degrees of freedom</text>
+
+  <!-- card -->
+  <g transform="rotate(14 220 190)">
+    <rect x="140" y="140" width="160" height="100" rx="8" fill="#10151f" stroke="#00a1e4" stroke-width="1.5"/>
+    <rect x="140" y="140" width="160" height="24" rx="8" fill="#161c28" stroke="#00a1e4" stroke-width="1"/>
+    <rect x="140" y="158" width="160" height="6" fill="#161c28"/>
+  </g>
+  <circle cx="220" cy="190" r="4" fill="#e8ecf4"/>
+  <text x="220" y="208" fill="#8b98ad" font-size="8.5" text-anchor="middle">centroid</text>
+
+  <!-- baseline cloud: hollow -->
+  <circle cx="160" cy="120" r="6" fill="none" stroke="#8b98ad" stroke-width="1.5" stroke-dasharray="3 2"/>
+  <circle cx="285" cy="150" r="6" fill="none" stroke="#8b98ad" stroke-width="1.5" stroke-dasharray="3 2"/>
+  <circle cx="255" cy="268" r="6" fill="none" stroke="#8b98ad" stroke-width="1.5" stroke-dasharray="3 2"/>
+  <text x="120" y="112" fill="#8b98ad" font-size="9">baseline</text>
+
+  <!-- current cloud: filled -->
+  <circle cx="188" cy="106" r="6" fill="#04e762"/>
+  <circle cx="316" cy="160" r="6" fill="#04e762"/>
+  <circle cx="270" cy="292" r="6" fill="#04e762"/>
+  <text x="330" y="118" fill="#04e762" font-size="9">current</text>
+
+  <!-- radius circles around centroid -->
+  <circle cx="220" cy="190" r="88" fill="none" stroke="#3a4560" stroke-width="1" stroke-dasharray="4 4"/>
+  <circle cx="220" cy="190" r="108" fill="none" stroke="#04e762" stroke-width="1" stroke-dasharray="4 4" opacity="0.7"/>
+
+  <!-- move arrow (centroid shift) -->
+  <line x1="220" y1="190" x2="252" y2="198" stroke="#f5b700" stroke-width="1.8"/>
+  <polygon points="252,198 245,194 246,201" fill="#f5b700"/>
+
+  <!-- angle arc -->
+  <path d="M 300 132 A 92 92 0 0 1 312 158" fill="none" stroke="#dc0073" stroke-width="1.6"/>
+  <polygon points="312,158 306,151 314,150" fill="#dc0073"/>
+
+  <!-- labels right -->
+  <g font-size="10">
+    <rect x="420" y="70" width="210" height="62" rx="8" fill="#10151f" stroke="#1c2433"/>
+    <text x="434" y="92" fill="#f5b700">move</text>
+    <text x="434" y="110" fill="#e8ecf4">Δ centroid of the cloud</text>
+    <text x="434" y="124" fill="#8b98ad">point under fingers stays fixed</text>
+
+    <rect x="420" y="146" width="210" height="62" rx="8" fill="#10151f" stroke="#1c2433"/>
+    <text x="434" y="168" fill="#04e762">scale</text>
+    <text x="434" y="186" fill="#e8ecf4">RMS radius ratio r₂ / r₁</text>
+    <text x="434" y="200" fill="#8b98ad">clamped to scale_limits</text>
+
+    <rect x="420" y="222" width="210" height="62" rx="8" fill="#10151f" stroke="#1c2433"/>
+    <text x="434" y="244" fill="#dc0073">rotate</text>
+    <text x="434" y="262" fill="#e8ecf4">Procrustes angle</text>
+    <text x="434" y="276" fill="#8b98ad">atan2(Σ w×u, Σ w·u)</text>
+  </g>
+
+  <text x="330" y="330" fill="#8b98ad" font-size="10" text-anchor="middle">baseline re-snapshots on join/leave; &gt;60° jumps re-baseline as finger crossings</text>
+  <text x="330" y="346" fill="#3a4560" font-size="9" text-anchor="middle">unclaimed sequences — touches claimed elsewhere or silent for 1.5 s are swept</text>
+  <text x="330" y="366" fill="#3a4560" font-size="9" text-anchor="middle">draggable / rotatable / scalable gate the degrees of freedom</text>
+</svg>

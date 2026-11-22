@@ -25,7 +25,7 @@ the widget API, in gesture handling, and in the persisted layout files.
 | Type | Description |
 |------|-------------|
 | `CardId` | Newtype over `String`. Consumers assign stable, semantic keys such as `"controls"` or `"params"` that survive in persisted layouts. `add_card` generates `card-N` ids; `add_card_with_id` takes a semantic key. |
-| `CardPosition` | Newtype over `(f64, f64)` board pixels — the card's **center point**, not its top-left corner. The center anchor stays stable under rotation and scaling. Serializes as a `[x, y]` pair. |
+| `CardPosition` | Newtype over `(f64, f64)` workspace pixels — the card's **center point**, not its top-left corner. The center anchor stays stable under rotation and scaling. Serializes as a `[x, y]` pair. (Sticky cards are the exception: while pinned they store widget pixels.) |
 
 ### Geometry
 
@@ -44,9 +44,15 @@ the widget API, in gesture handling, and in the persisted layout files.
 |------|-------------|
 | `CardAnchor` | Declarative initial placement: `TopLeft` … `BottomRight` (nine anchors) plus `Explicit(CardPosition)`. Anchors are resolved once the card's natural size and the board bounds are known. |
 | `DragHandle` | Which part of a card is the drag affordance: `Header` (default — only the title strip drags, content stays interactive), `WholeCard` (display-only cards), `Handle` (dedicated grip icon in the header). |
-| `CardPlacement` | `{ id: CardId, geometry: CardGeometry }` — one entry of a layout, serialized flat. |
-| `BoardLayout` | `{ version: u8, cards: Vec<CardPlacement> }` — the serializable snapshot produced by `layout_snapshot()` and consumed by `restore_layout()`. `version` is reserved for future migrations (currently `1`). |
-| `BoardError` | `UnknownCard(CardId)` \| `DuplicateCard(CardId)` — the crate's `thiserror` error type. |
+| `CardPlacement` | `{ id: CardId, geometry: CardGeometry, folded: bool, seat: Option<Seat>, sticky: bool }` — one entry of a layout, serialized flat; the non-geometry fields default via `serde(default)` for older files. |
+| `BoardLayout` | `{ version: u8, workspace, view, seat_anchor, cards: Vec<CardPlacement> }` — the serializable snapshot produced by `layout_snapshot()` and consumed by `restore_layout()`. `version` is reserved for future migrations (currently `1`); the workspace fields default via `serde(default)` so older files parse as `FollowWidget` plus the default view — exactly the pre-workspace behavior. |
+| `BoardError` | `UnknownCard(CardId)` \| `DuplicateCard(CardId)` \| `Layout(..)` \| `NoNextSeat` — the crate's `thiserror` error type. |
+| `BoundsMode` | `Loose` (default) \| `Contained` — how strictly a card's footprint is kept inside the bounds. |
+| `SeatAnchor` | `View` (default) \| `Workspace` — where pass-to-seat operations anchor table edges. |
+| `TurnDirection` | `Clockwise` (default) \| `CounterClockwise` — the direction a card is passed around the table. |
+| `GotoTransition` | `Snap` \| `Glide` (default) \| `Transit` — how `goto_card` moves the camera. |
+| `GotoRotation` | `Keep` \| `Upright` — the destination rotation of a `goto_card` flight. |
+| `CardPalette` / `CardColor` | Semantic color set per card (`Background`, `Foreground`, `Header`), turned into a scoped CSS provider. |
 
 ### Configuration (widget layer)
 
@@ -102,18 +108,25 @@ boards.
 
 ```toml
 version = 1
+workspace = { fixed = [2000.0, 1600.0] }
+seat_anchor = "workspace"
 
 [[cards]]
 id = "controls"
 position = [480.0, 660.0]
 rotation = 180.0
 scale = 1.0
+folded = false
+sticky = false
+seat = { side = "bottom" }
 ```
 
-- `position` is the card **center** as an `[x, y]` pair.
+- `position` is the card **center** in workspace coordinates, as an `[x, y]` pair.
 - `rotation` is plain degrees (independent of `SmearorRotation`'s own serde
   representation).
 - `scale` is the factor (`1.0` = natural size).
+- `workspace`, `view` and `seat_anchor` carry `serde(default)` — files from
+  before the workspace read the defaults.
 
 Where the file lives and which format is used (TOML, JSON, …) is entirely up
 to the consumer — the library only produces and consumes the `BoardLayout`

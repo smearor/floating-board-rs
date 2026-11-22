@@ -378,6 +378,9 @@ id = "controls"
 position = [480.0, 660.0]
 rotation = 180.0
 scale = 1.0
+folded = false
+sticky = false
+seat = { side = "bottom" }
 ```
 
 ## Signals
