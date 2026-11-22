@@ -539,13 +539,22 @@ fn build_ui(application: &gtk4::Application) {
             CardConfig {
                 title: Some("Controls".to_string()),
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(300.0, 420.0))),
-                foldable: true,
-                closable: true,
-                resizable: true,
-                rotate_grip: true,
                 content_padding: Pixels::new(16.0),
                 scale_limits: ScaleBounds::new(0.75, 4.0),
                 seat: Some(Seat::new(TableSide::Bottom)),
+                chrome_style: ChromeStyle::Adwaita,
+                // The explicit list reproduces the legacy flags
+                // (foldable/closable/resizable/rotate_grip) and adds the
+                // quarter-step rotate actions as inline controls.
+                chrome: Some(vec![
+                    ChromeSlot::inline(ChromeElement::Title),
+                    ChromeSlot::inline(ChromeElement::Minimize),
+                    ChromeSlot::inline(ChromeElement::Close),
+                    ChromeSlot::inline(ChromeElement::RotateClockwise),
+                    ChromeSlot::inline(ChromeElement::RotateCounterClockwise),
+                    ChromeSlot::inline(ChromeElement::ResizeGrip),
+                    ChromeSlot::inline(ChromeElement::RotateGrip),
+                ]),
                 ..Default::default()
             },
         )
