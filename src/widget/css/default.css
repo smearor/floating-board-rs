@@ -45,3 +45,12 @@
     min-height: 36px;
     opacity: 0.85;
 }
+/* Radial-layout satellites: the pie-menu look - a circular button
+   face. `border-radius` beyond half the extent rounds a square to a
+   circle; equal min extents keep icon buttons square. */
+.floating-card-satellite-radial {
+    border-radius: 9999px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 4px;
+}

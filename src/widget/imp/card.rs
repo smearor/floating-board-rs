@@ -38,6 +38,9 @@ pub struct CardImpl {
     pub id: RefCell<CardId>,
     /// Weak backlink to the owning board.
     pub board: RefCell<WeakRef<FloatingBoard>>,
+    /// The installed palette's generated CSS class + provider, so
+    /// `Card::set_palette` can uninstall a replaced palette.
+    pub palette: RefCell<Option<(String, gtk4::CssProvider)>>,
     /// Header strip (drag affordance) - built by `chrome::mount_chrome`
     /// during `Card::build`; `gtk4::Box` for the builtin style,
     /// `adw::HeaderBar` for adwaita.
@@ -89,6 +92,7 @@ impl Default for CardImpl {
         Self {
             id: RefCell::new(CardId::new("")),
             board: RefCell::new(WeakRef::new()),
+            palette: RefCell::new(None),
             header: OnceCell::new(),
             header_shown: Cell::new(false),
             content_overlay: OnceCell::new(),

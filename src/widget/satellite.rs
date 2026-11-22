@@ -11,6 +11,7 @@
 use crate::domain::ChromeElement;
 use crate::domain::SatelliteItem;
 use crate::domain::SatelliteKind;
+use crate::domain::SatelliteLayout;
 use crate::domain::SatellitePlacement;
 use crate::domain::TurnDirection;
 use crate::domain::resolve;
@@ -22,6 +23,7 @@ use crate::widget::chrome::ICON_MINIMIZE_SYMBOLIC;
 use crate::widget::css::CLASS_SATELLITE;
 use crate::widget::css::CLASS_SATELLITE_CHROME;
 use crate::widget::css::CLASS_SATELLITE_CUSTOM;
+use crate::widget::css::CLASS_SATELLITE_RADIAL;
 use crate::widget::imp::card_entry::CardEntry;
 use crate::widget::imp::satellite_entry::SatelliteEntry;
 use crate::widget::satellite_config::SatelliteConfig;
@@ -47,12 +49,16 @@ impl FloatingBoard {
     /// order. Satellites whose widget cannot be built are warned about
     /// and skipped.
     pub(crate) fn build_satellites(&self, layer: &CardLayer, card: &Card, card_scaling: &ScalingWidget, config: &CardConfig) -> Vec<SatelliteEntry> {
-        let (_, configs) = config.effective_satellites();
+        let (settings, configs) = config.effective_satellites();
+        let radial = matches!(settings.layout, SatelliteLayout::Radial(_));
         let mut entries = Vec::with_capacity(configs.len());
         for satellite in configs {
             let Some(widget) = satellite_widget(card, &satellite) else {
                 continue;
             };
+            if radial {
+                widget.add_css_class(CLASS_SATELLITE_RADIAL);
+            }
             // Same builder options as the card stack: no built-in rotate
             // gesture, no input-region clamp, natural child size.
             let rotation_widget = RotationWidget::new(SmearorRotation::DEG_0)
@@ -75,6 +81,7 @@ impl FloatingBoard {
                 scaling,
                 rotation_widget,
                 last_geometry: Cell::new(None),
+                open: Cell::new(settings.open),
             });
         }
         entries
@@ -116,7 +123,7 @@ impl FloatingBoard {
                 for satellite in satellites.iter() {
                     match placements.iter().find(|placement| placement.id == satellite.id) {
                         Some(placement) => {
-                            satellite.scaling.set_visible(shown);
+                            satellite.scaling.set_visible(shown && satellite.open.get());
                             self.apply_satellite_placement(entry, satellite, &layer, placement);
                         }
                         None => {

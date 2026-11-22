@@ -25,4 +25,9 @@ pub(crate) struct SatelliteEntry {
     /// The last applied workspace placement - `None` until the first
     /// sync. The clamp union footprints visible satellites from it.
     pub last_geometry: Cell<Option<CardGeometry>>,
+    /// Runtime open flag (`CardSatellites::open` at mount,
+    /// `FloatingBoard::set_satellites_open` later): a closed satellite
+    /// hides like a folded card hides its set. The *animation* of
+    /// opening/closing is Phase-5 matter.
+    pub open: Cell<bool>,
 }

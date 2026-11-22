@@ -1,6 +1,7 @@
 use crate::domain::BoardError;
 use crate::domain::CardGeometry;
 use crate::domain::CardId;
+use crate::domain::CardPalette;
 use crate::domain::CardPosition;
 use crate::domain::DragHandle;
 use crate::domain::ScaleFactor;
@@ -69,7 +70,7 @@ impl Card {
             card.add_css_class(CLASS_HEADERLESS);
         }
         if let Some(palette) = &config.palette {
-            install_palette(&card, palette);
+            imp.palette.replace(install_palette(&card, palette));
         }
         // Chrome is composed from `config.effective_chrome_slots()`:
         // inline elements mount into a header strip prepended to the
@@ -334,6 +335,22 @@ impl Card {
     /// (`.floating-card-collapsed` strips the chrome); without it, folding
     /// hides the content and keeps only the header strip
     /// (`.floating-card-folded`). Unfolding restores the full card.
+    /// Installs or replaces the card's color palette at runtime -
+    /// the same scoped-CSS mechanism `CardConfig::palette` uses at
+    /// build time. A replaced palette's provider is uninstalled so
+    /// repeated re-coloring does not stack rules; an empty palette
+    /// restores the themed colors.
+    pub fn set_palette(&self, palette: &CardPalette) {
+        let imp = self.imp();
+        if let Some((class, provider)) = imp.palette.take() {
+            self.remove_css_class(&class);
+            if let Some(display) = gtk4::gdk::Display::default() {
+                gtk4::style_context_remove_provider_for_display(&display, &provider);
+            }
+        }
+        imp.palette.replace(install_palette(self, palette));
+    }
+
     pub fn set_folded(&self, folded: bool) {
         let imp = self.imp();
         if imp.folded.get() == folded {

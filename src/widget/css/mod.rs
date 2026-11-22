@@ -41,6 +41,8 @@ pub const CLASS_SATELLITE: &str = "floating-card-satellite";
 pub const CLASS_SATELLITE_CHROME: &str = "floating-card-satellite-chrome";
 /// Additional CSS class of a consumer-widget satellite.
 pub const CLASS_SATELLITE_CUSTOM: &str = "floating-card-satellite-custom";
+/// Additional CSS class of a radial-layout satellite (circular look).
+pub const CLASS_SATELLITE_RADIAL: &str = "floating-card-satellite-radial";
 /// CSS class of the bottom-right resize grip (`CardConfig::resizable`).
 pub const CLASS_RESIZE_GRIP: &str = "floating-card-resize-grip";
 /// CSS class of the bottom-left rotate grip (`CardConfig::rotate_grip`).
@@ -61,18 +63,17 @@ static PALETTE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 /// `STYLE_PROVIDER_PRIORITY_APPLICATION` beats the default stylesheet
 /// and themes while user-level CSS still wins. `None` (and empty)
 /// palettes install nothing.
-pub(crate) fn install_palette(widget: &impl IsA<Widget>, palette: &CardPalette) {
+pub(crate) fn install_palette(widget: &impl IsA<Widget>, palette: &CardPalette) -> Option<(String, CssProvider)> {
     if palette.is_empty() {
-        return;
+        return None;
     }
-    let Some(display) = Display::default() else {
-        return;
-    };
+    let display = Display::default()?;
     let class = format!("floating-card-palette-{}", PALETTE_SEQUENCE.fetch_add(1, Ordering::Relaxed));
     let provider = CssProvider::new();
     provider.load_from_string(&palette_stylesheet(palette, &class));
     gtk4::style_context_add_provider_for_display(&display, &provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
     widget.add_css_class(&class);
+    Some((class, provider))
 }
 
 /// One CSS rule per filled [`CardColor`] slot, scoped to `class`.

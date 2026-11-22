@@ -47,4 +47,12 @@ impl SatelliteConfig {
             widget: Some(widget.into()),
         }
     }
+
+    /// Pins the satellite to `anchor` on the orbit - honored by
+    /// `SatelliteDistribution::Anchored` (a `QuarterTurn` anchor is
+    /// `Rotation::QuarterTurn(..)`); ignored by `Even`.
+    pub fn with_anchor(mut self, anchor: Rotation) -> Self {
+        self.anchor = Some(anchor);
+        self
+    }
 }

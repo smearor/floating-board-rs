@@ -749,6 +749,31 @@ impl FloatingBoard {
         Ok(())
     }
 
+    /// Opens or closes the card's whole satellite set. The initial
+    /// state comes from `CardSatellites::open`; a closed set hides
+    /// like a folded card hides it - placements keep resolving in the
+    /// background, so reopening lands on current positions. The open
+    /// *transition* itself is Phase-5 animation matter.
+    pub fn set_satellites_open(&self, id: &CardId, open: bool) -> Result<(), BoardError> {
+        let cards = self.imp().cards.borrow();
+        let Some(entry) = cards.get(id) else {
+            return Err(BoardError::UnknownCard(id.clone()));
+        };
+        for satellite in entry.satellites.borrow().iter() {
+            satellite.open.set(open);
+        }
+        self.sync_satellites(entry);
+        Ok(())
+    }
+
+    /// Whether the card's satellite set is open - `None` for an
+    /// unknown card, `true` for a card without satellites.
+    pub fn satellites_open(&self, id: &CardId) -> Option<bool> {
+        let cards = self.imp().cards.borrow();
+        let entry = cards.get(id)?;
+        Some(entry.satellites.borrow().first().is_none_or(|satellite| satellite.open.get()))
+    }
+
     /// The seat the card is currently assigned to, if any - the
     /// explicit `CardConfig::seat` or the seat it was passed to.
     /// Independent of the card's visual rotation.

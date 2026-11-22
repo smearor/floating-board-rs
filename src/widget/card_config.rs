@@ -253,7 +253,14 @@ fn satellite_key(element: ChromeElement) -> &'static str {
     match element {
         ChromeElement::Minimize => "minimize",
         ChromeElement::Close => "close",
-        _ => "element",
+        ChromeElement::RotateClockwise => "rotate-clockwise",
+        ChromeElement::RotateCounterClockwise => "rotate-counter-clockwise",
+        ChromeElement::NextSeat => "next-seat",
+        ChromeElement::PreviousSeat => "previous-seat",
+        // Non-satellite-capable elements never reach this function
+        // (`supports_satellite` filters upstream); distinct arms keep
+        // id collisions impossible if the capability set grows.
+        ChromeElement::DragHandle | ChromeElement::Title | ChromeElement::ResizeGrip | ChromeElement::RotateGrip => "element",
     }
 }
 
@@ -400,6 +407,31 @@ mod tests {
         let (_, satellites) = config.effective_satellites();
         let ids: Vec<&str> = satellites.iter().map(|satellite| satellite.id.as_str()).collect();
         assert_eq!(ids, vec!["chrome-minimize", "chrome-close", "extra"]);
+    }
+
+    /// Every satellite-capable chrome element maps to a distinct
+    /// generated id - a shared suffix would make placements collide
+    /// at mount time.
+    #[test]
+    fn satellite_capable_elements_get_unique_ids() {
+        let capable = [
+            ChromeElement::Minimize,
+            ChromeElement::Close,
+            ChromeElement::RotateClockwise,
+            ChromeElement::RotateCounterClockwise,
+            ChromeElement::NextSeat,
+            ChromeElement::PreviousSeat,
+        ];
+        let config = CardConfig {
+            chrome: Some(capable.iter().map(|element| ChromeSlot::satellite(*element)).collect()),
+            ..Default::default()
+        };
+        let (_, satellites) = config.effective_satellites();
+        assert_eq!(satellites.len(), capable.len());
+        let mut ids: Vec<String> = satellites.iter().map(|satellite| satellite.id.as_str().to_string()).collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), capable.len());
     }
 
     #[test]
