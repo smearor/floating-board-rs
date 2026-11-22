@@ -4,6 +4,7 @@
 
 pub(crate) mod board;
 pub(crate) mod card;
+pub(crate) mod satellite;
 
 pub use board::BoardError;
 pub use board::BoardLayout;
@@ -30,3 +31,13 @@ pub use card::MinVisible;
 pub use card::ScaleBounds;
 pub use card::ScaleFactor;
 pub use card::TurnDirection;
+pub use satellite::RadialConfig;
+pub use satellite::SatelliteCollisionMode;
+pub use satellite::SatelliteDistribution;
+pub use satellite::SatelliteId;
+pub use satellite::SatelliteItem;
+pub use satellite::SatelliteKind;
+pub use satellite::SatelliteLayout;
+pub use satellite::SatellitePlacement;
+pub use satellite::SatelliteRotationMode;
+pub use satellite::resolve;

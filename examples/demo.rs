@@ -5,6 +5,7 @@ use floating_board::CardConfig;
 use floating_board::CardId;
 use floating_board::CardPalette;
 use floating_board::CardPosition;
+use floating_board::CardSatellites;
 use floating_board::ChromeElement;
 use floating_board::ChromeSlot;
 use floating_board::ChromeStyle;
@@ -13,6 +14,7 @@ use floating_board::FloatingBoard;
 use floating_board::GotoRotation;
 use floating_board::GotoTransition;
 use floating_board::MinVisible;
+use floating_board::SatelliteConfig;
 use floating_board::ScaleBounds;
 use floating_board::SeatAnchor;
 use floating_board::TurnDirection;
@@ -148,6 +150,18 @@ fn seat_for_point(x: f64, y: f64, width: f64, height: f64) -> Seat {
 /// Three pre-configured cards plus dynamic cards added at runtime. The toolbar
 /// exercises snapshot/restore; a status line shows live signal feedback.
 /// Run with `cargo run --example demo`.
+/// Snaps `rotation` to the next quarter turn in `direction`; an angle
+/// already on a quarter step advances one full step further. Positive
+/// degrees rotate clockwise in screen coordinates.
+fn next_quarter_turn(rotation: Rotation, direction: TurnDirection) -> Rotation {
+    let quarters = rotation.degrees() / 90.0;
+    let next = match direction {
+        TurnDirection::Clockwise => quarters.floor() + 1.0,
+        TurnDirection::CounterClockwise => quarters.ceil() - 1.0,
+    };
+    Rotation::from_degrees(next * 90.0)
+}
+
 fn main() {
     tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
     // Optional Adwaita chrome (`ChromeStyle::Adwaita` on the "chrome"
@@ -637,7 +651,8 @@ fn build_ui(application: &gtk4::Application) {
     // working close button; the explicit `Minimize` slot folds the card.
     let chrome = gtk4::Box::new(Orientation::Vertical, 8);
     chrome.append(&Label::new(Some(
-        "Explicit chrome: title, minimize, close, grips
+        "Explicit chrome + satellites:
+minimize docked below, star = custom
 (closable flag is ignored)",
     )));
     // Interactive content exercises hit-testing inside the card: widget
@@ -662,7 +677,15 @@ fn build_ui(application: &gtk4::Application) {
         clicks.set(count);
         counter.set_label(&format!("Clicked: {count}"));
     });
-    let _chrome_id = board
+    // A custom satellite: the consumer owns the widget and its wiring,
+    // the board owns placement and lifetime.
+    let star = Button::with_label("\u{2605}");
+    // Rotation satellites exercising the follow-transform: each click
+    // rotates the card (and its satellites) via the animated path.
+    let rotate_zero = Button::with_label("0\u{b0}");
+    let rotate_clockwise = Button::from_icon_name("object-rotate-right-symbolic");
+    let rotate_counter = Button::from_icon_name("object-rotate-left-symbolic");
+    let chrome_id = board
         .add_card_with_id(
             "chrome",
             &chrome,
@@ -677,12 +700,39 @@ fn build_ui(application: &gtk4::Application) {
                     ChromeSlot::inline(ChromeElement::Close),
                     ChromeSlot::inline(ChromeElement::RotateGrip),
                     ChromeSlot::inline(ChromeElement::ResizeGrip),
+                    // Phase-2 showcase: `Minimize` docked as a satellite
+                    // on the default sidebar below the card.
+                    ChromeSlot::satellite(ChromeElement::Minimize),
                 ]),
                 chrome_style: ChromeStyle::Adwaita,
+                satellites: Some(CardSatellites {
+                    satellites: vec![
+                        SatelliteConfig::custom("star", star.clone()),
+                        SatelliteConfig::custom("rotate-zero", rotate_zero.clone()),
+                        SatelliteConfig::custom("rotate-cw", rotate_clockwise.clone()),
+                        SatelliteConfig::custom("rotate-ccw", rotate_counter.clone()),
+                    ],
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
         )
         .unwrap_or_else(|_| CardId::new("chrome"));
+    if let Ok(card) = board.card(&chrome_id) {
+        star.connect_clicked({
+            let card = card.clone();
+            move |_| card.fold()
+        });
+        rotate_zero.connect_clicked({
+            let card = card.clone();
+            move |_| card.set_rotation_with_animation(Rotation::ZERO)
+        });
+        rotate_clockwise.connect_clicked({
+            let card = card.clone();
+            move |_| card.set_rotation_with_animation(next_quarter_turn(card.rotation(), TurnDirection::Clockwise))
+        });
+        rotate_counter.connect_clicked(move |_| card.set_rotation_with_animation(next_quarter_turn(card.rotation(), TurnDirection::CounterClockwise)));
+    }
 
     // Shared pass helper used by the toolbar button and the Prev/Next
     // buttons on dynamic cards: in "Seats" mode the card hops to the

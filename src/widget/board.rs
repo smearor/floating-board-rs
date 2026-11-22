@@ -209,6 +209,7 @@ impl FloatingBoard {
         let scaling = ScalingWidget::new(&rotation_widget);
         layer.put(&scaling, 0.0, 0.0);
 
+        let satellites = self.build_satellites(&layer, &card, &scaling, &config);
         let sequence = self.imp().sequence.replace(self.imp().sequence.get().incremented());
         let (initial_position, pending_anchor) = match config.position {
             CardAnchor::Explicit(position) => (position, None),
@@ -238,6 +239,7 @@ impl FloatingBoard {
             sticky: Cell::new(config.sticky),
             layout_generation: Cell::new(GenerationCounter::default()),
             glide_target: Cell::new(None),
+            satellites: RefCell::new(satellites),
         };
         self.imp().cards.borrow_mut().insert(id.clone(), entry);
 
@@ -282,6 +284,9 @@ impl FloatingBoard {
     pub fn remove_card(&self, id: &CardId) -> Result<(), BoardError> {
         let entry = self.imp().cards.borrow_mut().remove(id).ok_or_else(|| BoardError::UnknownCard(id.clone()))?;
         if let Some(layer) = self.card_layer() {
+            for satellite in entry.satellites.borrow().iter() {
+                layer.remove(&satellite.scaling);
+            }
             layer.remove(&entry.scaling);
         }
         debug!(card = %id, "card removed");
@@ -679,6 +684,7 @@ impl FloatingBoard {
             let top_left = self.rendered_footprint(entry).min;
             layer.remove(&entry.scaling);
             layer.put(&entry.scaling, top_left.x, top_left.y);
+            self.restack_satellites(entry, &layer);
             entry.card.clone()
         };
         card.emit_card_raised();
@@ -735,6 +741,7 @@ impl FloatingBoard {
                 return Ok(());
             }
             entry.scaling.set_visible(visible);
+            self.sync_satellites(entry);
             entry.card.clone()
         };
         self.emit_by_name::<()>(BoardSignal::CardVisibilityChanged.name(), &[&card]);
@@ -1495,15 +1502,23 @@ impl FloatingBoard {
             let top_left = self.rendered_footprint(entry).min;
             layer.remove(&entry.scaling);
             layer.put(&entry.scaling, top_left.x, top_left.y);
+            self.restack_satellites(entry, &layer);
         }
     }
 
     fn wire_gestures(&self, id: &CardId, card: &Card, scaling: &ScalingWidget, rotation_widget: &RotationWidget, config: &CardConfig) {
         // Fold changes the card footprint - layout persistence and
         // input-region consumers track it through `geometry-changed`.
+        // Satellites hide with the folded card (v1 rule).
         let board_weak = self.downgrade();
+        let card_id = id.clone();
         card.connect_local("card-folded", false, move |_| {
             if let Some(board) = board_weak.upgrade() {
+                let cards = board.imp().cards.borrow();
+                if let Some(entry) = cards.get(&card_id) {
+                    board.sync_satellites(entry);
+                }
+                drop(cards);
                 board.emit_geometry_changed();
             }
             None
@@ -1691,7 +1706,7 @@ impl FloatingBoard {
         self.emit_by_name::<()>(BoardSignal::GeometryChanged.name(), &[]);
     }
 
-    fn card_layer(&self) -> Option<CardLayer> {
+    pub(crate) fn card_layer(&self) -> Option<CardLayer> {
         self.imp().card_layer.get().cloned()
     }
 
@@ -1703,7 +1718,7 @@ impl FloatingBoard {
     /// positions and must not feed view mapping or seat placement.
     /// The layer sits at origin (0,0) inside the board, so both share
     /// the same coordinate space.
-    fn widget_bounds(&self) -> Rect<Pixels> {
+    pub(crate) fn widget_bounds(&self) -> Rect<Pixels> {
         Rect::new(Vec2::ZERO, self.allocated_size().to_f64().with_unit::<Pixels>())
     }
 
@@ -2212,7 +2227,7 @@ impl FloatingBoard {
     /// rotation zero) for sticky cards pinned to the screen - so
     /// `to_widget`, `to_workspace`, `+ rotation` and `x zoom` all
     /// become no-ops for them.
-    fn card_view(&self, entry: &CardEntry) -> View<Pixels> {
+    pub(crate) fn card_view(&self, entry: &CardEntry) -> View<Pixels> {
         match entry.sticky.get() {
             true => View::covering(self.widget_bounds()),
             false => self.view(),
@@ -2221,7 +2236,7 @@ impl FloatingBoard {
 
     /// The view zoom a card renders at - `1.0` for sticky cards, which
     /// carry their on-screen scale in `entry.scale` directly.
-    fn card_view_zoom(&self, entry: &CardEntry) -> f64 {
+    pub(crate) fn card_view_zoom(&self, entry: &CardEntry) -> f64 {
         match entry.sticky.get() {
             true => 1.0,
             false => self.view_zoom(),
@@ -2350,6 +2365,7 @@ impl FloatingBoard {
         if delta.x.abs() > 0.5 || delta.y.abs() > 0.5 {
             layer.move_(&entry.scaling, target.x, target.y);
         }
+        self.sync_satellites(entry);
     }
 
     /// The rect a card's footprint may occupy: the workspace extent -
@@ -2388,7 +2404,9 @@ impl FloatingBoard {
         let footprint = self.workspace_footprint(entry);
         let delta = match entry.config.bounds_mode {
             BoundsMode::Loose => footprint.clamp_offset(&bounds, entry.config.min_visible.value()),
-            BoundsMode::Contained => footprint.contain_offset(&bounds),
+            // Contained clamps the union of card and visible satellite
+            // bounds - satellites are kept inside the board with it.
+            BoundsMode::Contained => self.footprint_with_satellites(entry, footprint).contain_offset(&bounds),
         };
         if delta != Vec2::ZERO {
             entry.position.set(entry.position.get().translated(delta));
@@ -2401,6 +2419,29 @@ impl FloatingBoard {
         for entry in cards.values() {
             self.clamp_entry(entry);
         }
+    }
+
+    /// `Contained` clamp footprint: the union of the card's workspace
+    /// footprint and every *visible* satellite's resolved bounds
+    /// (P2.4) - a dragged card pulls its satellites back inside the
+    /// board with it. Satellites without a placement (hidden, or not
+    /// yet synced) contribute nothing.
+    fn footprint_with_satellites(&self, entry: &CardEntry, card_footprint: Rect<Pixels>) -> Rect<Pixels> {
+        let mut points = vec![card_footprint.min, card_footprint.max()];
+        for satellite in entry.satellites.borrow().iter() {
+            if !satellite.scaling.is_visible() {
+                continue;
+            }
+            let Some(geometry) = satellite.last_geometry.get() else {
+                continue;
+            };
+            let (_, natural) = satellite.widget.measure_size();
+            let size = (natural.to_f64().with_unit::<Pixels>() * geometry.scale.value()).rotated_bounds(geometry.rotation.to_rotation_rad());
+            let rect = Rect::centered(geometry.position.into(), size);
+            points.push(rect.min);
+            points.push(rect.max());
+        }
+        Rect::from_points(points).unwrap_or(card_footprint)
     }
 
     /// The card's extent in workspace units: the natural size at the
@@ -2445,7 +2486,7 @@ impl FloatingBoard {
         (natural.to_f64().with_unit::<Pixels>() * scale).rotated_bounds(entry.rotation.get() + self.card_view(entry).rotation)
     }
 
-    fn entry_geometry(&self, entry: &CardEntry) -> CardGeometry {
+    pub(crate) fn entry_geometry(&self, entry: &CardEntry) -> CardGeometry {
         CardGeometry {
             position: entry.position.get(),
             rotation: Rotation::quantized(entry.rotation.get()),

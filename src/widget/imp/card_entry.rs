@@ -8,6 +8,7 @@ use crate::domain::SequenceNumber;
 use crate::widget::card::Card;
 use crate::widget::card_config::CardConfig;
 use crate::widget::imp::quad_baseline::QuadBaseline;
+use crate::widget::imp::satellite_entry::SatelliteEntry;
 use crate::widget::imp::tracked_touch::TrackedTouch;
 use crate::widget::scaling::ScalingWidget;
 use gtk4::gdk::EventSequence;
@@ -106,6 +107,10 @@ pub(crate) struct CardEntry {
     /// around the landing spot, not the mid-flight position. A
     /// superseded tag is ignored by readers; completion clears it.
     pub glide_target: Cell<Option<(GenerationCounter, CardGeometry)>>,
+    /// Mounted satellites in config order - the board re-resolves
+    /// their transform stacks on every geometry change
+    /// (`apply_position`), raises and hides them with the card.
+    pub satellites: RefCell<Vec<SatelliteEntry>>,
 }
 
 /// Smallest radial grab distance the resize drag accepts as its

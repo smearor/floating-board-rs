@@ -8,7 +8,7 @@ use smearor_commons_geometry::Rotation;
 ///
 /// This is the unit of persistence: a `CardGeometry` per card ends up in
 /// [`crate::domain::BoardLayout`] snapshots.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CardGeometry {
     /// Center point of the card in workspace coordinates.

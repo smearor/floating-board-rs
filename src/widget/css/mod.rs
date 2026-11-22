@@ -35,6 +35,12 @@ pub const CLASS_COLLAPSED: &str = "floating-card-collapsed";
 /// Wrapper around `CardConfig::folded_content` while the card is
 /// folded; style custom collapsed looks against it.
 pub const CLASS_FOLDED_CONTENT: &str = "floating-card-folded-content";
+/// CSS class of every satellite widget.
+pub const CLASS_SATELLITE: &str = "floating-card-satellite";
+/// Additional CSS class of a chrome-element satellite.
+pub const CLASS_SATELLITE_CHROME: &str = "floating-card-satellite-chrome";
+/// Additional CSS class of a consumer-widget satellite.
+pub const CLASS_SATELLITE_CUSTOM: &str = "floating-card-satellite-custom";
 /// CSS class of the bottom-right resize grip (`CardConfig::resizable`).
 pub const CLASS_RESIZE_GRIP: &str = "floating-card-resize-grip";
 /// CSS class of the bottom-left rotate grip (`CardConfig::rotate_grip`).

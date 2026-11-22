@@ -3,12 +3,15 @@ use crate::domain::BoundsMode;
 use crate::domain::CardAnchor;
 use crate::domain::CardPalette;
 use crate::domain::ChromeElement;
+use crate::domain::ChromePlacement;
 use crate::domain::ChromeSlot;
 use crate::domain::ChromeStyle;
 use crate::domain::DragHandle;
 use crate::domain::MinVisible;
 use crate::domain::ScaleBounds;
 use crate::widget::card_close_action::CardCloseAction;
+use crate::widget::card_satellites::CardSatellites;
+use crate::widget::satellite_config::SatelliteConfig;
 use gtk4::Widget;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_layout::Seat;
@@ -144,6 +147,13 @@ pub struct CardConfig {
     /// feature; falls back to `Builtin` without it).
     #[cfg_attr(feature = "serde", serde(default))]
     pub chrome_style: ChromeStyle,
+    /// Satellite configuration: layout, rotation and collision
+    /// semantics plus the explicit satellite list (`CardSatellites`).
+    /// `None` (default) means no custom satellites; chrome elements
+    /// configured `ChromeSlot::satellite(..)` still mount with the
+    /// `CardSatellites` defaults (sidebar below the card).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub satellites: Option<CardSatellites>,
 }
 
 impl Default for CardConfig {
@@ -176,6 +186,7 @@ impl Default for CardConfig {
             sticky: false,
             chrome: None,
             chrome_style: ChromeStyle::default(),
+            satellites: None,
         }
     }
 }
@@ -215,6 +226,34 @@ impl CardConfig {
             slots.push(ChromeSlot::inline(ChromeElement::RotateGrip));
         }
         slots
+    }
+
+    /// The effective satellite set: `ChromeSlot::satellite` entries in
+    /// slot order (elements that cannot be satellites are warned about
+    /// once at mount), then the explicit `CardSatellites::satellites`
+    /// list. Layout, rotation and collision semantics come from
+    /// `satellites`, defaulting to a `CoRotate` sidebar below the card.
+    pub fn effective_satellites(&self) -> (CardSatellites, Vec<SatelliteConfig>) {
+        let settings = self.satellites.clone().unwrap_or_default();
+        let mut configs: Vec<SatelliteConfig> = self
+            .effective_chrome_slots()
+            .iter()
+            .filter(|slot| slot.placement == ChromePlacement::Satellite && slot.element.supports_satellite())
+            .map(|slot| SatelliteConfig::chrome(format!("chrome-{}", satellite_key(slot.element)), slot.element))
+            .collect();
+        configs.extend(settings.satellites.iter().cloned());
+        (settings, configs)
+    }
+}
+
+/// Deterministic id suffix for chrome satellites (`chrome-minimize`).
+/// Only satellite-capable elements reach it (`supports_satellite`
+/// filtered upstream); the fallback keeps the match total.
+fn satellite_key(element: ChromeElement) -> &'static str {
+    match element {
+        ChromeElement::Minimize => "minimize",
+        ChromeElement::Close => "close",
+        _ => "element",
     }
 }
 
@@ -342,6 +381,35 @@ mod tests {
         let back: CardConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(back.effective_chrome_slots(), config.effective_chrome_slots());
         assert_eq!(back.chrome_style, ChromeStyle::Adwaita);
+    }
+
+    #[test]
+    fn satellite_slots_and_config_merge_in_order() {
+        let config = CardConfig {
+            chrome: Some(vec![
+                ChromeSlot::inline(ChromeElement::Title),
+                ChromeSlot::satellite(ChromeElement::Minimize),
+                ChromeSlot::satellite(ChromeElement::Close),
+            ]),
+            satellites: Some(CardSatellites {
+                satellites: vec![SatelliteConfig::chrome("extra", ChromeElement::Minimize)],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let (_, satellites) = config.effective_satellites();
+        let ids: Vec<&str> = satellites.iter().map(|satellite| satellite.id.as_str()).collect();
+        assert_eq!(ids, vec!["chrome-minimize", "chrome-close", "extra"]);
+    }
+
+    #[test]
+    fn non_satellite_capable_elements_are_filtered() {
+        let config = CardConfig {
+            chrome: Some(vec![ChromeSlot::satellite(ChromeElement::ResizeGrip)]),
+            ..Default::default()
+        };
+        let (_, satellites) = config.effective_satellites();
+        assert!(satellites.is_empty());
     }
 
     #[cfg(feature = "serde")]

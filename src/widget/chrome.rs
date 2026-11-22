@@ -198,11 +198,12 @@ impl Card {
     }
 }
 
-/// A `Satellite` slot: valid for satellite-capable elements but not yet
-/// mounted (Phase 2/3); elements that can never be satellites warn.
+/// A `Satellite` slot never mounts inline - satellite-capable elements
+/// are picked up by the board's satellite mounting (`CardConfig::
+/// effective_satellites`); elements that can never be satellites warn.
 fn skip_satellite(element: ChromeElement) {
     if element.supports_satellite() {
-        debug!("Chrome element {element:?} configured as satellite - skipped until satellite mounting lands (Phase 2/3)");
+        debug!("Chrome element {element:?} configured as satellite - mounted by the board, not inline");
     } else {
         warn!("Chrome element {element:?} does not support satellite placement - slot ignored");
     }
