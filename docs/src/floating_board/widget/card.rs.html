@@ -13,36 +13,36 @@
 <a href=#13 id=13 data-nosnippet>13</a><span class="kw">use </span><span class="kw">crate</span>::widget::card_config::CardConfig;
 <a href=#14 id=14 data-nosnippet>14</a><span class="kw">use </span><span class="kw">crate</span>::widget::card_layer::CardLayer;
 <a href=#15 id=15 data-nosnippet>15</a><span class="kw">use </span><span class="kw">crate</span>::widget::card_signal::CardSignal;
-<a href=#16 id=16 data-nosnippet>16</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_CARD_CIRCLE;
-<a href=#17 id=17 data-nosnippet>17</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_COLLAPSED;
-<a href=#18 id=18 data-nosnippet>18</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_FOLDED;
-<a href=#19 id=19 data-nosnippet>19</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_HEADERLESS;
-<a href=#20 id=20 data-nosnippet>20</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::install_palette;
-<a href=#21 id=21 data-nosnippet>21</a><span class="kw">use </span><span class="kw">crate</span>::widget::imp::card::CardImpl;
-<a href=#22 id=22 data-nosnippet>22</a><span class="kw">use </span>glib::object::Cast;
-<a href=#23 id=23 data-nosnippet>23</a><span class="kw">use </span>glib::object::ObjectExt;
-<a href=#24 id=24 data-nosnippet>24</a><span class="kw">use </span>gtk4::Accessible;
-<a href=#25 id=25 data-nosnippet>25</a><span class="kw">use </span>gtk4::Buildable;
-<a href=#26 id=26 data-nosnippet>26</a><span class="kw">use </span>gtk4::ConstraintTarget;
-<a href=#27 id=27 data-nosnippet>27</a><span class="kw">use </span>gtk4::Orientable;
-<a href=#28 id=28 data-nosnippet>28</a><span class="kw">use </span>gtk4::Widget;
-<a href=#29 id=29 data-nosnippet>29</a><span class="kw">use </span>gtk4::cairo::Region;
-<a href=#30 id=30 data-nosnippet>30</a><span class="kw">use </span>gtk4::glib;
-<a href=#31 id=31 data-nosnippet>31</a><span class="kw">use </span>gtk4::prelude::BoxExt;
-<a href=#32 id=32 data-nosnippet>32</a><span class="kw">use </span>gtk4::prelude::ButtonExt;
-<a href=#33 id=33 data-nosnippet>33</a><span class="kw">use </span>gtk4::prelude::FixedExt;
-<a href=#34 id=34 data-nosnippet>34</a><span class="kw">use </span>gtk4::prelude::WidgetExt;
-<a href=#35 id=35 data-nosnippet>35</a><span class="kw">use </span>gtk4::subclass::prelude::ObjectSubclassIsExt;
-<a href=#36 id=36 data-nosnippet>36</a><span class="kw">use </span>smearor_commons_geometry::Pixels;
-<a href=#37 id=37 data-nosnippet>37</a><span class="kw">use </span>smearor_commons_geometry::QuarterTurn;
-<a href=#38 id=38 data-nosnippet>38</a><span class="kw">use </span>smearor_commons_geometry::Rect;
-<a href=#39 id=39 data-nosnippet>39</a><span class="kw">use </span>smearor_commons_geometry::Rotation;
-<a href=#40 id=40 data-nosnippet>40</a><span class="kw">use </span>smearor_commons_geometry::RotationDirection;
-<a href=#41 id=41 data-nosnippet>41</a><span class="kw">use </span>smearor_commons_geometry::Vec2;
-<a href=#42 id=42 data-nosnippet>42</a><span class="kw">use </span>smearor_commons_geometry::WidgetSizeExt;
-<a href=#43 id=43 data-nosnippet>43</a><span class="kw">use </span>smearor_commons_layout::Seat;
-<a href=#44 id=44 data-nosnippet>44</a><span class="kw">use </span>tracing::debug;
-<a href=#45 id=45 data-nosnippet>45</a><span class="kw">use </span><span class="kw">crate</span>::widget::circular_clip::CircularClip;
+<a href=#16 id=16 data-nosnippet>16</a><span class="kw">use </span><span class="kw">crate</span>::widget::circular_clip::CircularClip;
+<a href=#17 id=17 data-nosnippet>17</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_CARD_CIRCLE;
+<a href=#18 id=18 data-nosnippet>18</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_COLLAPSED;
+<a href=#19 id=19 data-nosnippet>19</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_FOLDED;
+<a href=#20 id=20 data-nosnippet>20</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_HEADERLESS;
+<a href=#21 id=21 data-nosnippet>21</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::install_palette;
+<a href=#22 id=22 data-nosnippet>22</a><span class="kw">use </span><span class="kw">crate</span>::widget::imp::card::CardImpl;
+<a href=#23 id=23 data-nosnippet>23</a><span class="kw">use </span>glib::object::Cast;
+<a href=#24 id=24 data-nosnippet>24</a><span class="kw">use </span>glib::object::ObjectExt;
+<a href=#25 id=25 data-nosnippet>25</a><span class="kw">use </span>gtk4::Accessible;
+<a href=#26 id=26 data-nosnippet>26</a><span class="kw">use </span>gtk4::Buildable;
+<a href=#27 id=27 data-nosnippet>27</a><span class="kw">use </span>gtk4::ConstraintTarget;
+<a href=#28 id=28 data-nosnippet>28</a><span class="kw">use </span>gtk4::Orientable;
+<a href=#29 id=29 data-nosnippet>29</a><span class="kw">use </span>gtk4::Widget;
+<a href=#30 id=30 data-nosnippet>30</a><span class="kw">use </span>gtk4::cairo::Region;
+<a href=#31 id=31 data-nosnippet>31</a><span class="kw">use </span>gtk4::glib;
+<a href=#32 id=32 data-nosnippet>32</a><span class="kw">use </span>gtk4::prelude::BoxExt;
+<a href=#33 id=33 data-nosnippet>33</a><span class="kw">use </span>gtk4::prelude::ButtonExt;
+<a href=#34 id=34 data-nosnippet>34</a><span class="kw">use </span>gtk4::prelude::FixedExt;
+<a href=#35 id=35 data-nosnippet>35</a><span class="kw">use </span>gtk4::prelude::WidgetExt;
+<a href=#36 id=36 data-nosnippet>36</a><span class="kw">use </span>gtk4::subclass::prelude::ObjectSubclassIsExt;
+<a href=#37 id=37 data-nosnippet>37</a><span class="kw">use </span>smearor_commons_geometry::Pixels;
+<a href=#38 id=38 data-nosnippet>38</a><span class="kw">use </span>smearor_commons_geometry::QuarterTurn;
+<a href=#39 id=39 data-nosnippet>39</a><span class="kw">use </span>smearor_commons_geometry::Rect;
+<a href=#40 id=40 data-nosnippet>40</a><span class="kw">use </span>smearor_commons_geometry::Rotation;
+<a href=#41 id=41 data-nosnippet>41</a><span class="kw">use </span>smearor_commons_geometry::RotationDirection;
+<a href=#42 id=42 data-nosnippet>42</a><span class="kw">use </span>smearor_commons_geometry::Vec2;
+<a href=#43 id=43 data-nosnippet>43</a><span class="kw">use </span>smearor_commons_geometry::WidgetSizeExt;
+<a href=#44 id=44 data-nosnippet>44</a><span class="kw">use </span>smearor_commons_layout::Seat;
+<a href=#45 id=45 data-nosnippet>45</a><span class="kw">use </span>tracing::debug;
 <a href=#46 id=46 data-nosnippet>46</a>
 <a href=#47 id=47 data-nosnippet>47</a><span class="macro">glib::wrapper!</span> {
 <a href=#48 id=48 data-nosnippet>48</a>    <span class="doccomment">/// A floating card on the board: header strip plus consumer content.
@@ -501,19 +501,32 @@
 <a href=#501 id=501 data-nosnippet>501</a>        <span class="self">self</span>.imp().rotate_grip.get().cloned().map(|grip| grip.upcast())
 <a href=#502 id=502 data-nosnippet>502</a>    }
 <a href=#503 id=503 data-nosnippet>503</a>
-<a href=#504 id=504 data-nosnippet>504</a>    <span class="doccomment">/// Widget acting as the drag affordance for the given handle mode.
-<a href=#505 id=505 data-nosnippet>505</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>drag_source(<span class="kw-2">&amp;</span><span class="self">self</span>, drag_handle: DragHandle) -&gt; Widget {
-<a href=#506 id=506 data-nosnippet>506</a>        <span class="kw">match </span>drag_handle {
-<a href=#507 id=507 data-nosnippet>507</a>            DragHandle::Header =&gt; <span class="self">self</span>.imp().header.get().cloned().unwrap_or_else(|| <span class="self">self</span>.clone().upcast()),
-<a href=#508 id=508 data-nosnippet>508</a>            DragHandle::WholeCard =&gt; <span class="self">self</span>.clone().upcast(),
-<a href=#509 id=509 data-nosnippet>509</a>            DragHandle::Handle =&gt; <span class="self">self
-<a href=#510 id=510 data-nosnippet>510</a>                </span>.imp()
-<a href=#511 id=511 data-nosnippet>511</a>                .handle_label
-<a href=#512 id=512 data-nosnippet>512</a>                .get()
-<a href=#513 id=513 data-nosnippet>513</a>                .cloned()
-<a href=#514 id=514 data-nosnippet>514</a>                .map(|h| h.upcast())
-<a href=#515 id=515 data-nosnippet>515</a>                .unwrap_or_else(|| <span class="self">self</span>.clone().upcast()),
-<a href=#516 id=516 data-nosnippet>516</a>        }
-<a href=#517 id=517 data-nosnippet>517</a>    }
-<a href=#518 id=518 data-nosnippet>518</a>}
+<a href=#504 id=504 data-nosnippet>504</a>    <span class="doccomment">/// Widget acting as the drag affordance for the given handle mode
+<a href=#505 id=505 data-nosnippet>505</a>    /// and the card's current folded state. `WholeCardFolded` and
+<a href=#506 id=506 data-nosnippet>506</a>    /// `WholeCardUnfolded` drag the whole card in their named state and
+<a href=#507 id=507 data-nosnippet>507</a>    /// fall back to the header strip in the other - an unfolded
+<a href=#508 id=508 data-nosnippet>508</a>    /// `WholeCardFolded` card keeps its interactive content usable.
+<a href=#509 id=509 data-nosnippet>509</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>drag_source(<span class="kw-2">&amp;</span><span class="self">self</span>, drag_handle: DragHandle) -&gt; Widget {
+<a href=#510 id=510 data-nosnippet>510</a>        <span class="kw">let </span>folded = <span class="self">self</span>.imp().folded.get();
+<a href=#511 id=511 data-nosnippet>511</a>        <span class="kw">let </span>whole_card = <span class="kw">match </span>drag_handle {
+<a href=#512 id=512 data-nosnippet>512</a>            DragHandle::WholeCard =&gt; <span class="bool-val">true</span>,
+<a href=#513 id=513 data-nosnippet>513</a>            DragHandle::WholeCardFolded =&gt; folded,
+<a href=#514 id=514 data-nosnippet>514</a>            DragHandle::WholeCardUnfolded =&gt; !folded,
+<a href=#515 id=515 data-nosnippet>515</a>            DragHandle::Header | DragHandle::Handle =&gt; <span class="bool-val">false</span>,
+<a href=#516 id=516 data-nosnippet>516</a>        };
+<a href=#517 id=517 data-nosnippet>517</a>        <span class="kw">if </span>whole_card {
+<a href=#518 id=518 data-nosnippet>518</a>            <span class="kw">return </span><span class="self">self</span>.clone().upcast();
+<a href=#519 id=519 data-nosnippet>519</a>        }
+<a href=#520 id=520 data-nosnippet>520</a>        <span class="kw">match </span>drag_handle {
+<a href=#521 id=521 data-nosnippet>521</a>            DragHandle::Handle =&gt; <span class="self">self
+<a href=#522 id=522 data-nosnippet>522</a>                </span>.imp()
+<a href=#523 id=523 data-nosnippet>523</a>                .handle_label
+<a href=#524 id=524 data-nosnippet>524</a>                .get()
+<a href=#525 id=525 data-nosnippet>525</a>                .cloned()
+<a href=#526 id=526 data-nosnippet>526</a>                .map(|h| h.upcast())
+<a href=#527 id=527 data-nosnippet>527</a>                .unwrap_or_else(|| <span class="self">self</span>.clone().upcast()),
+<a href=#528 id=528 data-nosnippet>528</a>            <span class="kw">_ </span>=&gt; <span class="self">self</span>.imp().header.get().cloned().unwrap_or_else(|| <span class="self">self</span>.clone().upcast()),
+<a href=#529 id=529 data-nosnippet>529</a>        }
+<a href=#530 id=530 data-nosnippet>530</a>    }
+<a href=#531 id=531 data-nosnippet>531</a>}
 </code></pre></div></section></main></body></html>
