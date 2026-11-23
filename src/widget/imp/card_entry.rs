@@ -53,6 +53,7 @@ pub(crate) struct CardEntry {
     /// move it between the card and the header when the folded state
     /// flips (`WholeCardFolded`/`WholeCardUnfolded` modes).
     pub card_drag: RefCell<Option<GestureDrag>>,
+
     /// Card center at the start of the active drag gesture.
     pub drag_start: Cell<CardPosition>,
     /// Pointer position in workspace coordinates at drag begin.

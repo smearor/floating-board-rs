@@ -1650,18 +1650,41 @@ impl FloatingBoard {
                 }
             });
             card.drag_source(config.drag_handle).add_controller(drag.clone());
-            // Click-to-unfold: `released` only fires for sequences no
-            // other gesture claimed - the card drag claims at its
-            // threshold, so taps unfold while drags never do.
+            // Click-to-unfold: `released` fires even after a card drag
+            // (the drag never claims the sequence), so the tap is
+            // decided by geometry: any position/rotation/scale change
+            // between press and release was a manipulation, not a tap.
             if config.unfold_on_click {
                 let unfold_click = GestureClick::new();
                 unfold_click.set_button(0);
-                let card_weak = card.downgrade();
+                let press_geometry = std::rc::Rc::new(Cell::new((CardPosition::default(), 0.0f64, 0.0f64)));
+                unfold_click.connect_pressed({
+                    let board_weak = self.downgrade();
+                    let card_id = id.clone();
+                    let press_geometry = press_geometry.clone();
+                    move |_, _, _, _| {
+                        if let Some(board) = board_weak.upgrade() {
+                            let cards = board.imp().cards.borrow();
+                            if let Some(entry) = cards.get(&card_id) {
+                                press_geometry.set((entry.position.get(), entry.rotation.get().to_degrees(), entry.scale.get().value()));
+                            }
+                        }
+                    }
+                });
+                let board_weak = self.downgrade();
+                let card_id = id.clone();
                 unfold_click.connect_released(move |_, _, _, _| {
-                    if let Some(card) = card_weak.upgrade()
-                        && card.folded()
-                    {
-                        card.set_folded(false);
+                    let Some(board) = board_weak.upgrade() else {
+                        return;
+                    };
+                    let cards = board.imp().cards.borrow();
+                    let Some(entry) = cards.get(&card_id) else {
+                        return;
+                    };
+                    let (position, rotation, scale) = press_geometry.get();
+                    let manipulated = entry.position.get() != position || entry.rotation.get().to_degrees() != rotation || entry.scale.get().value() != scale;
+                    if !manipulated && entry.card.folded() {
+                        entry.card.set_folded(false);
                     }
                 });
                 card.add_controller(unfold_click);
