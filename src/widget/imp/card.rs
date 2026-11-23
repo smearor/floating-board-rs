@@ -1,6 +1,9 @@
 use crate::domain::CardId;
+use crate::domain::CardShape;
+use crate::domain::CircleContent;
 use crate::widget::FloatingBoard;
 use crate::widget::card::Card;
+use crate::widget::card_layout::CardShapeLayout;
 use crate::widget::card_signal::CARD_SIGNALS;
 use crate::widget::css::CLASS_CARD;
 use crate::widget::css::CLASS_CONTENT;
@@ -12,8 +15,12 @@ use gtk4::Label;
 use gtk4::Orientation;
 use gtk4::Overflow;
 use gtk4::Overlay;
+use gtk4::Widget;
 use gtk4::glib;
+use gtk4::graphene::Point;
+use gtk4::gsk::Transform;
 use gtk4::prelude::BoxExt;
+use gtk4::prelude::Cast;
 use gtk4::prelude::OrientableExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::BoxImpl;
@@ -21,9 +28,12 @@ use gtk4::subclass::prelude::ObjectImpl;
 use gtk4::subclass::prelude::ObjectImplExt;
 use gtk4::subclass::prelude::ObjectSubclass;
 use gtk4::subclass::prelude::ObjectSubclassExt;
+use gtk4::subclass::prelude::WidgetClassExt;
 use gtk4::subclass::prelude::WidgetImpl;
 use gtk4::subclass::prelude::WidgetImplExt;
+use smearor_commons_geometry::Circle;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Vec2;
 use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
@@ -85,6 +95,12 @@ pub struct CardImpl {
     pub max_width: Cell<Option<Pixels>>,
     /// Upper bound on the reported height (`CardConfig::max_height`).
     pub max_height: Cell<Option<Pixels>>,
+    /// The card's outline (`CardConfig::shape`) - drives the circle
+    /// branches in `measure`/`size_allocate`/`contains`.
+    pub shape: Cell<CardShape>,
+    /// Content allocation mode for `CardShape::Circle`
+    /// (`CardConfig::circle_content`).
+    pub circle_content: Cell<CircleContent>,
 }
 
 impl Default for CardImpl {
@@ -110,6 +126,8 @@ impl Default for CardImpl {
             folded_holder: OnceCell::new(),
             max_width: Cell::new(None),
             max_height: Cell::new(None),
+            shape: Cell::new(CardShape::default()),
+            circle_content: Cell::new(CircleContent::default()),
         }
     }
 }
@@ -119,6 +137,13 @@ impl ObjectSubclass for CardImpl {
     const NAME: &'static str = "FloatingBoardCard";
     type Type = Card;
     type ParentType = gtk4::Box;
+
+    fn class_init(klass: &mut Self::Class) {
+        // Shape-aware layout: GTK4 consults the layout manager for
+        // `measure`/`allocate` before the widget vfuncs, and `GtkBox`
+        // always carries one - the circle sizing only works from here.
+        klass.set_layout_manager_type::<CardShapeLayout>();
+    }
 }
 
 impl ObjectImpl for CardImpl {
@@ -126,7 +151,9 @@ impl ObjectImpl for CardImpl {
         self.parent_constructed();
         let card = self.obj();
         card.set_orientation(Orientation::Vertical);
-        card.set_spacing(0);
+        // No `set_spacing(0)`: it delegates to `gtk_box_layout_*` and
+        // hard-asserts on our custom `CardShapeLayout`; the delegate
+        // inside defaults to spacing 0 anyway.
         // Clips content that exceeds a `max_width`/`max_height` cap and keeps
         // it inside the rounded corners (GTK CSS has no `overflow` property).
         card.set_overflow(Overflow::Hidden);
@@ -162,24 +189,69 @@ impl ObjectImpl for CardImpl {
     }
 }
 
+/// Width of the ring band around a circle card's inner circle (px).
+/// The band is card chrome: it carries the card's background and stays
+/// a drag affordance; the content never reaches into it.
+const CIRCLE_RING_BAND: f64 = 8.0;
+
 impl WidgetImpl for CardImpl {
-    // Caps the reported size at `CardConfig::max_width`/`max_height` so the
-    // card stops growing when its content grows; the parent layer allocates
-    // at most the capped size and the default CSS clips the overflow.
-    fn measure(&self, orientation: Orientation, for_size: i32) -> (i32, i32, i32, i32) {
-        let (minimum, natural, minimum_baseline, natural_baseline) = self.parent_measure(orientation, for_size);
-        let limit = match orientation {
-            Orientation::Horizontal => self.max_width.get(),
-            Orientation::Vertical => self.max_height.get(),
-            _ => None,
+    // `Circle`: only the disk inside the bounding square is pickable -
+    // taps in the corners pass through to whatever is underneath
+    // (through the board layers' `contains` chain, same as the rotated
+    // corners of a rectangle card).
+    fn contains(&self, x: f64, y: f64) -> bool {
+        if self.shape.get() == CardShape::Circle {
+            let (width, height) = (f64::from(self.obj().width()), f64::from(self.obj().height()));
+            return Circle::<()>::new(Vec2::new(width / 2.0, height / 2.0), width.min(height) / 2.0).contains(&Vec2::new(x, y));
+        }
+        self.parent_contains(x, y)
+    }
+}
+
+impl CardImpl {
+    /// `Circle` measure: the card reports its bounding square - a
+    /// diameter derived from the visible content child's natural size
+    /// via `CircleContent::diameter_for` (the `folded_holder` while it
+    /// carries a collapsed widget, else the `content_overlay`). Called
+    /// from `CardShapeLayout`.
+    pub(crate) fn circle_measure(&self) -> (i32, i32, i32, i32) {
+        let content = self
+            .folded_holder
+            .get()
+            .filter(|holder| holder.is_visible() && holder.first_child().is_some())
+            .map(|holder| holder.clone().upcast::<Widget>())
+            .or_else(|| self.content_overlay.get().map(|overlay| overlay.clone().upcast()));
+        let Some(content) = content else {
+            return (0, 0, -1, -1);
         };
-        match limit {
-            // Fractional caps floor so the reported size never exceeds the bound.
-            Some(cap) => {
-                let cap = cap.as_f64() as i32;
-                (minimum.min(cap), natural.min(cap), -1, -1)
+        let (_, natural_width, _, _) = content.measure(Orientation::Horizontal, -1);
+        let (_, natural_height, _, _) = content.measure(Orientation::Vertical, -1);
+        // A disc does not flex: minimum == natural keeps the bounding
+        // square stable (the parent layer allocates at the minimum
+        // width - a smaller value would render a shrunken circle whose
+        // satellites still orbit the natural diameter).
+        let diameter = self
+            .circle_content
+            .get()
+            .diameter_for(f64::from(natural_width.max(natural_height)), CIRCLE_RING_BAND);
+        (diameter.ceil() as i32, diameter.ceil() as i32, -1, -1)
+    }
+
+    /// `Circle` allocate: every visible child gets the centered content
+    /// square (`CircleContent::content_square_for` of the allocated
+    /// diameter); the margin around it renders as the ring. Called from
+    /// `CardShapeLayout`.
+    pub(crate) fn circle_allocate(&self, width: i32, height: i32, baseline: i32) {
+        let diameter = f64::from(width.min(height));
+        let side = self.circle_content.get().content_square_for(diameter, CIRCLE_RING_BAND);
+        let transform = Transform::new().translate(&Point::new(((f64::from(width) - side) / 2.0) as f32, ((f64::from(height) - side) / 2.0) as f32));
+        let side = side.ceil() as i32;
+        let mut child = self.obj().first_child();
+        while let Some(widget) = child {
+            if widget.is_visible() {
+                widget.allocate(side, side, baseline, Some(transform.clone()));
             }
-            None => (minimum, natural, minimum_baseline, natural_baseline),
+            child = widget.next_sibling();
         }
     }
 }

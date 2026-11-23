@@ -20,9 +20,11 @@ use floating_board::CardId;
 use floating_board::CardPalette;
 use floating_board::CardPosition;
 use floating_board::CardSatellites;
+use floating_board::CardShape;
 use floating_board::ChromeElement;
 use floating_board::ChromeSlot;
 use floating_board::ChromeStyle;
+use floating_board::CircleContent;
 use floating_board::FloatingBoard;
 use floating_board::SatelliteConfig;
 use floating_board::SatelliteDistribution;
@@ -37,6 +39,9 @@ use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::QuarterTurn;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::Vec2;
+use std::cell::Cell;
+use std::f64::consts::TAU;
+use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
 /// A circular color-dot satellite button styled by `class`.
@@ -110,7 +115,7 @@ fn build_ui(application: &gtk4::Application) {
     let board_content = gtk4::Box::new(Orientation::Vertical, 0);
     board_content.add_css_class("backdrop");
     board_content.append(&Label::new(Some(
-        "\nSatellites example\n\nmemo: Even + CoRotate - anchored: Anchored + CounterRotate\nrotate both cards to compare\n",
+        "\nSatellites example\n\nmemo: Even + CoRotate - anchored: Anchored + CounterRotate\norb: Circle card - corners pass through - star rotates, moon recolors, face folds\n",
     )));
     let board = FloatingBoard::new(&board_content);
     board.set_vexpand(true);
@@ -222,6 +227,139 @@ fn build_ui(application: &gtk4::Application) {
     for (button, (_, background, header)) in anchored_dots.iter().zip(DOT_SPECS) {
         wire_color_dot(&board, &anchored_id, button, background, header);
     }
+
+    // --- Card "orb": `CardShape::Circle` - no header, no grips; the
+    // legacy `foldable`/`closable` flags are promoted to satellites
+    // automatically. The orbit follows the contour exactly (radius =
+    // card radius + gap). Its bounding-box corners overlap the memo
+    // card: taps there fall through the circle's `contains` and pick
+    // memo - the pass-through proof.
+    // `CircleContent::Fill`: the widget draws its own circular
+    // appearance - a clock face with hands, ticking once per second.
+    // The face fills the inner square and leaves the palette ring
+    // visible.
+    let orb = gtk4::DrawingArea::new();
+    orb.set_content_width(96);
+    orb.set_content_height(96);
+    orb.set_draw_func(|_area, context, width, height| {
+        let (width, height) = (f64::from(width), f64::from(height));
+        let (center_x, center_y) = (width / 2.0, height / 2.0);
+        let radius = width.min(height) / 2.0 - 3.0;
+        context.arc(center_x, center_y, radius, 0.0, TAU);
+        context.set_source_rgba(0.95, 0.95, 0.97, 0.92);
+        let _ = context.fill_preserve();
+        context.set_source_rgb(0.22, 0.27, 0.36);
+        context.set_line_width(2.5);
+        let _ = context.stroke();
+        for tick in 0..12 {
+            let angle = f64::from(tick) * TAU / 12.0;
+            let inner = radius - if tick % 3 == 0 { 11.0 } else { 6.0 };
+            context.move_to(center_x + inner * angle.sin(), center_y - inner * angle.cos());
+            context.line_to(center_x + (radius - 3.0) * angle.sin(), center_y - (radius - 3.0) * angle.cos());
+            let _ = context.stroke();
+        }
+        let Ok(now) = glib::DateTime::now_local() else { return };
+        let seconds = now.seconds();
+        let hands = [
+            (
+                ((now.hour() % 12) as f64 + (now.minute() as f64 + seconds / 60.0) / 60.0) * TAU / 12.0,
+                radius * 0.5,
+                5.0,
+                (0.22, 0.27, 0.36),
+            ),
+            ((now.minute() as f64 + seconds / 60.0) * TAU / 60.0, radius * 0.72, 3.5, (0.22, 0.27, 0.36)),
+            (seconds * TAU / 60.0, radius * 0.82, 1.5, (0.87, 0.2, 0.25)),
+        ];
+        for (angle, length, line_width, (r, g, b)) in hands {
+            context.set_source_rgb(r, g, b);
+            context.set_line_width(line_width);
+            context.set_line_cap(gtk4::cairo::LineCap::Round);
+            context.move_to(center_x, center_y);
+            context.line_to(center_x + length * angle.sin(), center_y - length * angle.cos());
+            let _ = context.stroke();
+        }
+        context.arc(center_x, center_y, 3.5, 0.0, TAU);
+        let _ = context.fill();
+    });
+    glib::timeout_add_local(Duration::from_secs(1), {
+        let orb = orb.clone();
+        move || {
+            orb.queue_draw();
+            glib::ControlFlow::Continue
+        }
+    });
+    let mut orb_palette = CardPalette::new();
+    orb_palette.insert(CardColor::Background, Color::<f64>::new(0.30, 0.45, 0.62));
+    orb_palette.insert(CardColor::Foreground, Color::<f64>::new(0.95, 0.95, 0.95));
+    let orb_day = orb_palette.clone();
+    let orb_sats: Vec<Button> = ["starred-symbolic", "night-light-symbolic", "face-smile-symbolic"]
+        .iter()
+        .map(|icon| Button::from_icon_name(icon))
+        .collect();
+    board
+        .add_card_with_id(
+            "orb",
+            &orb,
+            CardConfig {
+                title: Some("Orb".to_string()),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(465.0, 450.0))),
+                palette: Some(orb_palette),
+                shape: CardShape::Circle,
+                circle_content: CircleContent::Fill,
+                foldable: true,
+                closable: true,
+                satellites: Some(CardSatellites {
+                    layout: SatelliteLayout::Radial(Default::default()),
+                    satellites: vec![
+                        SatelliteConfig::custom("star", orb_sats[0].clone()),
+                        SatelliteConfig::custom("moon", orb_sats[1].clone()),
+                        SatelliteConfig::custom("face", orb_sats[2].clone()),
+                    ],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|_| CardId::new("orb"));
+
+    // orb satellites: star rotates the card a quarter turn clockwise
+    // (the clock face turns with it), night-light toggles a dark
+    // palette, face folds/unfolds - the folded circle keeps its
+    // Minimize satellite as the way back.
+    orb_sats[0].connect_clicked({
+        let board = board.clone();
+        move |_| {
+            if let Ok(card) = board.card(&CardId::new("orb")) {
+                card.set_rotation(Rotation::from_degrees(card.rotation().degrees() + 90.0));
+            }
+        }
+    });
+    let mut orb_night = CardPalette::new();
+    orb_night.insert(CardColor::Background, Color::<f64>::new(0.10, 0.12, 0.20));
+    orb_night.insert(CardColor::Foreground, Color::<f64>::new(0.90, 0.90, 0.95));
+    orb_night.insert(CardColor::Header, Color::<f64>::new(0.16, 0.19, 0.30));
+    let night = Cell::new(false);
+    orb_sats[1].connect_clicked({
+        let board = board.clone();
+        move |_| {
+            night.set(!night.get());
+            if let Ok(card) = board.card(&CardId::new("orb")) {
+                if night.get() {
+                    card.set_palette(&orb_night);
+                } else {
+                    card.set_palette(&orb_day);
+                }
+            }
+        }
+    });
+    orb_sats[2].connect_clicked({
+        let board = board.clone();
+        move |_| {
+            if let Ok(card) = board.card(&CardId::new("orb")) {
+                card.set_folded(!card.folded());
+            }
+        }
+    });
 
     let content = gtk4::Box::new(Orientation::Vertical, 0);
     content.append(&board);

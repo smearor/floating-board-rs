@@ -8,6 +8,7 @@
 //! [`FloatingBoard::apply_position`], so satellites follow drag, rotate,
 //! pinch and layout animations without their own tracking code.
 
+use crate::domain::CardShape;
 use crate::domain::ChromeElement;
 use crate::domain::SatelliteItem;
 use crate::domain::SatelliteKind;
@@ -76,6 +77,7 @@ impl FloatingBoard {
             scaling.insert_after(layer, Some(sibling));
             entries.push(SatelliteEntry {
                 id: satellite.id,
+                kind: satellite.kind,
                 anchor: satellite.anchor,
                 widget,
                 scaling,
@@ -117,13 +119,19 @@ impl FloatingBoard {
         let (_, natural) = entry.card.measure_size();
         let footprint = natural.to_f64().with_unit::<Pixels>();
         // Folded or hidden cards hide their satellite set entirely.
-        let shown = !entry.card.folded() && entry.scaling.is_visible();
-        match resolve(&geometry, footprint, &settings.layout, settings.rotation_mode, &items) {
+        let folded = entry.card.folded();
+        let shown = !folded && entry.scaling.is_visible();
+        // Exception: a circle card has no header strip - its `Minimize`
+        // satellite is the only fold/unfold control and stays visible
+        // while folded (otherwise the fold would be a dead end).
+        let fold_exception = folded && entry.scaling.is_visible() && entry.config.shape == CardShape::Circle;
+        match resolve(&geometry, footprint, entry.config.shape, &settings.layout, settings.rotation_mode, &items) {
             Ok(placements) => {
                 for satellite in satellites.iter() {
                     match placements.iter().find(|placement| placement.id == satellite.id) {
                         Some(placement) => {
-                            satellite.scaling.set_visible(shown && satellite.open.get());
+                            let fold_control = fold_exception && matches!(satellite.kind, SatelliteKind::Chrome(ChromeElement::Minimize));
+                            satellite.scaling.set_visible((shown || fold_control) && satellite.open.get());
                             self.apply_satellite_placement(entry, satellite, &layer, placement);
                         }
                         None => {

@@ -13,6 +13,7 @@
 //! functions - they are stateless builders for foreign types (`Label`,
 //! `DrawingArea`).
 
+use crate::domain::CardShape;
 use crate::domain::ChromeElement;
 use crate::domain::ChromePlacement;
 use crate::domain::ChromeSlot;
@@ -77,6 +78,22 @@ impl Card {
     pub(crate) fn mount_chrome(&self, config: &CardConfig) {
         let title = config.title.clone().unwrap_or_else(|| l10n().message("card-untitled"));
         *self.imp().title_text.borrow_mut() = title.clone();
+        // A circle card has no header strip and no corner grips: every
+        // chrome element mounts as a satellite (wired through
+        // `CardConfig::effective_satellites`); elements that cannot be
+        // satellites are dropped.
+        if config.shape == CardShape::Circle {
+            for slot in &config.effective_chrome_slots() {
+                if slot.placement != ChromePlacement::Satellite {
+                    if slot.element.supports_satellite() {
+                        warn!(element = ?slot.element, "inline chrome element has no mount on a circle card - mounted as satellite");
+                    } else {
+                        warn!(element = ?slot.element, "chrome element has no mount on a circle card - skipped");
+                    }
+                }
+            }
+            return;
+        }
         let slots = config.effective_chrome_slots();
         let style = config.chrome_style.resolved();
         if style != config.chrome_style {

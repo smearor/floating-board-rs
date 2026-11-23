@@ -1,11 +1,13 @@
 use crate::domain::CardGeometry;
 use crate::domain::CardPosition;
+use crate::domain::CardShape;
 use crate::domain::RadialConfig;
 use crate::domain::SatelliteDistribution;
 use crate::domain::SatelliteItem;
 use crate::domain::SatelliteLayout;
 use crate::domain::SatellitePlacement;
 use crate::domain::SatelliteRotationMode;
+use smearor_commons_geometry::Distance;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
@@ -42,13 +44,14 @@ use smearor_commons_layout::orbit_radius_for;
 pub fn resolve(
     geometry: &CardGeometry,
     card_footprint: Vec2<Pixels>,
+    card_shape: CardShape,
     layout: &SatelliteLayout,
     mode: SatelliteRotationMode,
     items: &[SatelliteItem],
 ) -> Result<Vec<SatellitePlacement>, LayoutError> {
     match layout {
         SatelliteLayout::Sidebar { sides } => resolve_sidebar(geometry, card_footprint, *sides, mode, items),
-        SatelliteLayout::Radial(config) => resolve_radial(geometry, card_footprint, config, mode, items),
+        SatelliteLayout::Radial(config) => resolve_radial(geometry, card_footprint, card_shape, config, mode, items),
     }
 }
 
@@ -97,6 +100,7 @@ fn resolve_sidebar(
 fn resolve_radial(
     geometry: &CardGeometry,
     card_footprint: Vec2<Pixels>,
+    card_shape: CardShape,
     config: &RadialConfig,
     mode: SatelliteRotationMode,
     items: &[SatelliteItem],
@@ -105,9 +109,15 @@ fn resolve_radial(
         min: card_footprint * -0.5,
         size: card_footprint,
     };
-    // `radius` reads as the gap outward from the card's outline;
-    // `orbit_radius_for` converts it to the centerline orbit radius.
-    let layout = OrbitLayout::new(orbit_radius_for(bounds, config.radius), config.span);
+    // `radius` reads as the gap outward from the card's outline. For a
+    // rectangle card `orbit_radius_for` maps it onto the bounding
+    // circle; a circle card's square footprint bounds it exactly, so
+    // the orbit follows the contour at `footprint/2 + gap`.
+    let orbit_radius = match card_shape {
+        CardShape::Circle => Distance::new(card_footprint.x / 2.0 + config.radius.as_f64()),
+        CardShape::Rectangle => orbit_radius_for(bounds, config.radius),
+    };
+    let layout = OrbitLayout::new(orbit_radius, config.span);
     let anchored = config.distribution == SatelliteDistribution::Anchored;
     let orbit_items: Vec<OrbitItem<Pixels>> = items
         .iter()
@@ -181,6 +191,7 @@ mod tests {
         let placements = resolve(
             &card(500.0, 300.0, 0.0, 1.0),
             Vec2::new(200.0, 100.0),
+            CardShape::Rectangle,
             &sidebar(TableSide::Bottom),
             SatelliteRotationMode::CoRotate,
             &[item("a", 40.0, 30.0)],
@@ -198,6 +209,7 @@ mod tests {
         let placements = resolve(
             &card(500.0, 300.0, 90.0, 1.0),
             Vec2::new(200.0, 100.0),
+            CardShape::Rectangle,
             &sidebar(TableSide::Bottom),
             SatelliteRotationMode::CoRotate,
             &[item("a", 40.0, 30.0)],
@@ -217,6 +229,7 @@ mod tests {
         let placements = resolve(
             &card(500.0, 300.0, 0.0, 2.0),
             Vec2::new(200.0, 100.0),
+            CardShape::Rectangle,
             &sidebar(TableSide::Bottom),
             SatelliteRotationMode::CoRotate,
             &[item("a", 40.0, 30.0)],
@@ -235,6 +248,7 @@ mod tests {
             let placements = resolve(
                 &card(500.0, 300.0, 90.0, 1.0),
                 Vec2::new(200.0, 100.0),
+                CardShape::Rectangle,
                 &sidebar(TableSide::Bottom),
                 mode,
                 &[item("a", 40.0, 30.0)],
@@ -258,6 +272,7 @@ mod tests {
             let placements = resolve(
                 &card(500.0, 300.0, 0.0, 1.0),
                 Vec2::new(200.0, 100.0),
+                CardShape::Rectangle,
                 &sidebar(side),
                 SatelliteRotationMode::CoRotate,
                 &[item("a", 30.0, 30.0)],
@@ -275,6 +290,7 @@ mod tests {
         let placements = resolve(
             &card(0.0, 0.0, 0.0, 1.0),
             Vec2::new(200.0, 100.0),
+            CardShape::Rectangle,
             &sidebar(TableSide::Bottom),
             SatelliteRotationMode::CoRotate,
             &[],
@@ -298,6 +314,7 @@ mod tests {
         let placements = resolve(
             &card(0.0, 0.0, 0.0, 1.0),
             Vec2::new(200.0, 100.0),
+            CardShape::Rectangle,
             &radial(SatelliteDistribution::Even),
             SatelliteRotationMode::CoRotate,
             &items,
@@ -324,7 +341,15 @@ mod tests {
             ..Default::default()
         });
         let items: Vec<SatelliteItem> = ["a", "b", "c"].iter().map(|id| item(id, 30.0, 30.0)).collect();
-        let placements = resolve(&card(0.0, 0.0, 0.0, 1.0), Vec2::new(200.0, 100.0), &layout, SatelliteRotationMode::CoRotate, &items).expect("resolves");
+        let placements = resolve(
+            &card(0.0, 0.0, 0.0, 1.0),
+            Vec2::new(200.0, 100.0),
+            CardShape::Rectangle,
+            &layout,
+            SatelliteRotationMode::CoRotate,
+            &items,
+        )
+        .expect("resolves");
         let radius = 200.0_f64.hypot(100.0) / 2.0 + 48.0;
         let expected = [(radius, 0.0), (0.0, radius), (-radius, 0.0)];
         for (placement, (ex, ey)) in placements.iter().zip(expected) {
@@ -341,6 +366,7 @@ mod tests {
         let placements = resolve(
             &card(330.0, 400.0, 0.0, 1.0),
             Vec2::new(227.0, 135.0),
+            CardShape::Rectangle,
             &radial(SatelliteDistribution::Even),
             SatelliteRotationMode::CoRotate,
             &items,
@@ -357,6 +383,32 @@ mod tests {
         );
     }
 
+    /// The same square footprint resolves to different orbit radii per
+    /// `CardShape`: a circle card's square bounds the disk exactly
+    /// (`footprint/2 + gap`), while a rectangle card's orbit rides on
+    /// the bounding circle (`magnitude/2 + gap`).
+    #[test]
+    fn circle_orbit_follows_the_contour() {
+        let items = [item("a", 30.0, 30.0)];
+        for (shape, expected_radius) in [
+            (CardShape::Circle, 200.0 / 2.0 + 48.0),
+            (CardShape::Rectangle, 200.0_f64.hypot(200.0) / 2.0 + 48.0),
+        ] {
+            let placements = resolve(
+                &card(0.0, 0.0, 0.0, 1.0),
+                Vec2::new(200.0, 200.0),
+                shape,
+                &radial(SatelliteDistribution::Even),
+                SatelliteRotationMode::CoRotate,
+                &items,
+            )
+            .expect("resolves");
+            let position = Vec2::<Pixels>::from(placements[0].geometry.position);
+            let distance = position.x.hypot(position.y);
+            assert!((distance - expected_radius).abs() < 1e-9, "{shape:?} orbit at {distance}, expected {expected_radius}");
+        }
+    }
+
     /// `Anchored` pins anchored satellites to their card-local angle
     /// verbatim while flexible ones fill the gaps; `Even` ignores
     /// anchors entirely.
@@ -369,6 +421,7 @@ mod tests {
         let anchored = resolve(
             &card(0.0, 0.0, 0.0, 1.0),
             Vec2::new(200.0, 100.0),
+            CardShape::Rectangle,
             &radial(SatelliteDistribution::Anchored),
             SatelliteRotationMode::CoRotate,
             &items,
@@ -385,6 +438,7 @@ mod tests {
         let even = resolve(
             &card(0.0, 0.0, 0.0, 1.0),
             Vec2::new(200.0, 100.0),
+            CardShape::Rectangle,
             &radial(SatelliteDistribution::Even),
             SatelliteRotationMode::CoRotate,
             &items,
@@ -408,8 +462,15 @@ mod tests {
             SatelliteRotationMode::CounterRotate,
         ] {
             for degrees in [0.0, 45.0, 90.0, 180.0] {
-                let placements =
-                    resolve(&card(0.0, 0.0, degrees, 1.0), Vec2::new(200.0, 100.0), &radial(SatelliteDistribution::Even), mode, &items).expect("resolves");
+                let placements = resolve(
+                    &card(0.0, 0.0, degrees, 1.0),
+                    Vec2::new(200.0, 100.0),
+                    CardShape::Rectangle,
+                    &radial(SatelliteDistribution::Even),
+                    mode,
+                    &items,
+                )
+                .expect("resolves");
                 let position = Vec2::<Pixels>::from(placements[0].geometry.position);
                 let widget_rotation = placements[0].geometry.rotation;
                 // A single item on a full circle sits at the span's
@@ -449,6 +510,7 @@ mod tests {
         let placements = resolve(
             &card(0.0, 0.0, 0.0, 2.0),
             Vec2::new(200.0, 100.0),
+            CardShape::Rectangle,
             &radial(SatelliteDistribution::Even),
             SatelliteRotationMode::CoRotate,
             &items,
@@ -467,6 +529,7 @@ mod tests {
         let result = resolve(
             &card(0.0, 0.0, 0.0, 1.0),
             Vec2::new(100.0, 100.0),
+            CardShape::Rectangle,
             &sidebar(TableSide::Bottom),
             SatelliteRotationMode::CoRotate,
             &[item("a", 150.0, 30.0)],

@@ -205,6 +205,7 @@ impl FloatingBoard {
             // inverse-solve shrinks non-square children near 45°.
             .with_natural_child_size_enabled(true);
         rotation_widget.set_animation_speed(config.animation_speed_ms);
+        rotation_widget.set_animation_speed(config.animation_speed_ms);
         rotation_widget.set_child(Some(&card));
         let scaling = ScalingWidget::new(&rotation_widget);
         layer.put(&scaling, 0.0, 0.0);

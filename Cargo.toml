@@ -25,7 +25,7 @@ smearor-commons-animation = { git = "https://github.com/smearor/smearor-commons.
 smearor-commons-color = { git = "https://github.com/smearor/smearor-commons.git" }
 smearor-commons-geometry = { git = "https://github.com/smearor/smearor-commons.git", features = ["cairo", "gtk4"] }
 smearor-commons-layout = { git = "https://github.com/smearor/smearor-commons.git" }
-smearor-wrot-rotation = { git = "https://github.com/smearor/smearor-wrot-rotation.git", default-features = false }
+smearor-wrot-rotation = { git = "https://github.com/smearor/smearor-wrot-rotation.git" }
 thiserror = "2"
 tracing = "0.1"
 unic-langid = { version = "0.9", features = ["macros"] }
@@ -42,3 +42,9 @@ opt-level = 0
 opt-level = 3
 lto = true
 strip = "symbols"
+
+# Local override until the `contains` delegation in `RotationWidgetImpl`
+# (leaf picks in a rotated child's invisible corners were swallowed by
+# the transform wrapper) lands upstream.
+#[patch."https://github.com/smearor/smearor-wrot-rotation.git"]
+#smearor-wrot-rotation = { path = "../smearor-wrot-rotation" }

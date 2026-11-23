@@ -15,6 +15,11 @@ pub const CLASS_BOARD: &str = "floating-board";
 pub const CLASS_CARD_LAYER: &str = "floating-card-layer";
 /// CSS class of every card.
 pub const CLASS_CARD: &str = "floating-card";
+
+/// Circle card (`CardShape::Circle`): rounds the card's background
+/// and border into the disc; the ring between content and edge is the
+/// card's own surface.
+pub const CLASS_CARD_CIRCLE: &str = "floating-card-circle";
 /// CSS class of a card's header strip (drag affordance).
 pub const CLASS_HEADER: &str = "floating-card-header";
 /// CSS class applied to cards configured `headerless`.

@@ -3,6 +3,8 @@ use crate::domain::CardGeometry;
 use crate::domain::CardId;
 use crate::domain::CardPalette;
 use crate::domain::CardPosition;
+use crate::domain::CardShape;
+use crate::domain::CircleContent;
 use crate::domain::DragHandle;
 use crate::domain::ScaleFactor;
 use crate::domain::TurnDirection;
@@ -11,6 +13,7 @@ use crate::widget::board::FloatingBoard;
 use crate::widget::card_config::CardConfig;
 use crate::widget::card_layer::CardLayer;
 use crate::widget::card_signal::CardSignal;
+use crate::widget::css::CLASS_CARD_CIRCLE;
 use crate::widget::css::CLASS_COLLAPSED;
 use crate::widget::css::CLASS_FOLDED;
 use crate::widget::css::CLASS_HEADERLESS;
@@ -39,6 +42,7 @@ use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
 use smearor_commons_layout::Seat;
 use tracing::debug;
+use crate::widget::circular_clip::CircularClip;
 
 glib::wrapper! {
     /// A floating card on the board: header strip plus consumer content.
@@ -66,6 +70,11 @@ impl Card {
         imp.max_width.set(config.max_width);
         imp.max_height.set(config.max_height);
 
+        imp.shape.set(config.shape);
+        imp.circle_content.set(config.circle_content);
+        if config.shape == CardShape::Circle {
+            card.add_css_class(CLASS_CARD_CIRCLE);
+        }
         if config.headerless {
             card.add_css_class(CLASS_HEADERLESS);
         }
@@ -79,6 +88,18 @@ impl Card {
         card.mount_chrome(config);
         if let Some(label) = imp.title_label.get() {
             label.set_visible(!config.headerless);
+        }
+        if config.shape == CardShape::Circle
+            && config.circle_content == CircleContent::Clipped
+            && let (Some(overlay), Some(holder)) = (imp.content_overlay.get(), imp.content_holder.get())
+        {
+            // `Clipped`: a `CircularClip` between overlay and holder cuts
+            // render and pick at the inner circle - crescent picks fall
+            // back to the card, keeping the ring a drag affordance.
+            let clip = CircularClip::new();
+            overlay.set_child(None::<&Widget>);
+            clip.set_child(holder);
+            overlay.set_child(Some(&clip));
         }
         if let Some(holder) = imp.content_holder.get() {
             // Configured as margin on our own holder rather than padding on
@@ -366,7 +387,15 @@ impl Card {
                 // collapsed card is meant to shrink instead.
                 if !collapsed {
                     let (_, natural) = self.measure_size();
-                    self.set_size_request(natural.x, -1);
+                    if imp.shape.get() == CardShape::Circle {
+                        // A folded circle collapses onto its ring: the
+                        // diameter stays pinned so the empty disc keeps
+                        // the card's size.
+                        let diameter = natural.x.max(natural.y);
+                        self.set_size_request(diameter, diameter);
+                    } else {
+                        self.set_size_request(natural.x, -1);
+                    }
                 }
             } else {
                 self.set_size_request(-1, -1);

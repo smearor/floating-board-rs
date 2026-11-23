@@ -4,6 +4,12 @@
     border-radius: 12px;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
 }
+/* `CardShape::Circle`: the rounded background renders the ring;
+   the content lives in the inscribed square by layout, so it can never
+   paint past the disc. */
+.floating-card-circle {
+    border-radius: 9999px;
+}
 .floating-card-header {
     background-color: #3b4252;
     border-radius: 12px 12px 0 0;

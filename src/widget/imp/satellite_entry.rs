@@ -1,5 +1,6 @@
 use crate::domain::CardGeometry;
 use crate::domain::SatelliteId;
+use crate::domain::SatelliteKind;
 use crate::widget::scaling::ScalingWidget;
 use gtk4::Widget;
 use smearor_commons_geometry::Rotation;
@@ -13,6 +14,10 @@ use std::cell::Cell;
 pub(crate) struct SatelliteEntry {
     /// Stable id - keys the resolver's `SatellitePlacement` results.
     pub id: SatelliteId,
+    /// The satellite's kind - distinguishes chrome elements from
+    /// consumer widgets (needed for the circle card's fold exception:
+    /// its `Minimize` satellite is the only unfold control).
+    pub kind: SatelliteKind,
     /// Fixed anchor angle for `SatelliteDistribution::Anchored`
     /// (radial matter, Phase 3).
     pub anchor: Option<Rotation>,
