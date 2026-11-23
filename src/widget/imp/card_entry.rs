@@ -11,6 +11,7 @@ use crate::widget::imp::quad_baseline::QuadBaseline;
 use crate::widget::imp::satellite_entry::SatelliteEntry;
 use crate::widget::imp::tracked_touch::TrackedTouch;
 use crate::widget::scaling::ScalingWidget;
+use gtk4::GestureDrag;
 use gtk4::gdk::EventSequence;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::RotationRad;
@@ -48,6 +49,10 @@ pub(crate) struct CardEntry {
     pub scale: Cell<ScaleFactor>,
     /// Anchor awaiting resolution at the next board allocation.
     pub pending_anchor: RefCell<Option<CardAnchor>>,
+    /// The card-move drag gesture - kept so `refresh_drag_source` can
+    /// move it between the card and the header when the folded state
+    /// flips (`WholeCardFolded`/`WholeCardUnfolded` modes).
+    pub card_drag: RefCell<Option<GestureDrag>>,
     /// Card center at the start of the active drag gesture.
     pub drag_start: Cell<CardPosition>,
     /// Pointer position in workspace coordinates at drag begin.

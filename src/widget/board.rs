@@ -228,6 +228,7 @@ impl FloatingBoard {
             rotation: Cell::new(RotationRad::ZERO),
             scale: Cell::new(ScaleFactor::default()),
             pending_anchor: RefCell::new(pending_anchor),
+            card_drag: RefCell::new(None),
             drag_start: Cell::new(CardPosition::default()),
             drag_grab: Cell::new(None),
             resize_grab: Cell::new(None),
@@ -1538,6 +1539,24 @@ impl FloatingBoard {
         offset.rotated(rotation) * scale
     }
 
+    /// Re-resolves the drag affordance for the card's current folded
+    /// state and moves the drag controller when the source widget
+    /// changed (`WholeCardFolded`/`WholeCardUnfolded` switch between the
+    /// card and the header strip on fold).
+    fn refresh_drag_source(&self, entry: &CardEntry) {
+        let Some(drag) = entry.card_drag.borrow().clone() else {
+            return;
+        };
+        let source = entry.card.drag_source(entry.config.drag_handle);
+        if drag.widget().as_ref() == Some(&source) {
+            return;
+        }
+        if let Some(old) = drag.widget() {
+            old.remove_controller(&drag);
+        }
+        source.add_controller(drag);
+    }
+
     /// Reorders the card layer by `z_index` (stable by insertion sequence).
     fn restack(&self) {
         let Some(layer) = self.card_layer() else {
@@ -1567,6 +1586,7 @@ impl FloatingBoard {
                 {
                     let cards = board.imp().cards.borrow();
                     if let Some(entry) = cards.get(&card_id) {
+                        board.refresh_drag_source(entry);
                         board.on_card_folded(entry);
                     }
                 }
@@ -1630,6 +1650,9 @@ impl FloatingBoard {
                 }
             });
             card.drag_source(config.drag_handle).add_controller(drag.clone());
+            if let Some(entry) = self.imp().cards.borrow().get(id) {
+                entry.card_drag.replace(Some(drag.clone()));
+            }
             card_drag = Some(drag);
         }
 

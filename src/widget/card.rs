@@ -501,11 +501,23 @@ impl Card {
         self.imp().rotate_grip.get().cloned().map(|grip| grip.upcast())
     }
 
-    /// Widget acting as the drag affordance for the given handle mode.
+    /// Widget acting as the drag affordance for the given handle mode
+    /// and the card's current folded state. `WholeCardFolded` and
+    /// `WholeCardUnfolded` drag the whole card in their named state and
+    /// fall back to the header strip in the other - an unfolded
+    /// `WholeCardFolded` card keeps its interactive content usable.
     pub(crate) fn drag_source(&self, drag_handle: DragHandle) -> Widget {
+        let folded = self.imp().folded.get();
+        let whole_card = match drag_handle {
+            DragHandle::WholeCard => true,
+            DragHandle::WholeCardFolded => folded,
+            DragHandle::WholeCardUnfolded => !folded,
+            DragHandle::Header | DragHandle::Handle => false,
+        };
+        if whole_card {
+            return self.clone().upcast();
+        }
         match drag_handle {
-            DragHandle::Header => self.imp().header.get().cloned().unwrap_or_else(|| self.clone().upcast()),
-            DragHandle::WholeCard => self.clone().upcast(),
             DragHandle::Handle => self
                 .imp()
                 .handle_label
@@ -513,6 +525,7 @@ impl Card {
                 .cloned()
                 .map(|h| h.upcast())
                 .unwrap_or_else(|| self.clone().upcast()),
+            _ => self.imp().header.get().cloned().unwrap_or_else(|| self.clone().upcast()),
         }
     }
 }

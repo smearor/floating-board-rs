@@ -7,6 +7,12 @@ pub enum DragHandle {
     Header,
     /// The whole card surface is the drag affordance (display-only cards).
     WholeCard,
+    /// The whole card surface drags only while folded; while unfolded
+    /// only the header strip drags, keeping interactive content usable.
+    WholeCardFolded,
+    /// The whole card surface drags only while unfolded; while folded
+    /// only the header strip drags.
+    WholeCardUnfolded,
     /// A dedicated handle widget inside the header (grip icon).
     Handle,
 }

@@ -25,6 +25,7 @@ use floating_board::ChromeElement;
 use floating_board::ChromeSlot;
 use floating_board::ChromeStyle;
 use floating_board::CircleContent;
+use floating_board::DragHandle;
 use floating_board::FloatingBoard;
 use floating_board::SatelliteConfig;
 use floating_board::SatelliteDistribution;
@@ -151,6 +152,9 @@ fn build_ui(application: &gtk4::Application) {
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(330.0, 400.0))),
                 palette: Some(memo_palette),
                 chrome_style: ChromeStyle::Adwaita,
+                // Unfolded drags only via the header (buttons stay
+                // usable); the folded strip drags anywhere.
+                drag_handle: DragHandle::WholeCardFolded,
                 chrome: Some(vec![
                     ChromeSlot::inline(ChromeElement::Title),
                     ChromeSlot::inline(ChromeElement::Minimize),
