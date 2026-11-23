@@ -1650,6 +1650,22 @@ impl FloatingBoard {
                 }
             });
             card.drag_source(config.drag_handle).add_controller(drag.clone());
+            // Click-to-unfold: `released` only fires for sequences no
+            // other gesture claimed - the card drag claims at its
+            // threshold, so taps unfold while drags never do.
+            if config.unfold_on_click {
+                let unfold_click = GestureClick::new();
+                unfold_click.set_button(0);
+                let card_weak = card.downgrade();
+                unfold_click.connect_released(move |_, _, _, _| {
+                    if let Some(card) = card_weak.upgrade()
+                        && card.folded()
+                    {
+                        card.set_folded(false);
+                    }
+                });
+                card.add_controller(unfold_click);
+            }
             if let Some(entry) = self.imp().cards.borrow().get(id) {
                 entry.card_drag.replace(Some(drag.clone()));
             }

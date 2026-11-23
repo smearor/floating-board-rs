@@ -47,6 +47,64 @@ use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
 /// A circular color-dot satellite button styled by `class`.
+/// A `DrawingArea` rendering an analog clock face, ticking once per
+/// second. Two instances exist: the orb's content and its
+/// `folded_content` (a widget has exactly one parent). The unfolded
+/// face is three times the folded one.
+fn build_clock(size: i32) -> gtk4::DrawingArea {
+    let clock = gtk4::DrawingArea::new();
+    clock.set_content_width(size);
+    clock.set_content_height(size);
+    clock.set_draw_func(|_area, context, width, height| {
+        let (width, height) = (f64::from(width), f64::from(height));
+        let (center_x, center_y) = (width / 2.0, height / 2.0);
+        let radius = width.min(height) / 2.0 - 3.0;
+        context.arc(center_x, center_y, radius, 0.0, TAU);
+        context.set_source_rgba(0.95, 0.95, 0.97, 0.92);
+        let _ = context.fill_preserve();
+        context.set_source_rgb(0.22, 0.27, 0.36);
+        context.set_line_width(2.5);
+        let _ = context.stroke();
+        for tick in 0..12 {
+            let angle = f64::from(tick) * TAU / 12.0;
+            let inner = radius - if tick % 3 == 0 { 11.0 } else { 6.0 };
+            context.move_to(center_x + inner * angle.sin(), center_y - inner * angle.cos());
+            context.line_to(center_x + (radius - 3.0) * angle.sin(), center_y - (radius - 3.0) * angle.cos());
+            let _ = context.stroke();
+        }
+        let Ok(now) = glib::DateTime::now_local() else { return };
+        let seconds = now.seconds();
+        let hands = [
+            (
+                ((now.hour() % 12) as f64 + (now.minute() as f64 + seconds / 60.0) / 60.0) * TAU / 12.0,
+                radius * 0.5,
+                5.0,
+                (0.22, 0.27, 0.36),
+            ),
+            ((now.minute() as f64 + seconds / 60.0) * TAU / 60.0, radius * 0.72, 3.5, (0.22, 0.27, 0.36)),
+            (seconds * TAU / 60.0, radius * 0.82, 1.5, (0.87, 0.2, 0.25)),
+        ];
+        for (angle, length, line_width, (r, g, b)) in hands {
+            context.set_source_rgb(r, g, b);
+            context.set_line_width(line_width);
+            context.set_line_cap(gtk4::cairo::LineCap::Round);
+            context.move_to(center_x, center_y);
+            context.line_to(center_x + length * angle.sin(), center_y - length * angle.cos());
+            let _ = context.stroke();
+        }
+        context.arc(center_x, center_y, 3.5, 0.0, TAU);
+        let _ = context.fill();
+    });
+    glib::timeout_add_local(Duration::from_secs(1), {
+        let clock = clock.clone();
+        move || {
+            clock.queue_draw();
+            glib::ControlFlow::Continue
+        }
+    });
+    clock
+}
+
 fn dot_button(class: &str) -> Button {
     let button = Button::new();
     button.add_css_class(class);
@@ -264,57 +322,10 @@ fn build_ui(application: &gtk4::Application) {
     // `CircleContent::Fill`: the widget draws its own circular
     // appearance - a clock face with hands, ticking once per second.
     // The face fills the inner square and leaves the palette ring
-    // visible.
-    let orb = gtk4::DrawingArea::new();
-    orb.set_content_width(96);
-    orb.set_content_height(96);
-    orb.set_draw_func(|_area, context, width, height| {
-        let (width, height) = (f64::from(width), f64::from(height));
-        let (center_x, center_y) = (width / 2.0, height / 2.0);
-        let radius = width.min(height) / 2.0 - 3.0;
-        context.arc(center_x, center_y, radius, 0.0, TAU);
-        context.set_source_rgba(0.95, 0.95, 0.97, 0.92);
-        let _ = context.fill_preserve();
-        context.set_source_rgb(0.22, 0.27, 0.36);
-        context.set_line_width(2.5);
-        let _ = context.stroke();
-        for tick in 0..12 {
-            let angle = f64::from(tick) * TAU / 12.0;
-            let inner = radius - if tick % 3 == 0 { 11.0 } else { 6.0 };
-            context.move_to(center_x + inner * angle.sin(), center_y - inner * angle.cos());
-            context.line_to(center_x + (radius - 3.0) * angle.sin(), center_y - (radius - 3.0) * angle.cos());
-            let _ = context.stroke();
-        }
-        let Ok(now) = glib::DateTime::now_local() else { return };
-        let seconds = now.seconds();
-        let hands = [
-            (
-                ((now.hour() % 12) as f64 + (now.minute() as f64 + seconds / 60.0) / 60.0) * TAU / 12.0,
-                radius * 0.5,
-                5.0,
-                (0.22, 0.27, 0.36),
-            ),
-            ((now.minute() as f64 + seconds / 60.0) * TAU / 60.0, radius * 0.72, 3.5, (0.22, 0.27, 0.36)),
-            (seconds * TAU / 60.0, radius * 0.82, 1.5, (0.87, 0.2, 0.25)),
-        ];
-        for (angle, length, line_width, (r, g, b)) in hands {
-            context.set_source_rgb(r, g, b);
-            context.set_line_width(line_width);
-            context.set_line_cap(gtk4::cairo::LineCap::Round);
-            context.move_to(center_x, center_y);
-            context.line_to(center_x + length * angle.sin(), center_y - length * angle.cos());
-            let _ = context.stroke();
-        }
-        context.arc(center_x, center_y, 3.5, 0.0, TAU);
-        let _ = context.fill();
-    });
-    glib::timeout_add_local(Duration::from_secs(1), {
-        let orb = orb.clone();
-        move || {
-            orb.queue_draw();
-            glib::ControlFlow::Continue
-        }
-    });
+    // visible. Folded, the card swaps to a second clock instance via
+    // `folded_content` - the minimized card keeps ticking.
+    let orb = build_clock(288);
+    let orb_folded = build_clock(96);
     let mut orb_palette = CardPalette::new();
     orb_palette.insert(CardColor::Background, Color::<f64>::new(0.30, 0.45, 0.62));
     orb_palette.insert(CardColor::Foreground, Color::<f64>::new(0.95, 0.95, 0.95));
@@ -335,6 +346,13 @@ fn build_ui(application: &gtk4::Application) {
                 circle_content: CircleContent::Fill,
                 foldable: true,
                 closable: true,
+                // Minimized the card shows the folded clock; a tap
+                // unfolds it again (the drag claims move sequences, so
+                // dragging never unfolds) and drags move it in both
+                // states.
+                folded_content: Some(orb_folded.upcast()),
+                unfold_on_click: true,
+                drag_handle: DragHandle::WholeCard,
                 satellites: Some(CardSatellites {
                     layout: SatelliteLayout::Radial(Default::default()),
                     satellites: vec![
@@ -351,8 +369,8 @@ fn build_ui(application: &gtk4::Application) {
 
     // orb satellites: star rotates the card a quarter turn clockwise
     // (the clock face turns with it), night-light toggles a dark
-    // palette, face folds/unfolds - the folded circle keeps its
-    // Minimize satellite as the way back.
+    // palette, face folds/unfolds - the folded clock unfolds again on
+    // click (`unfold_on_click`), so no Minimize satellite stays.
     orb_sats[0].connect_clicked({
         let board = board.clone();
         move |_| {

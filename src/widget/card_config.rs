@@ -130,9 +130,18 @@ pub struct CardConfig {
     ///
     /// The folded widget should offer an unfold affordance wired to
     /// `Card::set_folded(false)` or `Card::fold` - the card's own fold
-    /// button hides with the header.
+    /// button hides with the header. `unfold_on_click` provides a
+    /// ready-made affordance for cards without one.
     #[cfg_attr(feature = "serde", serde(skip))]
     pub folded_content: Option<Widget>,
+    /// A click on the folded card unfolds it (revealing the satellite
+    /// set again). The click gesture only releases on sequences the
+    /// card drag did not claim, so moving a folded card never unfolds
+    /// it. While enabled the circle card's `Minimize` fold exception is
+    /// unnecessary - the card is one tap away from unfolding - so the
+    /// satellite closes with the rest of the set.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub unfold_on_click: bool,
     /// Pins the card to the screen instead of the workspace: a sticky
     /// card ignores the `View` camera entirely and keeps its on-screen
     /// position, rotation and zoom while the view pans, zooms or
@@ -199,6 +208,7 @@ impl Default for CardConfig {
             animation_speed_ms: 500,
             seat: None,
             folded_content: None,
+            unfold_on_click: false,
             sticky: false,
             chrome: None,
             chrome_style: ChromeStyle::default(),
