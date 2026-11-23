@@ -2,172 +2,512 @@
 <a href=#2 id=2 data-nosnippet>2</a><span class="kw">use </span><span class="kw">crate</span>::domain::BoundsMode;
 <a href=#3 id=3 data-nosnippet>3</a><span class="kw">use </span><span class="kw">crate</span>::domain::CardAnchor;
 <a href=#4 id=4 data-nosnippet>4</a><span class="kw">use </span><span class="kw">crate</span>::domain::CardPalette;
-<a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span><span class="kw">crate</span>::domain::DragHandle;
-<a href=#6 id=6 data-nosnippet>6</a><span class="kw">use </span><span class="kw">crate</span>::domain::MinVisible;
-<a href=#7 id=7 data-nosnippet>7</a><span class="kw">use </span><span class="kw">crate</span>::domain::ScaleBounds;
-<a href=#8 id=8 data-nosnippet>8</a><span class="kw">use </span><span class="kw">crate</span>::widget::card_close_action::CardCloseAction;
-<a href=#9 id=9 data-nosnippet>9</a><span class="kw">use </span>gtk4::Widget;
-<a href=#10 id=10 data-nosnippet>10</a><span class="kw">use </span>smearor_commons_geometry::Pixels;
-<a href=#11 id=11 data-nosnippet>11</a><span class="kw">use </span>smearor_commons_layout::Seat;
-<a href=#12 id=12 data-nosnippet>12</a>
-<a href=#13 id=13 data-nosnippet>13</a><span class="doccomment">/// Default space between the card border and the content widget (px) -
-<a href=#14 id=14 data-nosnippet>14</a>/// the value `.floating-card-content` previously carried as fixed CSS
-<a href=#15 id=15 data-nosnippet>15</a>/// padding.
-<a href=#16 id=16 data-nosnippet>16</a></span><span class="kw">pub const </span>DEFAULT_CONTENT_PADDING: Pixels = Pixels::new(<span class="number">10.0</span>);
-<a href=#17 id=17 data-nosnippet>17</a>
-<a href=#18 id=18 data-nosnippet>18</a><span class="doccomment">/// Placement and interaction configuration of a card.
-<a href=#19 id=19 data-nosnippet>19</a>///
-<a href=#20 id=20 data-nosnippet>20</a>/// Passed to `FloatingBoard::add_card`; all fields have defaults so
-<a href=#21 id=21 data-nosnippet>21</a>/// `CardConfig::default()` yields a fully interactive, draggable card anchored
-<a href=#22 id=22 data-nosnippet>22</a>/// at the board center.
-<a href=#23 id=23 data-nosnippet>23</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
-<a href=#24 id=24 data-nosnippet>24</a>#[cfg_attr(feature = <span class="string">"serde"</span>, derive(serde::Serialize, serde::Deserialize))]
-<a href=#25 id=25 data-nosnippet>25</a></span><span class="kw">pub struct </span>CardConfig {
-<a href=#26 id=26 data-nosnippet>26</a>    <span class="doccomment">/// Title shown in the header strip; falls back to a localized default when
-<a href=#27 id=27 data-nosnippet>27</a>    /// the header is visible and no title is set.
-<a href=#28 id=28 data-nosnippet>28</a>    </span><span class="kw">pub </span>title: <span class="prelude-ty">Option</span>&lt;String&gt;,
-<a href=#29 id=29 data-nosnippet>29</a>    <span class="doccomment">/// Initial placement anchor, resolved on first allocation.
-<a href=#30 id=30 data-nosnippet>30</a>    </span><span class="kw">pub </span>position: CardAnchor,
-<a href=#31 id=31 data-nosnippet>31</a>    <span class="doccomment">/// Whether the card can be moved by dragging.
-<a href=#32 id=32 data-nosnippet>32</a>    </span><span class="kw">pub </span>draggable: bool,
-<a href=#33 id=33 data-nosnippet>33</a>    <span class="doccomment">/// Whether the card can be rotated via the two-finger rotate gesture.
-<a href=#34 id=34 data-nosnippet>34</a>    </span><span class="kw">pub </span>rotatable: bool,
-<a href=#35 id=35 data-nosnippet>35</a>    <span class="doccomment">/// Whether the card can be scaled via the pinch gesture.
-<a href=#36 id=36 data-nosnippet>36</a>    </span><span class="kw">pub </span>scalable: bool,
-<a href=#37 id=37 data-nosnippet>37</a>    <span class="doccomment">/// Whether the card shows a bottom-right resize grip that scales the
-<a href=#38 id=38 data-nosnippet>38</a>    /// card around its center when dragged (mouse and touch).
-<a href=#39 id=39 data-nosnippet>39</a>    </span><span class="kw">pub </span>resizable: bool,
-<a href=#40 id=40 data-nosnippet>40</a>    <span class="doccomment">/// Whether the card shows a bottom-left rotate grip that steps the
-<a href=#41 id=41 data-nosnippet>41</a>    /// rotation to the next quarter turn in the swipe direction - one
-<a href=#42 id=42 data-nosnippet>42</a>    /// quarter turn per drag, no matter how far the swipe goes (mouse
-<a href=#43 id=43 data-nosnippet>43</a>    /// and touch). Works independently of `rotatable`, which gates the
-<a href=#44 id=44 data-nosnippet>44</a>    /// free two-finger rotate.
-<a href=#45 id=45 data-nosnippet>45</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
-<a href=#46 id=46 data-nosnippet>46</a>    </span><span class="kw">pub </span>rotate_grip: bool,
-<a href=#47 id=47 data-nosnippet>47</a>    <span class="doccomment">/// Whether the card can be folded down to its header.
-<a href=#48 id=48 data-nosnippet>48</a>    </span><span class="kw">pub </span>foldable: bool,
-<a href=#49 id=49 data-nosnippet>49</a>    <span class="doccomment">/// Whether the header shows a close button.
-<a href=#50 id=50 data-nosnippet>50</a>    </span><span class="kw">pub </span>closable: bool,
-<a href=#51 id=51 data-nosnippet>51</a>    <span class="doccomment">/// What the close button does - remove the card (default) or hide it
-<a href=#52 id=52 data-nosnippet>52</a>    /// so a menu can re-open it later.
-<a href=#53 id=53 data-nosnippet>53</a>    </span><span class="kw">pub </span>close_action: CardCloseAction,
-<a href=#54 id=54 data-nosnippet>54</a>    <span class="doccomment">/// Collapses the header to a slim grip when no title/buttons are needed.
-<a href=#55 id=55 data-nosnippet>55</a>    </span><span class="kw">pub </span>headerless: bool,
-<a href=#56 id=56 data-nosnippet>56</a>    <span class="doccomment">/// Which part of the card acts as the drag affordance.
-<a href=#57 id=57 data-nosnippet>57</a>    </span><span class="kw">pub </span>drag_handle: DragHandle,
-<a href=#58 id=58 data-nosnippet>58</a>    <span class="doccomment">/// Margin in pixels an edge or corner anchor keeps between the card's
-<a href=#59 id=59 data-nosnippet>59</a>    /// footprint and the board edge; default `ANCHOR_MARGIN` (24 px).
-<a href=#60 id=60 data-nosnippet>60</a>    /// Ignored for `Center` and `Explicit` placements.
-<a href=#61 id=61 data-nosnippet>61</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default = <span class="string">"default_anchor_margin"</span>))]
-<a href=#62 id=62 data-nosnippet>62</a>    </span><span class="kw">pub </span>anchor_margin: Pixels,
-<a href=#63 id=63 data-nosnippet>63</a>    <span class="doccomment">/// Inclusive scale limits for the pinch gesture; default `0.5 - 2.0`.
-<a href=#64 id=64 data-nosnippet>64</a>    </span><span class="kw">pub </span>scale_limits: ScaleBounds,
-<a href=#65 id=65 data-nosnippet>65</a>    <span class="doccomment">/// Minimum overlap in pixels a card must keep inside the board bounds.
-<a href=#66 id=66 data-nosnippet>66</a>    </span><span class="kw">pub </span>min_visible: MinVisible,
-<a href=#67 id=67 data-nosnippet>67</a>    <span class="doccomment">/// How strictly the card's footprint is kept inside the board bounds;
-<a href=#68 id=68 data-nosnippet>68</a>    /// default `Loose` (only `min_visible` is enforced).
-<a href=#69 id=69 data-nosnippet>69</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
-<a href=#70 id=70 data-nosnippet>70</a>    </span><span class="kw">pub </span>bounds_mode: BoundsMode,
-<a href=#71 id=71 data-nosnippet>71</a>    <span class="doccomment">/// Per-card color scheme: a [`CardPalette`] mapped onto scoped CSS
-<a href=#72 id=72 data-nosnippet>72</a>    /// at build time. `None` (or a palette with unfilled slots) keeps
-<a href=#73 id=73 data-nosnippet>73</a>    /// the themed/default-card colors.
-<a href=#74 id=74 data-nosnippet>74</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
-<a href=#75 id=75 data-nosnippet>75</a>    </span><span class="kw">pub </span>palette: <span class="prelude-ty">Option</span>&lt;CardPalette&gt;,
-<a href=#76 id=76 data-nosnippet>76</a>    <span class="doccomment">/// Space in pixels between the card border and the content widget;
-<a href=#77 id=77 data-nosnippet>77</a>    /// default `DEFAULT_CONTENT_PADDING` (10 px, the former fixed CSS
-<a href=#78 id=78 data-nosnippet>78</a>    /// value). `0` lets the content sit flush with the card edge.
-<a href=#79 id=79 data-nosnippet>79</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default = <span class="string">"default_content_padding"</span>))]
-<a href=#80 id=80 data-nosnippet>80</a>    </span><span class="kw">pub </span>content_padding: Pixels,
-<a href=#81 id=81 data-nosnippet>81</a>    <span class="doccomment">/// Optional initial z-ordering; `None` appends the card on top.
-<a href=#82 id=82 data-nosnippet>82</a>    </span><span class="kw">pub </span>z_index: <span class="prelude-ty">Option</span>&lt;i32&gt;,
-<a href=#83 id=83 data-nosnippet>83</a>    <span class="doccomment">/// Hard upper bound on the card's measured width; `None` lets
-<a href=#84 id=84 data-nosnippet>84</a>    /// the card grow with its content. Caps growth caused by changing content
-<a href=#85 id=85 data-nosnippet>85</a>    /// (e.g. a number gaining a digit): the layout allocates at most this
-<a href=#86 id=86 data-nosnippet>86</a>    /// size and overflowing content is clipped by the default CSS.
-<a href=#87 id=87 data-nosnippet>87</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
-<a href=#88 id=88 data-nosnippet>88</a>    </span><span class="kw">pub </span>max_width: <span class="prelude-ty">Option</span>&lt;Pixels&gt;,
-<a href=#89 id=89 data-nosnippet>89</a>    <span class="doccomment">/// Hard upper bound on the card's measured height; see
-<a href=#90 id=90 data-nosnippet>90</a>    /// `max_width`.
-<a href=#91 id=91 data-nosnippet>91</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
-<a href=#92 id=92 data-nosnippet>92</a>    </span><span class="kw">pub </span>max_height: <span class="prelude-ty">Option</span>&lt;Pixels&gt;,
-<a href=#93 id=93 data-nosnippet>93</a>    <span class="doccomment">/// Duration of rotation animations (gesture snapping and
-<a href=#94 id=94 data-nosnippet>94</a>    /// `set_rotation_with_animation`) in milliseconds; default 500.
-<a href=#95 id=95 data-nosnippet>95</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default = <span class="string">"default_animation_speed_ms"</span>))]
-<a href=#96 id=96 data-nosnippet>96</a>    </span><span class="kw">pub </span>animation_speed_ms: u64,
-<a href=#97 id=97 data-nosnippet>97</a>    <span class="doccomment">/// Optional seat assignment on the tabletop edge the card belongs
-<a href=#98 id=98 data-nosnippet>98</a>    /// to - decoupled from the card's visual rotation: rotating the
-<a href=#99 id=99 data-nosnippet>99</a>    /// board or freely spinning the card does not change which user
-<a href=#100 id=100 data-nosnippet>100</a>    /// owns it. `None` leaves the card unassigned; seat strategies and
-<a href=#101 id=101 data-nosnippet>101</a>    /// `rotate_to_next_user` fall back to the nearest side of its
-<a href=#102 id=102 data-nosnippet>102</a>    /// rotation.
-<a href=#103 id=103 data-nosnippet>103</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
-<a href=#104 id=104 data-nosnippet>104</a>    </span><span class="kw">pub </span>seat: <span class="prelude-ty">Option</span>&lt;Seat&gt;,
-<a href=#105 id=105 data-nosnippet>105</a>    <span class="doccomment">/// Custom widget shown while the card is folded. When set, folding
-<a href=#106 id=106 data-nosnippet>106</a>    /// collapses the whole card - header included - to this widget and
-<a href=#107 id=107 data-nosnippet>107</a>    /// adds the `floating-card-collapsed` class, so a round button or
-<a href=#108 id=108 data-nosnippet>108</a>    /// a compact mini view can replace the full card. `None` keeps the
-<a href=#109 id=109 data-nosnippet>109</a>    /// default fold that leaves the header strip visible.
-<a href=#110 id=110 data-nosnippet>110</a>    ///
-<a href=#111 id=111 data-nosnippet>111</a>    /// The folded widget should offer an unfold affordance wired to
-<a href=#112 id=112 data-nosnippet>112</a>    /// `Card::set_folded(false)` or `Card::fold` - the card's own fold
-<a href=#113 id=113 data-nosnippet>113</a>    /// button hides with the header.
-<a href=#114 id=114 data-nosnippet>114</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(skip))]
-<a href=#115 id=115 data-nosnippet>115</a>    </span><span class="kw">pub </span>folded_content: <span class="prelude-ty">Option</span>&lt;Widget&gt;,
-<a href=#116 id=116 data-nosnippet>116</a>    <span class="doccomment">/// Pins the card to the screen instead of the workspace: a sticky
-<a href=#117 id=117 data-nosnippet>117</a>    /// card ignores the `View` camera entirely and keeps its on-screen
-<a href=#118 id=118 data-nosnippet>118</a>    /// position, rotation and zoom while the view pans, zooms or
-<a href=#119 id=119 data-nosnippet>119</a>    /// rotates. Its stored geometry is then expressed in widget
-<a href=#120 id=120 data-nosnippet>120</a>    /// pixels; toggling converts between the two spaces, so pinning
-<a href=#121 id=121 data-nosnippet>121</a>    /// never moves the card visually. Sticky cards are skipped by
-<a href=#122 id=122 data-nosnippet>122</a>    /// `apply_layout`, and passing one to a seat releases the pin.
+<a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span><span class="kw">crate</span>::domain::CardShape;
+<a href=#6 id=6 data-nosnippet>6</a><span class="kw">use </span><span class="kw">crate</span>::domain::ChromeElement;
+<a href=#7 id=7 data-nosnippet>7</a><span class="kw">use </span><span class="kw">crate</span>::domain::ChromePlacement;
+<a href=#8 id=8 data-nosnippet>8</a><span class="kw">use </span><span class="kw">crate</span>::domain::ChromeSlot;
+<a href=#9 id=9 data-nosnippet>9</a><span class="kw">use </span><span class="kw">crate</span>::domain::ChromeStyle;
+<a href=#10 id=10 data-nosnippet>10</a><span class="kw">use </span><span class="kw">crate</span>::domain::CircleContent;
+<a href=#11 id=11 data-nosnippet>11</a><span class="kw">use </span><span class="kw">crate</span>::domain::DragHandle;
+<a href=#12 id=12 data-nosnippet>12</a><span class="kw">use </span><span class="kw">crate</span>::domain::MinVisible;
+<a href=#13 id=13 data-nosnippet>13</a><span class="kw">use </span><span class="kw">crate</span>::domain::ScaleBounds;
+<a href=#14 id=14 data-nosnippet>14</a><span class="kw">use </span><span class="kw">crate</span>::widget::card_close_action::CardCloseAction;
+<a href=#15 id=15 data-nosnippet>15</a><span class="kw">use </span><span class="kw">crate</span>::widget::card_satellites::CardSatellites;
+<a href=#16 id=16 data-nosnippet>16</a><span class="kw">use </span><span class="kw">crate</span>::widget::satellite_config::SatelliteConfig;
+<a href=#17 id=17 data-nosnippet>17</a><span class="kw">use </span>gtk4::Widget;
+<a href=#18 id=18 data-nosnippet>18</a><span class="kw">use </span>smearor_commons_geometry::Pixels;
+<a href=#19 id=19 data-nosnippet>19</a><span class="kw">use </span>smearor_commons_layout::Seat;
+<a href=#20 id=20 data-nosnippet>20</a>
+<a href=#21 id=21 data-nosnippet>21</a><span class="doccomment">/// Default space between the card border and the content widget (px) -
+<a href=#22 id=22 data-nosnippet>22</a>/// the value `.floating-card-content` previously carried as fixed CSS
+<a href=#23 id=23 data-nosnippet>23</a>/// padding.
+<a href=#24 id=24 data-nosnippet>24</a></span><span class="kw">pub const </span>DEFAULT_CONTENT_PADDING: Pixels = Pixels::new(<span class="number">10.0</span>);
+<a href=#25 id=25 data-nosnippet>25</a>
+<a href=#26 id=26 data-nosnippet>26</a><span class="doccomment">/// Placement and interaction configuration of a card.
+<a href=#27 id=27 data-nosnippet>27</a>///
+<a href=#28 id=28 data-nosnippet>28</a>/// Passed to `FloatingBoard::add_card`; all fields have defaults so
+<a href=#29 id=29 data-nosnippet>29</a>/// `CardConfig::default()` yields a fully interactive, draggable card anchored
+<a href=#30 id=30 data-nosnippet>30</a>/// at the board center.
+<a href=#31 id=31 data-nosnippet>31</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#32 id=32 data-nosnippet>32</a>#[cfg_attr(feature = <span class="string">"serde"</span>, derive(serde::Serialize, serde::Deserialize))]
+<a href=#33 id=33 data-nosnippet>33</a></span><span class="kw">pub struct </span>CardConfig {
+<a href=#34 id=34 data-nosnippet>34</a>    <span class="doccomment">/// Title shown in the header strip; falls back to a localized default when
+<a href=#35 id=35 data-nosnippet>35</a>    /// the header is visible and no title is set.
+<a href=#36 id=36 data-nosnippet>36</a>    </span><span class="kw">pub </span>title: <span class="prelude-ty">Option</span>&lt;String&gt;,
+<a href=#37 id=37 data-nosnippet>37</a>    <span class="doccomment">/// Initial placement anchor, resolved on first allocation.
+<a href=#38 id=38 data-nosnippet>38</a>    </span><span class="kw">pub </span>position: CardAnchor,
+<a href=#39 id=39 data-nosnippet>39</a>    <span class="doccomment">/// Whether the card can be moved by dragging.
+<a href=#40 id=40 data-nosnippet>40</a>    </span><span class="kw">pub </span>draggable: bool,
+<a href=#41 id=41 data-nosnippet>41</a>    <span class="doccomment">/// Whether the card can be rotated via the two-finger rotate gesture.
+<a href=#42 id=42 data-nosnippet>42</a>    </span><span class="kw">pub </span>rotatable: bool,
+<a href=#43 id=43 data-nosnippet>43</a>    <span class="doccomment">/// Whether the card can be scaled via the pinch gesture.
+<a href=#44 id=44 data-nosnippet>44</a>    </span><span class="kw">pub </span>scalable: bool,
+<a href=#45 id=45 data-nosnippet>45</a>    <span class="doccomment">/// Whether the card shows a bottom-right resize grip that scales the
+<a href=#46 id=46 data-nosnippet>46</a>    /// card around its center when dragged (mouse and touch).
+<a href=#47 id=47 data-nosnippet>47</a>    </span><span class="kw">pub </span>resizable: bool,
+<a href=#48 id=48 data-nosnippet>48</a>    <span class="doccomment">/// Whether the card shows a bottom-left rotate grip that steps the
+<a href=#49 id=49 data-nosnippet>49</a>    /// rotation to the next quarter turn in the swipe direction - one
+<a href=#50 id=50 data-nosnippet>50</a>    /// quarter turn per drag, no matter how far the swipe goes (mouse
+<a href=#51 id=51 data-nosnippet>51</a>    /// and touch). Works independently of `rotatable`, which gates the
+<a href=#52 id=52 data-nosnippet>52</a>    /// free two-finger rotate.
+<a href=#53 id=53 data-nosnippet>53</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
+<a href=#54 id=54 data-nosnippet>54</a>    </span><span class="kw">pub </span>rotate_grip: bool,
+<a href=#55 id=55 data-nosnippet>55</a>    <span class="doccomment">/// Whether the card can be folded down to its header.
+<a href=#56 id=56 data-nosnippet>56</a>    </span><span class="kw">pub </span>foldable: bool,
+<a href=#57 id=57 data-nosnippet>57</a>    <span class="doccomment">/// Whether the header shows a close button.
+<a href=#58 id=58 data-nosnippet>58</a>    </span><span class="kw">pub </span>closable: bool,
+<a href=#59 id=59 data-nosnippet>59</a>    <span class="doccomment">/// What the close button does - remove the card (default) or hide it
+<a href=#60 id=60 data-nosnippet>60</a>    /// so a menu can re-open it later.
+<a href=#61 id=61 data-nosnippet>61</a>    </span><span class="kw">pub </span>close_action: CardCloseAction,
+<a href=#62 id=62 data-nosnippet>62</a>    <span class="doccomment">/// Collapses the header to a slim grip when no title/buttons are needed.
+<a href=#63 id=63 data-nosnippet>63</a>    </span><span class="kw">pub </span>headerless: bool,
+<a href=#64 id=64 data-nosnippet>64</a>    <span class="doccomment">/// Which part of the card acts as the drag affordance.
+<a href=#65 id=65 data-nosnippet>65</a>    </span><span class="kw">pub </span>drag_handle: DragHandle,
+<a href=#66 id=66 data-nosnippet>66</a>    <span class="doccomment">/// The card's outline shape - `Rectangle` (default) or `Circle`.
+<a href=#67 id=67 data-nosnippet>67</a>    ///
+<a href=#68 id=68 data-nosnippet>68</a>    /// A circle card has no header strip and no corner grips: every
+<a href=#69 id=69 data-nosnippet>69</a>    /// chrome element is promoted to a satellite (elements that cannot
+<a href=#70 id=70 data-nosnippet>70</a>    /// be satellites are dropped with a warning at mount), and taps in
+<a href=#71 id=71 data-nosnippet>71</a>    /// the bounding-box corners pass through to whatever is underneath.
+<a href=#72 id=72 data-nosnippet>72</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
+<a href=#73 id=73 data-nosnippet>73</a>    </span><span class="kw">pub </span>shape: CardShape,
+<a href=#74 id=74 data-nosnippet>74</a>    <span class="doccomment">/// How a `Circle` card allocates its content inside the bounding
+<a href=#75 id=75 data-nosnippet>75</a>    /// square. Ignored for `Rectangle`.
+<a href=#76 id=76 data-nosnippet>76</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
+<a href=#77 id=77 data-nosnippet>77</a>    </span><span class="kw">pub </span>circle_content: CircleContent,
+<a href=#78 id=78 data-nosnippet>78</a>    <span class="doccomment">/// Margin in pixels an edge or corner anchor keeps between the card's
+<a href=#79 id=79 data-nosnippet>79</a>    /// footprint and the board edge; default `ANCHOR_MARGIN` (24 px).
+<a href=#80 id=80 data-nosnippet>80</a>    /// Ignored for `Center` and `Explicit` placements.
+<a href=#81 id=81 data-nosnippet>81</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default = <span class="string">"default_anchor_margin"</span>))]
+<a href=#82 id=82 data-nosnippet>82</a>    </span><span class="kw">pub </span>anchor_margin: Pixels,
+<a href=#83 id=83 data-nosnippet>83</a>    <span class="doccomment">/// Inclusive scale limits for the pinch gesture; default `0.5 - 2.0`.
+<a href=#84 id=84 data-nosnippet>84</a>    </span><span class="kw">pub </span>scale_limits: ScaleBounds,
+<a href=#85 id=85 data-nosnippet>85</a>    <span class="doccomment">/// Minimum overlap in pixels a card must keep inside the board bounds.
+<a href=#86 id=86 data-nosnippet>86</a>    </span><span class="kw">pub </span>min_visible: MinVisible,
+<a href=#87 id=87 data-nosnippet>87</a>    <span class="doccomment">/// How strictly the card's footprint is kept inside the board bounds;
+<a href=#88 id=88 data-nosnippet>88</a>    /// default `Loose` (only `min_visible` is enforced).
+<a href=#89 id=89 data-nosnippet>89</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
+<a href=#90 id=90 data-nosnippet>90</a>    </span><span class="kw">pub </span>bounds_mode: BoundsMode,
+<a href=#91 id=91 data-nosnippet>91</a>    <span class="doccomment">/// Per-card color scheme: a [`CardPalette`] mapped onto scoped CSS
+<a href=#92 id=92 data-nosnippet>92</a>    /// at build time. `None` (or a palette with unfilled slots) keeps
+<a href=#93 id=93 data-nosnippet>93</a>    /// the themed/default-card colors.
+<a href=#94 id=94 data-nosnippet>94</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
+<a href=#95 id=95 data-nosnippet>95</a>    </span><span class="kw">pub </span>palette: <span class="prelude-ty">Option</span>&lt;CardPalette&gt;,
+<a href=#96 id=96 data-nosnippet>96</a>    <span class="doccomment">/// Space in pixels between the card border and the content widget;
+<a href=#97 id=97 data-nosnippet>97</a>    /// default `DEFAULT_CONTENT_PADDING` (10 px, the former fixed CSS
+<a href=#98 id=98 data-nosnippet>98</a>    /// value). `0` lets the content sit flush with the card edge.
+<a href=#99 id=99 data-nosnippet>99</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default = <span class="string">"default_content_padding"</span>))]
+<a href=#100 id=100 data-nosnippet>100</a>    </span><span class="kw">pub </span>content_padding: Pixels,
+<a href=#101 id=101 data-nosnippet>101</a>    <span class="doccomment">/// Optional initial z-ordering; `None` appends the card on top.
+<a href=#102 id=102 data-nosnippet>102</a>    </span><span class="kw">pub </span>z_index: <span class="prelude-ty">Option</span>&lt;i32&gt;,
+<a href=#103 id=103 data-nosnippet>103</a>    <span class="doccomment">/// Hard upper bound on the card's measured width; `None` lets
+<a href=#104 id=104 data-nosnippet>104</a>    /// the card grow with its content. Caps growth caused by changing content
+<a href=#105 id=105 data-nosnippet>105</a>    /// (e.g. a number gaining a digit): the layout allocates at most this
+<a href=#106 id=106 data-nosnippet>106</a>    /// size and overflowing content is clipped by the default CSS.
+<a href=#107 id=107 data-nosnippet>107</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
+<a href=#108 id=108 data-nosnippet>108</a>    </span><span class="kw">pub </span>max_width: <span class="prelude-ty">Option</span>&lt;Pixels&gt;,
+<a href=#109 id=109 data-nosnippet>109</a>    <span class="doccomment">/// Hard upper bound on the card's measured height; see
+<a href=#110 id=110 data-nosnippet>110</a>    /// `max_width`.
+<a href=#111 id=111 data-nosnippet>111</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
+<a href=#112 id=112 data-nosnippet>112</a>    </span><span class="kw">pub </span>max_height: <span class="prelude-ty">Option</span>&lt;Pixels&gt;,
+<a href=#113 id=113 data-nosnippet>113</a>    <span class="doccomment">/// Duration of rotation animations (gesture snapping and
+<a href=#114 id=114 data-nosnippet>114</a>    /// `set_rotation_with_animation`) in milliseconds; default 500.
+<a href=#115 id=115 data-nosnippet>115</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default = <span class="string">"default_animation_speed_ms"</span>))]
+<a href=#116 id=116 data-nosnippet>116</a>    </span><span class="kw">pub </span>animation_speed_ms: u64,
+<a href=#117 id=117 data-nosnippet>117</a>    <span class="doccomment">/// Optional seat assignment on the tabletop edge the card belongs
+<a href=#118 id=118 data-nosnippet>118</a>    /// to - decoupled from the card's visual rotation: rotating the
+<a href=#119 id=119 data-nosnippet>119</a>    /// board or freely spinning the card does not change which user
+<a href=#120 id=120 data-nosnippet>120</a>    /// owns it. `None` leaves the card unassigned; seat strategies and
+<a href=#121 id=121 data-nosnippet>121</a>    /// `rotate_to_next_user` fall back to the nearest side of its
+<a href=#122 id=122 data-nosnippet>122</a>    /// rotation.
 <a href=#123 id=123 data-nosnippet>123</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
-<a href=#124 id=124 data-nosnippet>124</a>    </span><span class="kw">pub </span>sticky: bool,
-<a href=#125 id=125 data-nosnippet>125</a>}
-<a href=#126 id=126 data-nosnippet>126</a>
-<a href=#127 id=127 data-nosnippet>127</a><span class="kw">impl </span>Default <span class="kw">for </span>CardConfig {
-<a href=#128 id=128 data-nosnippet>128</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
-<a href=#129 id=129 data-nosnippet>129</a>        <span class="self">Self </span>{
-<a href=#130 id=130 data-nosnippet>130</a>            title: <span class="prelude-val">None</span>,
-<a href=#131 id=131 data-nosnippet>131</a>            position: CardAnchor::Center,
-<a href=#132 id=132 data-nosnippet>132</a>            draggable: <span class="bool-val">true</span>,
-<a href=#133 id=133 data-nosnippet>133</a>            rotatable: <span class="bool-val">true</span>,
-<a href=#134 id=134 data-nosnippet>134</a>            scalable: <span class="bool-val">true</span>,
-<a href=#135 id=135 data-nosnippet>135</a>            resizable: <span class="bool-val">false</span>,
-<a href=#136 id=136 data-nosnippet>136</a>            rotate_grip: <span class="bool-val">false</span>,
-<a href=#137 id=137 data-nosnippet>137</a>            foldable: <span class="bool-val">false</span>,
-<a href=#138 id=138 data-nosnippet>138</a>            closable: <span class="bool-val">false</span>,
-<a href=#139 id=139 data-nosnippet>139</a>            close_action: CardCloseAction::Remove,
-<a href=#140 id=140 data-nosnippet>140</a>            headerless: <span class="bool-val">false</span>,
-<a href=#141 id=141 data-nosnippet>141</a>            drag_handle: DragHandle::Header,
-<a href=#142 id=142 data-nosnippet>142</a>            anchor_margin: ANCHOR_MARGIN,
-<a href=#143 id=143 data-nosnippet>143</a>            scale_limits: ScaleBounds::default(),
-<a href=#144 id=144 data-nosnippet>144</a>            min_visible: MinVisible::default(),
-<a href=#145 id=145 data-nosnippet>145</a>            bounds_mode: BoundsMode::default(),
-<a href=#146 id=146 data-nosnippet>146</a>            palette: <span class="prelude-val">None</span>,
-<a href=#147 id=147 data-nosnippet>147</a>            content_padding: DEFAULT_CONTENT_PADDING,
-<a href=#148 id=148 data-nosnippet>148</a>            z_index: <span class="prelude-val">None</span>,
-<a href=#149 id=149 data-nosnippet>149</a>            max_width: <span class="prelude-val">None</span>,
-<a href=#150 id=150 data-nosnippet>150</a>            max_height: <span class="prelude-val">None</span>,
-<a href=#151 id=151 data-nosnippet>151</a>            animation_speed_ms: <span class="number">500</span>,
-<a href=#152 id=152 data-nosnippet>152</a>            seat: <span class="prelude-val">None</span>,
-<a href=#153 id=153 data-nosnippet>153</a>            folded_content: <span class="prelude-val">None</span>,
-<a href=#154 id=154 data-nosnippet>154</a>            sticky: <span class="bool-val">false</span>,
-<a href=#155 id=155 data-nosnippet>155</a>        }
-<a href=#156 id=156 data-nosnippet>156</a>    }
-<a href=#157 id=157 data-nosnippet>157</a>}
-<a href=#158 id=158 data-nosnippet>158</a>
-<a href=#159 id=159 data-nosnippet>159</a><span class="attr">#[cfg(feature = <span class="string">"serde"</span>)]
-<a href=#160 id=160 data-nosnippet>160</a></span><span class="kw">fn </span>default_anchor_margin() -&gt; Pixels {
-<a href=#161 id=161 data-nosnippet>161</a>    ANCHOR_MARGIN
-<a href=#162 id=162 data-nosnippet>162</a>}
-<a href=#163 id=163 data-nosnippet>163</a>
-<a href=#164 id=164 data-nosnippet>164</a><span class="attr">#[cfg(feature = <span class="string">"serde"</span>)]
-<a href=#165 id=165 data-nosnippet>165</a></span><span class="kw">fn </span>default_animation_speed_ms() -&gt; u64 {
-<a href=#166 id=166 data-nosnippet>166</a>    <span class="number">500
-<a href=#167 id=167 data-nosnippet>167</a></span>}
-<a href=#168 id=168 data-nosnippet>168</a>
-<a href=#169 id=169 data-nosnippet>169</a><span class="attr">#[cfg(feature = <span class="string">"serde"</span>)]
-<a href=#170 id=170 data-nosnippet>170</a></span><span class="kw">fn </span>default_content_padding() -&gt; Pixels {
-<a href=#171 id=171 data-nosnippet>171</a>    DEFAULT_CONTENT_PADDING
-<a href=#172 id=172 data-nosnippet>172</a>}
+<a href=#124 id=124 data-nosnippet>124</a>    </span><span class="kw">pub </span>seat: <span class="prelude-ty">Option</span>&lt;Seat&gt;,
+<a href=#125 id=125 data-nosnippet>125</a>    <span class="doccomment">/// Custom widget shown while the card is folded. When set, folding
+<a href=#126 id=126 data-nosnippet>126</a>    /// collapses the whole card - header included - to this widget and
+<a href=#127 id=127 data-nosnippet>127</a>    /// adds the `floating-card-collapsed` class, so a round button or
+<a href=#128 id=128 data-nosnippet>128</a>    /// a compact mini view can replace the full card. `None` keeps the
+<a href=#129 id=129 data-nosnippet>129</a>    /// default fold that leaves the header strip visible.
+<a href=#130 id=130 data-nosnippet>130</a>    ///
+<a href=#131 id=131 data-nosnippet>131</a>    /// The folded widget should offer an unfold affordance wired to
+<a href=#132 id=132 data-nosnippet>132</a>    /// `Card::set_folded(false)` or `Card::fold` - the card's own fold
+<a href=#133 id=133 data-nosnippet>133</a>    /// button hides with the header.
+<a href=#134 id=134 data-nosnippet>134</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(skip))]
+<a href=#135 id=135 data-nosnippet>135</a>    </span><span class="kw">pub </span>folded_content: <span class="prelude-ty">Option</span>&lt;Widget&gt;,
+<a href=#136 id=136 data-nosnippet>136</a>    <span class="doccomment">/// Pins the card to the screen instead of the workspace: a sticky
+<a href=#137 id=137 data-nosnippet>137</a>    /// card ignores the `View` camera entirely and keeps its on-screen
+<a href=#138 id=138 data-nosnippet>138</a>    /// position, rotation and zoom while the view pans, zooms or
+<a href=#139 id=139 data-nosnippet>139</a>    /// rotates. Its stored geometry is then expressed in widget
+<a href=#140 id=140 data-nosnippet>140</a>    /// pixels; toggling converts between the two spaces, so pinning
+<a href=#141 id=141 data-nosnippet>141</a>    /// never moves the card visually. Sticky cards are skipped by
+<a href=#142 id=142 data-nosnippet>142</a>    /// `apply_layout`, and passing one to a seat releases the pin.
+<a href=#143 id=143 data-nosnippet>143</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
+<a href=#144 id=144 data-nosnippet>144</a>    </span><span class="kw">pub </span>sticky: bool,
+<a href=#145 id=145 data-nosnippet>145</a>    <span class="doccomment">/// Explicit chrome composition as an ordered slot list
+<a href=#146 id=146 data-nosnippet>146</a>    /// (`CardConfig::chrome`).
+<a href=#147 id=147 data-nosnippet>147</a>    ///
+<a href=#148 id=148 data-nosnippet>148</a>    /// - `None` (default): derive slots from the legacy flags
+<a href=#149 id=149 data-nosnippet>149</a>    ///   (`title`/`title_label` -&gt; `Title`, `foldable` -&gt; `Minimize`,
+<a href=#150 id=150 data-nosnippet>150</a>    ///   `closable` -&gt; `Close`, `resizable` -&gt; `ResizeGrip`,
+<a href=#151 id=151 data-nosnippet>151</a>    ///   `rotate_grip` -&gt; `RotateGrip`,
+<a href=#152 id=152 data-nosnippet>152</a>    ///   `drag_handle == Handle` -&gt; `DragHandle`; all `Inline`).
+<a href=#153 id=153 data-nosnippet>153</a>    /// - `Some(slots)`: overrides the legacy-derived chrome entirely -
+<a href=#154 id=154 data-nosnippet>154</a>    ///   the list is the complete chrome description. `Satellite`
+<a href=#155 id=155 data-nosnippet>155</a>    ///   placements are validated at build time; until satellite
+<a href=#156 id=156 data-nosnippet>156</a>    ///   mounting lands they are skipped (no inline fallback).
+<a href=#157 id=157 data-nosnippet>157</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
+<a href=#158 id=158 data-nosnippet>158</a>    </span><span class="kw">pub </span>chrome: <span class="prelude-ty">Option</span>&lt;Vec&lt;ChromeSlot&gt;&gt;,
+<a href=#159 id=159 data-nosnippet>159</a>    <span class="doccomment">/// Which renderer draws the chrome (`CardConfig::chrome_style`):
+<a href=#160 id=160 data-nosnippet>160</a>    /// `Builtin` (default) or `Adwaita` (requires the `adwaita`
+<a href=#161 id=161 data-nosnippet>161</a>    /// feature; falls back to `Builtin` without it).
+<a href=#162 id=162 data-nosnippet>162</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
+<a href=#163 id=163 data-nosnippet>163</a>    </span><span class="kw">pub </span>chrome_style: ChromeStyle,
+<a href=#164 id=164 data-nosnippet>164</a>    <span class="doccomment">/// Satellite configuration: layout, rotation and collision
+<a href=#165 id=165 data-nosnippet>165</a>    /// semantics plus the explicit satellite list (`CardSatellites`).
+<a href=#166 id=166 data-nosnippet>166</a>    /// `None` (default) means no custom satellites; chrome elements
+<a href=#167 id=167 data-nosnippet>167</a>    /// configured `ChromeSlot::satellite(..)` still mount with the
+<a href=#168 id=168 data-nosnippet>168</a>    /// `CardSatellites` defaults (sidebar below the card).
+<a href=#169 id=169 data-nosnippet>169</a>    </span><span class="attr">#[cfg_attr(feature = <span class="string">"serde"</span>, serde(default))]
+<a href=#170 id=170 data-nosnippet>170</a>    </span><span class="kw">pub </span>satellites: <span class="prelude-ty">Option</span>&lt;CardSatellites&gt;,
+<a href=#171 id=171 data-nosnippet>171</a>}
+<a href=#172 id=172 data-nosnippet>172</a>
+<a href=#173 id=173 data-nosnippet>173</a><span class="kw">impl </span>Default <span class="kw">for </span>CardConfig {
+<a href=#174 id=174 data-nosnippet>174</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+<a href=#175 id=175 data-nosnippet>175</a>        <span class="self">Self </span>{
+<a href=#176 id=176 data-nosnippet>176</a>            title: <span class="prelude-val">None</span>,
+<a href=#177 id=177 data-nosnippet>177</a>            position: CardAnchor::Center,
+<a href=#178 id=178 data-nosnippet>178</a>            draggable: <span class="bool-val">true</span>,
+<a href=#179 id=179 data-nosnippet>179</a>            rotatable: <span class="bool-val">true</span>,
+<a href=#180 id=180 data-nosnippet>180</a>            scalable: <span class="bool-val">true</span>,
+<a href=#181 id=181 data-nosnippet>181</a>            resizable: <span class="bool-val">false</span>,
+<a href=#182 id=182 data-nosnippet>182</a>            rotate_grip: <span class="bool-val">false</span>,
+<a href=#183 id=183 data-nosnippet>183</a>            foldable: <span class="bool-val">false</span>,
+<a href=#184 id=184 data-nosnippet>184</a>            closable: <span class="bool-val">false</span>,
+<a href=#185 id=185 data-nosnippet>185</a>            close_action: CardCloseAction::Remove,
+<a href=#186 id=186 data-nosnippet>186</a>            headerless: <span class="bool-val">false</span>,
+<a href=#187 id=187 data-nosnippet>187</a>            drag_handle: DragHandle::Header,
+<a href=#188 id=188 data-nosnippet>188</a>            shape: CardShape::default(),
+<a href=#189 id=189 data-nosnippet>189</a>            circle_content: CircleContent::default(),
+<a href=#190 id=190 data-nosnippet>190</a>            anchor_margin: ANCHOR_MARGIN,
+<a href=#191 id=191 data-nosnippet>191</a>            scale_limits: ScaleBounds::default(),
+<a href=#192 id=192 data-nosnippet>192</a>            min_visible: MinVisible::default(),
+<a href=#193 id=193 data-nosnippet>193</a>            bounds_mode: BoundsMode::default(),
+<a href=#194 id=194 data-nosnippet>194</a>            palette: <span class="prelude-val">None</span>,
+<a href=#195 id=195 data-nosnippet>195</a>            content_padding: DEFAULT_CONTENT_PADDING,
+<a href=#196 id=196 data-nosnippet>196</a>            z_index: <span class="prelude-val">None</span>,
+<a href=#197 id=197 data-nosnippet>197</a>            max_width: <span class="prelude-val">None</span>,
+<a href=#198 id=198 data-nosnippet>198</a>            max_height: <span class="prelude-val">None</span>,
+<a href=#199 id=199 data-nosnippet>199</a>            animation_speed_ms: <span class="number">500</span>,
+<a href=#200 id=200 data-nosnippet>200</a>            seat: <span class="prelude-val">None</span>,
+<a href=#201 id=201 data-nosnippet>201</a>            folded_content: <span class="prelude-val">None</span>,
+<a href=#202 id=202 data-nosnippet>202</a>            sticky: <span class="bool-val">false</span>,
+<a href=#203 id=203 data-nosnippet>203</a>            chrome: <span class="prelude-val">None</span>,
+<a href=#204 id=204 data-nosnippet>204</a>            chrome_style: ChromeStyle::default(),
+<a href=#205 id=205 data-nosnippet>205</a>            satellites: <span class="prelude-val">None</span>,
+<a href=#206 id=206 data-nosnippet>206</a>        }
+<a href=#207 id=207 data-nosnippet>207</a>    }
+<a href=#208 id=208 data-nosnippet>208</a>}
+<a href=#209 id=209 data-nosnippet>209</a>
+<a href=#210 id=210 data-nosnippet>210</a><span class="kw">impl </span>CardConfig {
+<a href=#211 id=211 data-nosnippet>211</a>    <span class="doccomment">/// The effective ordered chrome slots - either the explicit
+<a href=#212 id=212 data-nosnippet>212</a>    /// `CardConfig::chrome` list or the list derived from the legacy
+<a href=#213 id=213 data-nosnippet>213</a>    /// flags (default: `DragHandle`, `Title`, `Minimize`, `Close`,
+<a href=#214 id=214 data-nosnippet>214</a>    /// `ResizeGrip`, `RotateGrip`, all `Inline`; elements whose flag
+<a href=#215 id=215 data-nosnippet>215</a>    /// is off are absent).
+<a href=#216 id=216 data-nosnippet>216</a>    </span><span class="kw">pub fn </span>effective_chrome_slots(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;ChromeSlot&gt; {
+<a href=#217 id=217 data-nosnippet>217</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(chrome) = <span class="kw-2">&amp;</span><span class="self">self</span>.chrome {
+<a href=#218 id=218 data-nosnippet>218</a>            <span class="kw">return </span>chrome.clone();
+<a href=#219 id=219 data-nosnippet>219</a>        }
+<a href=#220 id=220 data-nosnippet>220</a>        <span class="self">self</span>.legacy_chrome_slots()
+<a href=#221 id=221 data-nosnippet>221</a>    }
+<a href=#222 id=222 data-nosnippet>222</a>
+<a href=#223 id=223 data-nosnippet>223</a>    <span class="doccomment">/// Slots derived from the legacy boolean flags, in the historical
+<a href=#224 id=224 data-nosnippet>224</a>    /// header order (leading: handle + title, trailing: minimize +
+<a href=#225 id=225 data-nosnippet>225</a>    /// close; grips mount onto the content overlay).
+<a href=#226 id=226 data-nosnippet>226</a>    </span><span class="kw">fn </span>legacy_chrome_slots(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;ChromeSlot&gt; {
+<a href=#227 id=227 data-nosnippet>227</a>        <span class="kw">let </span><span class="kw-2">mut </span>slots = Vec::with_capacity(<span class="number">6</span>);
+<a href=#228 id=228 data-nosnippet>228</a>        <span class="kw">if </span><span class="self">self</span>.drag_handle == DragHandle::Handle {
+<a href=#229 id=229 data-nosnippet>229</a>            slots.push(ChromeSlot::inline(ChromeElement::DragHandle));
+<a href=#230 id=230 data-nosnippet>230</a>        }
+<a href=#231 id=231 data-nosnippet>231</a>        slots.push(ChromeSlot::inline(ChromeElement::Title));
+<a href=#232 id=232 data-nosnippet>232</a>        <span class="kw">if </span><span class="self">self</span>.foldable {
+<a href=#233 id=233 data-nosnippet>233</a>            slots.push(ChromeSlot::inline(ChromeElement::Minimize));
+<a href=#234 id=234 data-nosnippet>234</a>        }
+<a href=#235 id=235 data-nosnippet>235</a>        <span class="kw">if </span><span class="self">self</span>.closable {
+<a href=#236 id=236 data-nosnippet>236</a>            slots.push(ChromeSlot::inline(ChromeElement::Close));
+<a href=#237 id=237 data-nosnippet>237</a>        }
+<a href=#238 id=238 data-nosnippet>238</a>        <span class="kw">if </span><span class="self">self</span>.resizable {
+<a href=#239 id=239 data-nosnippet>239</a>            slots.push(ChromeSlot::inline(ChromeElement::ResizeGrip));
+<a href=#240 id=240 data-nosnippet>240</a>        }
+<a href=#241 id=241 data-nosnippet>241</a>        <span class="kw">if </span><span class="self">self</span>.rotate_grip {
+<a href=#242 id=242 data-nosnippet>242</a>            slots.push(ChromeSlot::inline(ChromeElement::RotateGrip));
+<a href=#243 id=243 data-nosnippet>243</a>        }
+<a href=#244 id=244 data-nosnippet>244</a>        slots
+<a href=#245 id=245 data-nosnippet>245</a>    }
+<a href=#246 id=246 data-nosnippet>246</a>
+<a href=#247 id=247 data-nosnippet>247</a>    <span class="doccomment">/// The chrome slots as mounted for `shape`: on `Circle` every
+<a href=#248 id=248 data-nosnippet>248</a>    /// element mounts as a `Satellite` (a circle card has no header
+<a href=#249 id=249 data-nosnippet>249</a>    /// strip and no corner grips); elements that cannot be satellites
+<a href=#250 id=250 data-nosnippet>250</a>    /// stay listed with `Satellite` placement and are filtered out by
+<a href=#251 id=251 data-nosnippet>251</a>    /// [`Self::effective_satellites`]' `supports_satellite` check.
+<a href=#252 id=252 data-nosnippet>252</a>    /// `Card::mount_chrome` logs the promoted/dropped elements once.
+<a href=#253 id=253 data-nosnippet>253</a>    </span><span class="kw">pub fn </span>mounted_chrome_slots(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;ChromeSlot&gt; {
+<a href=#254 id=254 data-nosnippet>254</a>        <span class="self">self</span>.effective_chrome_slots()
+<a href=#255 id=255 data-nosnippet>255</a>            .into_iter()
+<a href=#256 id=256 data-nosnippet>256</a>            .map(|<span class="kw-2">mut </span>slot| {
+<a href=#257 id=257 data-nosnippet>257</a>                <span class="kw">if </span><span class="self">self</span>.shape == CardShape::Circle &amp;&amp; slot.placement != ChromePlacement::Satellite {
+<a href=#258 id=258 data-nosnippet>258</a>                    slot.placement = ChromePlacement::Satellite;
+<a href=#259 id=259 data-nosnippet>259</a>                }
+<a href=#260 id=260 data-nosnippet>260</a>                slot
+<a href=#261 id=261 data-nosnippet>261</a>            })
+<a href=#262 id=262 data-nosnippet>262</a>            .collect()
+<a href=#263 id=263 data-nosnippet>263</a>    }
+<a href=#264 id=264 data-nosnippet>264</a>
+<a href=#265 id=265 data-nosnippet>265</a>    <span class="doccomment">/// The effective satellite set: `ChromeSlot::satellite` entries in
+<a href=#266 id=266 data-nosnippet>266</a>    /// slot order (elements that cannot be satellites are warned about
+<a href=#267 id=267 data-nosnippet>267</a>    /// once at mount), then the explicit `CardSatellites::satellites`
+<a href=#268 id=268 data-nosnippet>268</a>    /// list. Layout, rotation and collision semantics come from
+<a href=#269 id=269 data-nosnippet>269</a>    /// `satellites`, defaulting to a `CoRotate` sidebar below the card.
+<a href=#270 id=270 data-nosnippet>270</a>    </span><span class="kw">pub fn </span>effective_satellites(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; (CardSatellites, Vec&lt;SatelliteConfig&gt;) {
+<a href=#271 id=271 data-nosnippet>271</a>        <span class="kw">let </span>settings = <span class="self">self</span>.satellites.clone().unwrap_or_default();
+<a href=#272 id=272 data-nosnippet>272</a>        <span class="kw">let </span><span class="kw-2">mut </span>configs: Vec&lt;SatelliteConfig&gt; = <span class="self">self
+<a href=#273 id=273 data-nosnippet>273</a>            </span>.mounted_chrome_slots()
+<a href=#274 id=274 data-nosnippet>274</a>            .iter()
+<a href=#275 id=275 data-nosnippet>275</a>            .filter(|slot| slot.placement == ChromePlacement::Satellite &amp;&amp; slot.element.supports_satellite())
+<a href=#276 id=276 data-nosnippet>276</a>            .map(|slot| SatelliteConfig::chrome(<span class="macro">format!</span>(<span class="string">"chrome-{}"</span>, satellite_key(slot.element)), slot.element))
+<a href=#277 id=277 data-nosnippet>277</a>            .collect();
+<a href=#278 id=278 data-nosnippet>278</a>        configs.extend(settings.satellites.iter().cloned());
+<a href=#279 id=279 data-nosnippet>279</a>        (settings, configs)
+<a href=#280 id=280 data-nosnippet>280</a>    }
+<a href=#281 id=281 data-nosnippet>281</a>}
+<a href=#282 id=282 data-nosnippet>282</a>
+<a href=#283 id=283 data-nosnippet>283</a><span class="doccomment">/// Deterministic id suffix for chrome satellites (`chrome-minimize`).
+<a href=#284 id=284 data-nosnippet>284</a>/// Only satellite-capable elements reach it (`supports_satellite`
+<a href=#285 id=285 data-nosnippet>285</a>/// filtered upstream); the fallback keeps the match total.
+<a href=#286 id=286 data-nosnippet>286</a></span><span class="kw">fn </span>satellite_key(element: ChromeElement) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str {
+<a href=#287 id=287 data-nosnippet>287</a>    <span class="kw">match </span>element {
+<a href=#288 id=288 data-nosnippet>288</a>        ChromeElement::Minimize =&gt; <span class="string">"minimize"</span>,
+<a href=#289 id=289 data-nosnippet>289</a>        ChromeElement::Close =&gt; <span class="string">"close"</span>,
+<a href=#290 id=290 data-nosnippet>290</a>        ChromeElement::RotateClockwise =&gt; <span class="string">"rotate-clockwise"</span>,
+<a href=#291 id=291 data-nosnippet>291</a>        ChromeElement::RotateCounterClockwise =&gt; <span class="string">"rotate-counter-clockwise"</span>,
+<a href=#292 id=292 data-nosnippet>292</a>        ChromeElement::NextSeat =&gt; <span class="string">"next-seat"</span>,
+<a href=#293 id=293 data-nosnippet>293</a>        ChromeElement::PreviousSeat =&gt; <span class="string">"previous-seat"</span>,
+<a href=#294 id=294 data-nosnippet>294</a>        <span class="comment">// Non-satellite-capable elements never reach this function
+<a href=#295 id=295 data-nosnippet>295</a>        // (`supports_satellite` filters upstream); distinct arms keep
+<a href=#296 id=296 data-nosnippet>296</a>        // id collisions impossible if the capability set grows.
+<a href=#297 id=297 data-nosnippet>297</a>        </span>ChromeElement::DragHandle | ChromeElement::Title | ChromeElement::ResizeGrip | ChromeElement::RotateGrip =&gt; <span class="string">"element"</span>,
+<a href=#298 id=298 data-nosnippet>298</a>    }
+<a href=#299 id=299 data-nosnippet>299</a>}
+<a href=#300 id=300 data-nosnippet>300</a>
+<a href=#301 id=301 data-nosnippet>301</a><span class="attr">#[cfg(feature = <span class="string">"serde"</span>)]
+<a href=#302 id=302 data-nosnippet>302</a></span><span class="kw">fn </span>default_anchor_margin() -&gt; Pixels {
+<a href=#303 id=303 data-nosnippet>303</a>    ANCHOR_MARGIN
+<a href=#304 id=304 data-nosnippet>304</a>}
+<a href=#305 id=305 data-nosnippet>305</a>
+<a href=#306 id=306 data-nosnippet>306</a><span class="attr">#[cfg(feature = <span class="string">"serde"</span>)]
+<a href=#307 id=307 data-nosnippet>307</a></span><span class="kw">fn </span>default_animation_speed_ms() -&gt; u64 {
+<a href=#308 id=308 data-nosnippet>308</a>    <span class="number">500
+<a href=#309 id=309 data-nosnippet>309</a></span>}
+<a href=#310 id=310 data-nosnippet>310</a>
+<a href=#311 id=311 data-nosnippet>311</a><span class="attr">#[cfg(feature = <span class="string">"serde"</span>)]
+<a href=#312 id=312 data-nosnippet>312</a></span><span class="kw">fn </span>default_content_padding() -&gt; Pixels {
+<a href=#313 id=313 data-nosnippet>313</a>    DEFAULT_CONTENT_PADDING
+<a href=#314 id=314 data-nosnippet>314</a>}
+<a href=#315 id=315 data-nosnippet>315</a>
+<a href=#316 id=316 data-nosnippet>316</a><span class="attr">#[cfg(test)]
+<a href=#317 id=317 data-nosnippet>317</a></span><span class="kw">mod </span>tests {
+<a href=#318 id=318 data-nosnippet>318</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#319 id=319 data-nosnippet>319</a>    <span class="kw">use </span><span class="kw">crate</span>::domain::ChromeElement;
+<a href=#320 id=320 data-nosnippet>320</a>    <span class="kw">use </span><span class="kw">crate</span>::domain::ChromePlacement;
+<a href=#321 id=321 data-nosnippet>321</a>
+<a href=#322 id=322 data-nosnippet>322</a>    <span class="kw">fn </span>elements(config: <span class="kw-2">&amp;</span>CardConfig) -&gt; Vec&lt;ChromeElement&gt; {
+<a href=#323 id=323 data-nosnippet>323</a>        config.effective_chrome_slots().iter().map(|slot| slot.element).collect()
+<a href=#324 id=324 data-nosnippet>324</a>    }
+<a href=#325 id=325 data-nosnippet>325</a>
+<a href=#326 id=326 data-nosnippet>326</a>    <span class="attr">#[test]
+<a href=#327 id=327 data-nosnippet>327</a>    </span><span class="kw">fn </span>legacy_default_chrome_is_title_only() {
+<a href=#328 id=328 data-nosnippet>328</a>        <span class="kw">let </span>config = CardConfig::default();
+<a href=#329 id=329 data-nosnippet>329</a>        <span class="macro">assert_eq!</span>(elements(<span class="kw-2">&amp;</span>config), <span class="macro">vec!</span>[ChromeElement::Title]);
+<a href=#330 id=330 data-nosnippet>330</a>        <span class="macro">assert!</span>(config.effective_chrome_slots().iter().all(|slot| slot.placement == ChromePlacement::Inline));
+<a href=#331 id=331 data-nosnippet>331</a>    }
+<a href=#332 id=332 data-nosnippet>332</a>
+<a href=#333 id=333 data-nosnippet>333</a>    <span class="attr">#[test]
+<a href=#334 id=334 data-nosnippet>334</a>    </span><span class="kw">fn </span>legacy_flags_derive_full_chrome() {
+<a href=#335 id=335 data-nosnippet>335</a>        <span class="kw">let </span>config = CardConfig {
+<a href=#336 id=336 data-nosnippet>336</a>            drag_handle: DragHandle::Handle,
+<a href=#337 id=337 data-nosnippet>337</a>            foldable: <span class="bool-val">true</span>,
+<a href=#338 id=338 data-nosnippet>338</a>            closable: <span class="bool-val">true</span>,
+<a href=#339 id=339 data-nosnippet>339</a>            resizable: <span class="bool-val">true</span>,
+<a href=#340 id=340 data-nosnippet>340</a>            rotate_grip: <span class="bool-val">true</span>,
+<a href=#341 id=341 data-nosnippet>341</a>            ..Default::default()
+<a href=#342 id=342 data-nosnippet>342</a>        };
+<a href=#343 id=343 data-nosnippet>343</a>        <span class="macro">assert_eq!</span>(
+<a href=#344 id=344 data-nosnippet>344</a>            elements(<span class="kw-2">&amp;</span>config),
+<a href=#345 id=345 data-nosnippet>345</a>            <span class="macro">vec!</span>[
+<a href=#346 id=346 data-nosnippet>346</a>                ChromeElement::DragHandle,
+<a href=#347 id=347 data-nosnippet>347</a>                ChromeElement::Title,
+<a href=#348 id=348 data-nosnippet>348</a>                ChromeElement::Minimize,
+<a href=#349 id=349 data-nosnippet>349</a>                ChromeElement::Close,
+<a href=#350 id=350 data-nosnippet>350</a>                ChromeElement::ResizeGrip,
+<a href=#351 id=351 data-nosnippet>351</a>                ChromeElement::RotateGrip,
+<a href=#352 id=352 data-nosnippet>352</a>            ]
+<a href=#353 id=353 data-nosnippet>353</a>        );
+<a href=#354 id=354 data-nosnippet>354</a>    }
+<a href=#355 id=355 data-nosnippet>355</a>
+<a href=#356 id=356 data-nosnippet>356</a>    <span class="attr">#[test]
+<a href=#357 id=357 data-nosnippet>357</a>    </span><span class="kw">fn </span>drag_handle_header_mode_adds_no_handle_slot() {
+<a href=#358 id=358 data-nosnippet>358</a>        <span class="kw">let </span>config = CardConfig {
+<a href=#359 id=359 data-nosnippet>359</a>            drag_handle: DragHandle::Header,
+<a href=#360 id=360 data-nosnippet>360</a>            shape: CardShape::default(),
+<a href=#361 id=361 data-nosnippet>361</a>            circle_content: CircleContent::default(),
+<a href=#362 id=362 data-nosnippet>362</a>            ..Default::default()
+<a href=#363 id=363 data-nosnippet>363</a>        };
+<a href=#364 id=364 data-nosnippet>364</a>        <span class="macro">assert!</span>(!elements(<span class="kw-2">&amp;</span>config).contains(<span class="kw-2">&amp;</span>ChromeElement::DragHandle));
+<a href=#365 id=365 data-nosnippet>365</a>    }
+<a href=#366 id=366 data-nosnippet>366</a>
+<a href=#367 id=367 data-nosnippet>367</a>    <span class="attr">#[test]
+<a href=#368 id=368 data-nosnippet>368</a>    </span><span class="kw">fn </span>explicit_chrome_overrides_legacy_flags() {
+<a href=#369 id=369 data-nosnippet>369</a>        <span class="kw">let </span>config = CardConfig {
+<a href=#370 id=370 data-nosnippet>370</a>            <span class="comment">// Legacy flags ask for everything; the explicit list wins.
+<a href=#371 id=371 data-nosnippet>371</a>            </span>foldable: <span class="bool-val">true</span>,
+<a href=#372 id=372 data-nosnippet>372</a>            closable: <span class="bool-val">true</span>,
+<a href=#373 id=373 data-nosnippet>373</a>            resizable: <span class="bool-val">true</span>,
+<a href=#374 id=374 data-nosnippet>374</a>            chrome: <span class="prelude-val">Some</span>(<span class="macro">vec!</span>[ChromeSlot::inline(ChromeElement::Close)]),
+<a href=#375 id=375 data-nosnippet>375</a>            ..Default::default()
+<a href=#376 id=376 data-nosnippet>376</a>        };
+<a href=#377 id=377 data-nosnippet>377</a>        <span class="macro">assert_eq!</span>(elements(<span class="kw-2">&amp;</span>config), <span class="macro">vec!</span>[ChromeElement::Close]);
+<a href=#378 id=378 data-nosnippet>378</a>    }
+<a href=#379 id=379 data-nosnippet>379</a>
+<a href=#380 id=380 data-nosnippet>380</a>    <span class="attr">#[test]
+<a href=#381 id=381 data-nosnippet>381</a>    </span><span class="kw">fn </span>explicit_chrome_accepts_satellite_placement() {
+<a href=#382 id=382 data-nosnippet>382</a>        <span class="kw">let </span>config = CardConfig {
+<a href=#383 id=383 data-nosnippet>383</a>            chrome: <span class="prelude-val">Some</span>(<span class="macro">vec!</span>[ChromeSlot::satellite(ChromeElement::Minimize)]),
+<a href=#384 id=384 data-nosnippet>384</a>            ..Default::default()
+<a href=#385 id=385 data-nosnippet>385</a>        };
+<a href=#386 id=386 data-nosnippet>386</a>        <span class="macro">assert_eq!</span>(config.effective_chrome_slots()[<span class="number">0</span>].placement, ChromePlacement::Satellite);
+<a href=#387 id=387 data-nosnippet>387</a>    }
+<a href=#388 id=388 data-nosnippet>388</a>
+<a href=#389 id=389 data-nosnippet>389</a>    <span class="attr">#[cfg(feature = <span class="string">"serde"</span>)]
+<a href=#390 id=390 data-nosnippet>390</a>    #[test]
+<a href=#391 id=391 data-nosnippet>391</a>    </span><span class="kw">fn </span>old_config_without_chrome_fields_deserializes() {
+<a href=#392 id=392 data-nosnippet>392</a>        <span class="comment">// A legacy serialization lacks `chrome`/`chrome_style` - emulate
+<a href=#393 id=393 data-nosnippet>393</a>        // it by serializing a current config and stripping the new keys.
+<a href=#394 id=394 data-nosnippet>394</a>        </span><span class="kw">let </span>source = CardConfig {
+<a href=#395 id=395 data-nosnippet>395</a>            title: <span class="prelude-val">Some</span>(<span class="string">"Hi"</span>.into()),
+<a href=#396 id=396 data-nosnippet>396</a>            foldable: <span class="bool-val">true</span>,
+<a href=#397 id=397 data-nosnippet>397</a>            closable: <span class="bool-val">true</span>,
+<a href=#398 id=398 data-nosnippet>398</a>            ..Default::default()
+<a href=#399 id=399 data-nosnippet>399</a>        };
+<a href=#400 id=400 data-nosnippet>400</a>        <span class="kw">let </span><span class="kw-2">mut </span>value: serde_json::Value = serde_json::from_str(<span class="kw-2">&amp;</span>serde_json::to_string(<span class="kw-2">&amp;</span>source).unwrap()).unwrap();
+<a href=#401 id=401 data-nosnippet>401</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(object) = value.as_object_mut() {
+<a href=#402 id=402 data-nosnippet>402</a>            object.remove(<span class="string">"chrome"</span>);
+<a href=#403 id=403 data-nosnippet>403</a>            object.remove(<span class="string">"chrome_style"</span>);
+<a href=#404 id=404 data-nosnippet>404</a>        }
+<a href=#405 id=405 data-nosnippet>405</a>        <span class="kw">let </span>config: CardConfig = serde_json::from_value(value).unwrap();
+<a href=#406 id=406 data-nosnippet>406</a>        <span class="macro">assert!</span>(config.chrome.is_none());
+<a href=#407 id=407 data-nosnippet>407</a>        <span class="macro">assert_eq!</span>(config.chrome_style, ChromeStyle::Builtin);
+<a href=#408 id=408 data-nosnippet>408</a>        <span class="macro">assert_eq!</span>(elements(<span class="kw-2">&amp;</span>config), <span class="macro">vec!</span>[ChromeElement::Title, ChromeElement::Minimize, ChromeElement::Close]);
+<a href=#409 id=409 data-nosnippet>409</a>    }
+<a href=#410 id=410 data-nosnippet>410</a>
+<a href=#411 id=411 data-nosnippet>411</a>    <span class="attr">#[cfg(feature = <span class="string">"serde"</span>)]
+<a href=#412 id=412 data-nosnippet>412</a>    #[test]
+<a href=#413 id=413 data-nosnippet>413</a>    </span><span class="kw">fn </span>chrome_slots_roundtrip() {
+<a href=#414 id=414 data-nosnippet>414</a>        <span class="kw">let </span>config = CardConfig {
+<a href=#415 id=415 data-nosnippet>415</a>            chrome: <span class="prelude-val">Some</span>(<span class="macro">vec!</span>[
+<a href=#416 id=416 data-nosnippet>416</a>                ChromeSlot::inline(ChromeElement::Title),
+<a href=#417 id=417 data-nosnippet>417</a>                ChromeSlot::satellite(ChromeElement::Minimize),
+<a href=#418 id=418 data-nosnippet>418</a>                ChromeSlot::inline(ChromeElement::Close),
+<a href=#419 id=419 data-nosnippet>419</a>            ]),
+<a href=#420 id=420 data-nosnippet>420</a>            chrome_style: ChromeStyle::Adwaita,
+<a href=#421 id=421 data-nosnippet>421</a>            ..Default::default()
+<a href=#422 id=422 data-nosnippet>422</a>        };
+<a href=#423 id=423 data-nosnippet>423</a>        <span class="kw">let </span>json = serde_json::to_string(<span class="kw-2">&amp;</span>config).unwrap();
+<a href=#424 id=424 data-nosnippet>424</a>        <span class="kw">let </span>back: CardConfig = serde_json::from_str(<span class="kw-2">&amp;</span>json).unwrap();
+<a href=#425 id=425 data-nosnippet>425</a>        <span class="macro">assert_eq!</span>(back.effective_chrome_slots(), config.effective_chrome_slots());
+<a href=#426 id=426 data-nosnippet>426</a>        <span class="macro">assert_eq!</span>(back.chrome_style, ChromeStyle::Adwaita);
+<a href=#427 id=427 data-nosnippet>427</a>    }
+<a href=#428 id=428 data-nosnippet>428</a>
+<a href=#429 id=429 data-nosnippet>429</a>    <span class="attr">#[test]
+<a href=#430 id=430 data-nosnippet>430</a>    </span><span class="kw">fn </span>satellite_slots_and_config_merge_in_order() {
+<a href=#431 id=431 data-nosnippet>431</a>        <span class="kw">let </span>config = CardConfig {
+<a href=#432 id=432 data-nosnippet>432</a>            chrome: <span class="prelude-val">Some</span>(<span class="macro">vec!</span>[
+<a href=#433 id=433 data-nosnippet>433</a>                ChromeSlot::inline(ChromeElement::Title),
+<a href=#434 id=434 data-nosnippet>434</a>                ChromeSlot::satellite(ChromeElement::Minimize),
+<a href=#435 id=435 data-nosnippet>435</a>                ChromeSlot::satellite(ChromeElement::Close),
+<a href=#436 id=436 data-nosnippet>436</a>            ]),
+<a href=#437 id=437 data-nosnippet>437</a>            satellites: <span class="prelude-val">Some</span>(CardSatellites {
+<a href=#438 id=438 data-nosnippet>438</a>                satellites: <span class="macro">vec!</span>[SatelliteConfig::chrome(<span class="string">"extra"</span>, ChromeElement::Minimize)],
+<a href=#439 id=439 data-nosnippet>439</a>                ..Default::default()
+<a href=#440 id=440 data-nosnippet>440</a>            }),
+<a href=#441 id=441 data-nosnippet>441</a>            ..Default::default()
+<a href=#442 id=442 data-nosnippet>442</a>        };
+<a href=#443 id=443 data-nosnippet>443</a>        <span class="kw">let </span>(<span class="kw">_</span>, satellites) = config.effective_satellites();
+<a href=#444 id=444 data-nosnippet>444</a>        <span class="kw">let </span>ids: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = satellites.iter().map(|satellite| satellite.id.as_str()).collect();
+<a href=#445 id=445 data-nosnippet>445</a>        <span class="macro">assert_eq!</span>(ids, <span class="macro">vec!</span>[<span class="string">"chrome-minimize"</span>, <span class="string">"chrome-close"</span>, <span class="string">"extra"</span>]);
+<a href=#446 id=446 data-nosnippet>446</a>    }
+<a href=#447 id=447 data-nosnippet>447</a>
+<a href=#448 id=448 data-nosnippet>448</a>    <span class="doccomment">/// Every satellite-capable chrome element maps to a distinct
+<a href=#449 id=449 data-nosnippet>449</a>    /// generated id - a shared suffix would make placements collide
+<a href=#450 id=450 data-nosnippet>450</a>    /// at mount time.
+<a href=#451 id=451 data-nosnippet>451</a>    </span><span class="attr">#[test]
+<a href=#452 id=452 data-nosnippet>452</a>    </span><span class="kw">fn </span>satellite_capable_elements_get_unique_ids() {
+<a href=#453 id=453 data-nosnippet>453</a>        <span class="kw">let </span>capable = [
+<a href=#454 id=454 data-nosnippet>454</a>            ChromeElement::Minimize,
+<a href=#455 id=455 data-nosnippet>455</a>            ChromeElement::Close,
+<a href=#456 id=456 data-nosnippet>456</a>            ChromeElement::RotateClockwise,
+<a href=#457 id=457 data-nosnippet>457</a>            ChromeElement::RotateCounterClockwise,
+<a href=#458 id=458 data-nosnippet>458</a>            ChromeElement::NextSeat,
+<a href=#459 id=459 data-nosnippet>459</a>            ChromeElement::PreviousSeat,
+<a href=#460 id=460 data-nosnippet>460</a>        ];
+<a href=#461 id=461 data-nosnippet>461</a>        <span class="kw">let </span>config = CardConfig {
+<a href=#462 id=462 data-nosnippet>462</a>            chrome: <span class="prelude-val">Some</span>(capable.iter().map(|element| ChromeSlot::satellite(<span class="kw-2">*</span>element)).collect()),
+<a href=#463 id=463 data-nosnippet>463</a>            ..Default::default()
+<a href=#464 id=464 data-nosnippet>464</a>        };
+<a href=#465 id=465 data-nosnippet>465</a>        <span class="kw">let </span>(<span class="kw">_</span>, satellites) = config.effective_satellites();
+<a href=#466 id=466 data-nosnippet>466</a>        <span class="macro">assert_eq!</span>(satellites.len(), capable.len());
+<a href=#467 id=467 data-nosnippet>467</a>        <span class="kw">let </span><span class="kw-2">mut </span>ids: Vec&lt;String&gt; = satellites.iter().map(|satellite| satellite.id.as_str().to_string()).collect();
+<a href=#468 id=468 data-nosnippet>468</a>        ids.sort();
+<a href=#469 id=469 data-nosnippet>469</a>        ids.dedup();
+<a href=#470 id=470 data-nosnippet>470</a>        <span class="macro">assert_eq!</span>(ids.len(), capable.len());
+<a href=#471 id=471 data-nosnippet>471</a>    }
+<a href=#472 id=472 data-nosnippet>472</a>
+<a href=#473 id=473 data-nosnippet>473</a>    <span class="doccomment">/// On `CardShape::Circle` every chrome element mounts as a
+<a href=#474 id=474 data-nosnippet>474</a>    /// satellite: the slot list promotes inline placements and
+<a href=#475 id=475 data-nosnippet>475</a>    /// `effective_satellites` keeps only the satellite-capable ones
+<a href=#476 id=476 data-nosnippet>476</a>    /// (header elements and grips are dropped).
+<a href=#477 id=477 data-nosnippet>477</a>    </span><span class="attr">#[test]
+<a href=#478 id=478 data-nosnippet>478</a>    </span><span class="kw">fn </span>circle_card_promotes_inline_chrome_to_satellites() {
+<a href=#479 id=479 data-nosnippet>479</a>        <span class="kw">let </span>config = CardConfig {
+<a href=#480 id=480 data-nosnippet>480</a>            shape: CardShape::Circle,
+<a href=#481 id=481 data-nosnippet>481</a>            chrome: <span class="prelude-val">Some</span>(<span class="macro">vec!</span>[
+<a href=#482 id=482 data-nosnippet>482</a>                ChromeSlot::inline(ChromeElement::Title),
+<a href=#483 id=483 data-nosnippet>483</a>                ChromeSlot::inline(ChromeElement::Minimize),
+<a href=#484 id=484 data-nosnippet>484</a>                ChromeSlot::inline(ChromeElement::Close),
+<a href=#485 id=485 data-nosnippet>485</a>                ChromeSlot::inline(ChromeElement::RotateGrip),
+<a href=#486 id=486 data-nosnippet>486</a>                ChromeSlot::inline(ChromeElement::RotateClockwise),
+<a href=#487 id=487 data-nosnippet>487</a>            ]),
+<a href=#488 id=488 data-nosnippet>488</a>            ..Default::default()
+<a href=#489 id=489 data-nosnippet>489</a>        };
+<a href=#490 id=490 data-nosnippet>490</a>        <span class="kw">let </span>(<span class="kw">_</span>, satellites) = config.effective_satellites();
+<a href=#491 id=491 data-nosnippet>491</a>        <span class="kw">let </span>ids: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = satellites.iter().map(|satellite| satellite.id.as_str()).collect();
+<a href=#492 id=492 data-nosnippet>492</a>        <span class="macro">assert_eq!</span>(ids, <span class="macro">vec!</span>[<span class="string">"chrome-minimize"</span>, <span class="string">"chrome-close"</span>, <span class="string">"chrome-rotate-clockwise"</span>]);
+<a href=#493 id=493 data-nosnippet>493</a>    }
+<a href=#494 id=494 data-nosnippet>494</a>
+<a href=#495 id=495 data-nosnippet>495</a>    <span class="attr">#[test]
+<a href=#496 id=496 data-nosnippet>496</a>    </span><span class="kw">fn </span>non_satellite_capable_elements_are_filtered() {
+<a href=#497 id=497 data-nosnippet>497</a>        <span class="kw">let </span>config = CardConfig {
+<a href=#498 id=498 data-nosnippet>498</a>            chrome: <span class="prelude-val">Some</span>(<span class="macro">vec!</span>[ChromeSlot::satellite(ChromeElement::ResizeGrip)]),
+<a href=#499 id=499 data-nosnippet>499</a>            ..Default::default()
+<a href=#500 id=500 data-nosnippet>500</a>        };
+<a href=#501 id=501 data-nosnippet>501</a>        <span class="kw">let </span>(<span class="kw">_</span>, satellites) = config.effective_satellites();
+<a href=#502 id=502 data-nosnippet>502</a>        <span class="macro">assert!</span>(satellites.is_empty());
+<a href=#503 id=503 data-nosnippet>503</a>    }
+<a href=#504 id=504 data-nosnippet>504</a>
+<a href=#505 id=505 data-nosnippet>505</a>    <span class="attr">#[cfg(feature = <span class="string">"serde"</span>)]
+<a href=#506 id=506 data-nosnippet>506</a>    #[test]
+<a href=#507 id=507 data-nosnippet>507</a>    </span><span class="kw">fn </span>chrome_slot_serializes_kebab_case() {
+<a href=#508 id=508 data-nosnippet>508</a>        <span class="kw">let </span>slot = ChromeSlot::satellite(ChromeElement::RotateGrip);
+<a href=#509 id=509 data-nosnippet>509</a>        <span class="kw">let </span>json = serde_json::to_string(<span class="kw-2">&amp;</span>slot).unwrap();
+<a href=#510 id=510 data-nosnippet>510</a>        <span class="macro">assert_eq!</span>(json, <span class="string">r#"{"element":"rotate-grip","placement":"satellite"}"#</span>);
+<a href=#511 id=511 data-nosnippet>511</a>    }
+<a href=#512 id=512 data-nosnippet>512</a>}
 </code></pre></div></section></main></body></html>

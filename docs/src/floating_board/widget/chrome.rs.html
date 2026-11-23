@@ -1,0 +1,737 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/widget/chrome.rs`."><title>chrome.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-203241e4.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="floating_board" data-themes="" data-resource-suffix="" data-rustdoc-version="1.100.0 (0ef1bc386 2026-11-09)" data-channel="1.100.0" data-search-js="search-b167f383.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../../../static.files/src-script-813739b1.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-1814ead3.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">floating_board/widget/</div>chrome.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! Chrome element builders and mounting, implemented on [`Card`].
+<a href=#2 id=2 data-nosnippet>2</a>//!
+<a href=#3 id=3 data-nosnippet>3</a>//! One [`ChromeElement`] produces one widget plus its signal wiring
+<a href=#4 id=4 data-nosnippet>4</a>//! (P1.1). `Inline` elements mount either into the card's header strip
+<a href=#5 id=5 data-nosnippet>5</a>//! (drag handle, title, minimize, close) or onto the content overlay
+<a href=#6 id=6 data-nosnippet>6</a>//! (resize/rotate grips); `Satellite` placements are validated and
+<a href=#7 id=7 data-nosnippet>7</a>//! skipped until satellite mounting lands (Phase 2/3).
+<a href=#8 id=8 data-nosnippet>8</a>//!
+<a href=#9 id=9 data-nosnippet>9</a>//! The `builtin` renderer assembles the stock GTK4/CSS chrome; the
+<a href=#10 id=10 data-nosnippet>10</a>//! `adwaita` feature adds a libadwaita renderer (`adw::HeaderBar`,
+<a href=#11 id=11 data-nosnippet>11</a>//! `adw::WindowTitle`, wired buttons in a `windowcontrols` node). The
+<a href=#12 id=12 data-nosnippet>12</a>//! bare widget factories at the bottom of this module stay free
+<a href=#13 id=13 data-nosnippet>13</a>//! functions - they are stateless builders for foreign types (`Label`,
+<a href=#14 id=14 data-nosnippet>14</a>//! `DrawingArea`).
+<a href=#15 id=15 data-nosnippet>15</a>
+<a href=#16 id=16 data-nosnippet>16</a></span><span class="kw">use </span><span class="kw">crate</span>::domain::CardShape;
+<a href=#17 id=17 data-nosnippet>17</a><span class="kw">use </span><span class="kw">crate</span>::domain::ChromeElement;
+<a href=#18 id=18 data-nosnippet>18</a><span class="kw">use </span><span class="kw">crate</span>::domain::ChromePlacement;
+<a href=#19 id=19 data-nosnippet>19</a><span class="kw">use </span><span class="kw">crate</span>::domain::ChromeSlot;
+<a href=#20 id=20 data-nosnippet>20</a><span class="kw">use </span><span class="kw">crate</span>::domain::ChromeStyle;
+<a href=#21 id=21 data-nosnippet>21</a><span class="kw">use </span><span class="kw">crate</span>::domain::TurnDirection;
+<a href=#22 id=22 data-nosnippet>22</a><span class="kw">use </span><span class="kw">crate</span>::l10n::l10n;
+<a href=#23 id=23 data-nosnippet>23</a><span class="kw">use </span><span class="kw">crate</span>::widget::card::Card;
+<a href=#24 id=24 data-nosnippet>24</a><span class="kw">use </span><span class="kw">crate</span>::widget::card_config::CardConfig;
+<a href=#25 id=25 data-nosnippet>25</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_HANDLE;
+<a href=#26 id=26 data-nosnippet>26</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_HEADER;
+<a href=#27 id=27 data-nosnippet>27</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_RESIZE_GRIP;
+<a href=#28 id=28 data-nosnippet>28</a><span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_ROTATE_GRIP;
+<a href=#29 id=29 data-nosnippet>29</a><span class="kw">use </span>glib::object::Cast;
+<a href=#30 id=30 data-nosnippet>30</a><span class="kw">use </span>glib::object::ObjectExt;
+<a href=#31 id=31 data-nosnippet>31</a><span class="kw">use </span>gtk4::Align;
+<a href=#32 id=32 data-nosnippet>32</a><span class="kw">use </span>gtk4::Button;
+<a href=#33 id=33 data-nosnippet>33</a><span class="kw">use </span>gtk4::DrawingArea;
+<a href=#34 id=34 data-nosnippet>34</a><span class="kw">use </span>gtk4::Label;
+<a href=#35 id=35 data-nosnippet>35</a><span class="kw">use </span>gtk4::Orientation;
+<a href=#36 id=36 data-nosnippet>36</a><span class="kw">use </span>gtk4::Widget;
+<a href=#37 id=37 data-nosnippet>37</a><span class="kw">use </span>gtk4::cairo::LineCap;
+<a href=#38 id=38 data-nosnippet>38</a><span class="kw">use </span>gtk4::pango::EllipsizeMode;
+<a href=#39 id=39 data-nosnippet>39</a><span class="kw">use </span>gtk4::prelude::BoxExt;
+<a href=#40 id=40 data-nosnippet>40</a><span class="kw">use </span>gtk4::prelude::ButtonExt;
+<a href=#41 id=41 data-nosnippet>41</a><span class="kw">use </span>gtk4::prelude::DrawingAreaExt;
+<a href=#42 id=42 data-nosnippet>42</a><span class="kw">use </span>gtk4::prelude::DrawingAreaExtManual;
+<a href=#43 id=43 data-nosnippet>43</a><span class="kw">use </span>gtk4::prelude::WidgetExt;
+<a href=#44 id=44 data-nosnippet>44</a><span class="kw">use </span>gtk4::subclass::prelude::ObjectSubclassIsExt;
+<a href=#45 id=45 data-nosnippet>45</a><span class="kw">use </span>smearor_commons_geometry::RotationDirection;
+<a href=#46 id=46 data-nosnippet>46</a><span class="kw">use </span>std::f64::consts::FRAC_PI_2;
+<a href=#47 id=47 data-nosnippet>47</a><span class="kw">use </span>tracing::debug;
+<a href=#48 id=48 data-nosnippet>48</a><span class="kw">use </span>tracing::warn;
+<a href=#49 id=49 data-nosnippet>49</a>
+<a href=#50 id=50 data-nosnippet>50</a><span class="doccomment">/// Icon the inline minimize slot shows while unfolded (toggles to
+<a href=#51 id=51 data-nosnippet>51</a>/// `go-up-symbolic` while folded - see `Card::set_folded`).
+<a href=#52 id=52 data-nosnippet>52</a></span><span class="kw">const </span>ICON_MINIMIZE_INLINE: <span class="kw-2">&amp;</span>str = <span class="string">"go-down-symbolic"</span>;
+<a href=#53 id=53 data-nosnippet>53</a>
+<a href=#54 id=54 data-nosnippet>54</a><span class="doccomment">/// Adwaita-style minimize icon - used by `ChromeStyle::Adwaita` and,
+<a href=#55 id=55 data-nosnippet>55</a>/// later, by the satellite mount. The button keeps this icon
+<a href=#56 id=56 data-nosnippet>56</a>/// independent of fold state (`set_folded` only swaps `go-*` icons).
+<a href=#57 id=57 data-nosnippet>57</a></span><span class="attr">#[allow(dead_code)]
+<a href=#58 id=58 data-nosnippet>58</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">const </span>ICON_MINIMIZE_SYMBOLIC: <span class="kw-2">&amp;</span>str = <span class="string">"window-minimize-symbolic"</span>;
+<a href=#59 id=59 data-nosnippet>59</a>
+<a href=#60 id=60 data-nosnippet>60</a><span class="doccomment">/// `EventController::name` tag marking gestures that belong to the
+<a href=#61 id=61 data-nosnippet>61</a>/// card's own wiring. The adwaita renderer strips the HeaderBar's
+<a href=#62 id=62 data-nosnippet>62</a>/// internal window gestures (move-drag, double-click maximize) but
+<a href=#63 id=63 data-nosnippet>63</a>/// spares controllers carrying this name.
+<a href=#64 id=64 data-nosnippet>64</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">const </span>CARD_GESTURE_NAME: <span class="kw-2">&amp;</span>str = <span class="string">"floating-board-card-gesture"</span>;
+<a href=#65 id=65 data-nosnippet>65</a>
+<a href=#66 id=66 data-nosnippet>66</a><span class="kw">impl </span>Card {
+<a href=#67 id=67 data-nosnippet>67</a>    <span class="doccomment">/// Builds the card chrome from `config`'s effective slot list and
+<a href=#68 id=68 data-nosnippet>68</a>    /// mounts every `Inline` element: header elements onto a header
+<a href=#69 id=69 data-nosnippet>69</a>    /// strip prepended to the card, grip elements onto the content
+<a href=#70 id=70 data-nosnippet>70</a>    /// overlay.
+<a href=#71 id=71 data-nosnippet>71</a>    ///
+<a href=#72 id=72 data-nosnippet>72</a>    /// The header widget lands in `CardImpl::header` - it stays the
+<a href=#73 id=73 data-nosnippet>73</a>    /// drag affordance for `DragHandle::Header` and the strip that
+<a href=#74 id=74 data-nosnippet>74</a>    /// remains visible while folded. A header without any inline
+<a href=#75 id=75 data-nosnippet>75</a>    /// children is not mounted at all (an explicit `chrome: []` config
+<a href=#76 id=76 data-nosnippet>76</a>    /// produces a chrome-free card; use `DragHandle::WholeCard` or
+<a href=#77 id=77 data-nosnippet>77</a>    /// `headerless` for those).
+<a href=#78 id=78 data-nosnippet>78</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>mount_chrome(<span class="kw-2">&amp;</span><span class="self">self</span>, config: <span class="kw-2">&amp;</span>CardConfig) {
+<a href=#79 id=79 data-nosnippet>79</a>        <span class="kw">let </span>title = config.title.clone().unwrap_or_else(|| l10n().message(<span class="string">"card-untitled"</span>));
+<a href=#80 id=80 data-nosnippet>80</a>        <span class="kw-2">*</span><span class="self">self</span>.imp().title_text.borrow_mut() = title.clone();
+<a href=#81 id=81 data-nosnippet>81</a>        <span class="comment">// A circle card has no header strip and no corner grips: every
+<a href=#82 id=82 data-nosnippet>82</a>        // chrome element mounts as a satellite (wired through
+<a href=#83 id=83 data-nosnippet>83</a>        // `CardConfig::effective_satellites`); elements that cannot be
+<a href=#84 id=84 data-nosnippet>84</a>        // satellites are dropped.
+<a href=#85 id=85 data-nosnippet>85</a>        </span><span class="kw">if </span>config.shape == CardShape::Circle {
+<a href=#86 id=86 data-nosnippet>86</a>            <span class="kw">for </span>slot <span class="kw">in </span><span class="kw-2">&amp;</span>config.effective_chrome_slots() {
+<a href=#87 id=87 data-nosnippet>87</a>                <span class="kw">if </span>slot.placement != ChromePlacement::Satellite {
+<a href=#88 id=88 data-nosnippet>88</a>                    <span class="kw">if </span>slot.element.supports_satellite() {
+<a href=#89 id=89 data-nosnippet>89</a>                        <span class="macro">warn!</span>(element = <span class="question-mark">?</span>slot.element, <span class="string">"inline chrome element has no mount on a circle card - mounted as satellite"</span>);
+<a href=#90 id=90 data-nosnippet>90</a>                    } <span class="kw">else </span>{
+<a href=#91 id=91 data-nosnippet>91</a>                        <span class="macro">warn!</span>(element = <span class="question-mark">?</span>slot.element, <span class="string">"chrome element has no mount on a circle card - skipped"</span>);
+<a href=#92 id=92 data-nosnippet>92</a>                    }
+<a href=#93 id=93 data-nosnippet>93</a>                }
+<a href=#94 id=94 data-nosnippet>94</a>            }
+<a href=#95 id=95 data-nosnippet>95</a>            <span class="kw">return</span>;
+<a href=#96 id=96 data-nosnippet>96</a>        }
+<a href=#97 id=97 data-nosnippet>97</a>        <span class="kw">let </span>slots = config.effective_chrome_slots();
+<a href=#98 id=98 data-nosnippet>98</a>        <span class="kw">let </span>style = config.chrome_style.resolved();
+<a href=#99 id=99 data-nosnippet>99</a>        <span class="kw">if </span>style != config.chrome_style {
+<a href=#100 id=100 data-nosnippet>100</a>            <span class="macro">warn!</span>(<span class="string">"CardConfig::chrome_style is Adwaita but the `adwaita` feature is disabled - falling back to Builtin"</span>);
+<a href=#101 id=101 data-nosnippet>101</a>        }
+<a href=#102 id=102 data-nosnippet>102</a>        <span class="kw">match </span>style {
+<a href=#103 id=103 data-nosnippet>103</a>            ChromeStyle::Builtin =&gt; <span class="self">self</span>.mount_builtin_chrome(<span class="kw-2">&amp;</span>title, <span class="kw-2">&amp;</span>slots),
+<a href=#104 id=104 data-nosnippet>104</a>            <span class="attr">#[cfg(feature = <span class="string">"adwaita"</span>)]
+<a href=#105 id=105 data-nosnippet>105</a>            </span>ChromeStyle::Adwaita =&gt; <span class="self">self</span>.mount_adwaita_chrome(config, <span class="kw-2">&amp;</span>title, <span class="kw-2">&amp;</span>slots),
+<a href=#106 id=106 data-nosnippet>106</a>            <span class="comment">// `resolved()` already fell back to Builtin - unreachable in
+<a href=#107 id=107 data-nosnippet>107</a>            // practice, mount builtin defensively rather than panic.
+<a href=#108 id=108 data-nosnippet>108</a>            </span><span class="attr">#[cfg(not(feature = <span class="string">"adwaita"</span>))]
+<a href=#109 id=109 data-nosnippet>109</a>            </span>ChromeStyle::Adwaita =&gt; <span class="self">self</span>.mount_builtin_chrome(<span class="kw-2">&amp;</span>title, <span class="kw-2">&amp;</span>slots),
+<a href=#110 id=110 data-nosnippet>110</a>        }
+<a href=#111 id=111 data-nosnippet>111</a>        <span class="kw">let </span>imp = <span class="self">self</span>.imp();
+<a href=#112 id=112 data-nosnippet>112</a>        <span class="comment">// The grip gesture wiring in `FloatingBoard` keys off the grip's
+<a href=#113 id=113 data-nosnippet>113</a>        // existence, not the flags: a grip exists iff its slot was mounted.
+<a href=#114 id=114 data-nosnippet>114</a>        </span>imp.resizable.set(imp.resize_grip.get().is_some());
+<a href=#115 id=115 data-nosnippet>115</a>        imp.rotate_grip_enabled.set(imp.rotate_grip.get().is_some());
+<a href=#116 id=116 data-nosnippet>116</a>    }
+<a href=#117 id=117 data-nosnippet>117</a>
+<a href=#118 id=118 data-nosnippet>118</a>    <span class="doccomment">/// `Builtin` renderer: header strip as a `gtk4::Box` of inline
+<a href=#119 id=119 data-nosnippet>119</a>    /// chrome slots, grips on the content overlay. Reproduces the
+<a href=#120 id=120 data-nosnippet>120</a>    /// historical card look one-to-one (P1.3 regression baseline).
+<a href=#121 id=121 data-nosnippet>121</a>    </span><span class="kw">fn </span>mount_builtin_chrome(<span class="kw-2">&amp;</span><span class="self">self</span>, title: <span class="kw-2">&amp;</span>str, slots: <span class="kw-2">&amp;</span>[ChromeSlot]) {
+<a href=#122 id=122 data-nosnippet>122</a>        <span class="kw">let </span>imp = <span class="self">self</span>.imp();
+<a href=#123 id=123 data-nosnippet>123</a>        <span class="kw">let </span>header = gtk4::Box::new(Orientation::Horizontal, <span class="number">6</span>);
+<a href=#124 id=124 data-nosnippet>124</a>        header.add_css_class(CLASS_HEADER);
+<a href=#125 id=125 data-nosnippet>125</a>        header.set_hexpand(<span class="bool-val">true</span>);
+<a href=#126 id=126 data-nosnippet>126</a>        <span class="comment">// Header children are grouped by placement: `InlineStart`
+<a href=#127 id=127 data-nosnippet>127</a>        // children land before the neutral `Inline` run (which keeps
+<a href=#128 id=128 data-nosnippet>128</a>        // slot order), `InlineEnd` children after it - so ends of the
+<a href=#129 id=129 data-nosnippet>129</a>        // strip are controllable independent of slot order.
+<a href=#130 id=130 data-nosnippet>130</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>start_children: Vec&lt;Widget&gt; = Vec::new();
+<a href=#131 id=131 data-nosnippet>131</a>        <span class="kw">let </span><span class="kw-2">mut </span>middle_children: Vec&lt;Widget&gt; = Vec::new();
+<a href=#132 id=132 data-nosnippet>132</a>        <span class="kw">let </span><span class="kw-2">mut </span>end_children: Vec&lt;Widget&gt; = Vec::new();
+<a href=#133 id=133 data-nosnippet>133</a>        <span class="kw">for </span>slot <span class="kw">in </span>slots {
+<a href=#134 id=134 data-nosnippet>134</a>            <span class="kw">if </span>slot.placement == ChromePlacement::Satellite {
+<a href=#135 id=135 data-nosnippet>135</a>                skip_satellite(slot.element);
+<a href=#136 id=136 data-nosnippet>136</a>                <span class="kw">continue</span>;
+<a href=#137 id=137 data-nosnippet>137</a>            }
+<a href=#138 id=138 data-nosnippet>138</a>            <span class="kw">let </span>target = <span class="kw">match </span>slot.placement {
+<a href=#139 id=139 data-nosnippet>139</a>                ChromePlacement::InlineStart =&gt; <span class="kw-2">&amp;mut </span>start_children,
+<a href=#140 id=140 data-nosnippet>140</a>                ChromePlacement::InlineEnd =&gt; <span class="kw-2">&amp;mut </span>end_children,
+<a href=#141 id=141 data-nosnippet>141</a>                <span class="kw">_ </span>=&gt; <span class="kw-2">&amp;mut </span>middle_children,
+<a href=#142 id=142 data-nosnippet>142</a>            };
+<a href=#143 id=143 data-nosnippet>143</a>            <span class="kw">match </span>slot.element {
+<a href=#144 id=144 data-nosnippet>144</a>                ChromeElement::DragHandle =&gt; {
+<a href=#145 id=145 data-nosnippet>145</a>                    <span class="kw">let </span>handle = drag_handle_label();
+<a href=#146 id=146 data-nosnippet>146</a>                    target.push(handle.clone().upcast());
+<a href=#147 id=147 data-nosnippet>147</a>                    <span class="kw">let _ </span>= imp.handle_label.set(handle);
+<a href=#148 id=148 data-nosnippet>148</a>                }
+<a href=#149 id=149 data-nosnippet>149</a>                ChromeElement::Title =&gt; {
+<a href=#150 id=150 data-nosnippet>150</a>                    <span class="kw">let </span>label = title_label(title);
+<a href=#151 id=151 data-nosnippet>151</a>                    target.push(label.clone().upcast());
+<a href=#152 id=152 data-nosnippet>152</a>                    <span class="kw">let _ </span>= imp.title_label.set(label);
+<a href=#153 id=153 data-nosnippet>153</a>                }
+<a href=#154 id=154 data-nosnippet>154</a>                ChromeElement::Minimize =&gt; {
+<a href=#155 id=155 data-nosnippet>155</a>                    <span class="kw">let </span>button = <span class="self">self</span>.build_minimize_button(ICON_MINIMIZE_INLINE);
+<a href=#156 id=156 data-nosnippet>156</a>                    target.push(button.clone().upcast());
+<a href=#157 id=157 data-nosnippet>157</a>                    <span class="kw">let _ </span>= imp.fold_button.set(button);
+<a href=#158 id=158 data-nosnippet>158</a>                }
+<a href=#159 id=159 data-nosnippet>159</a>                ChromeElement::Close =&gt; {
+<a href=#160 id=160 data-nosnippet>160</a>                    <span class="kw">let </span>button = <span class="self">self</span>.build_close_button();
+<a href=#161 id=161 data-nosnippet>161</a>                    target.push(button.clone().upcast());
+<a href=#162 id=162 data-nosnippet>162</a>                    <span class="kw">let _ </span>= imp.close_button.set(button);
+<a href=#163 id=163 data-nosnippet>163</a>                }
+<a href=#164 id=164 data-nosnippet>164</a>                ChromeElement::RotateClockwise =&gt; target.push(<span class="self">self</span>.build_rotate_button(RotationDirection::Clockwise).upcast()),
+<a href=#165 id=165 data-nosnippet>165</a>                ChromeElement::RotateCounterClockwise =&gt; target.push(<span class="self">self</span>.build_rotate_button(RotationDirection::CounterClockwise).upcast()),
+<a href=#166 id=166 data-nosnippet>166</a>                ChromeElement::NextSeat =&gt; target.push(<span class="self">self</span>.build_pass_button(TurnDirection::Clockwise).upcast()),
+<a href=#167 id=167 data-nosnippet>167</a>                ChromeElement::PreviousSeat =&gt; target.push(<span class="self">self</span>.build_pass_button(TurnDirection::CounterClockwise).upcast()),
+<a href=#168 id=168 data-nosnippet>168</a>                ChromeElement::ResizeGrip =&gt; <span class="self">self</span>.mount_grip(ChromeElement::ResizeGrip),
+<a href=#169 id=169 data-nosnippet>169</a>                ChromeElement::RotateGrip =&gt; <span class="self">self</span>.mount_grip(ChromeElement::RotateGrip),
+<a href=#170 id=170 data-nosnippet>170</a>            }
+<a href=#171 id=171 data-nosnippet>171</a>        }
+<a href=#172 id=172 data-nosnippet>172</a>        <span class="kw">let </span>header_children = start_children.len() + middle_children.len() + end_children.len();
+<a href=#173 id=173 data-nosnippet>173</a>        <span class="kw">for </span>child <span class="kw">in </span>start_children.iter().chain(<span class="kw-2">&amp;</span>middle_children).chain(<span class="kw-2">&amp;</span>end_children) {
+<a href=#174 id=174 data-nosnippet>174</a>            header.append(child);
+<a href=#175 id=175 data-nosnippet>175</a>        }
+<a href=#176 id=176 data-nosnippet>176</a>        <span class="comment">// A header without children is skipped entirely: no dead strip
+<a href=#177 id=177 data-nosnippet>177</a>        // is drawn and `drag_source(DragHandle::Header)` falls back to
+<a href=#178 id=178 data-nosnippet>178</a>        // the card widget, keeping a chrome-free card draggable.
+<a href=#179 id=179 data-nosnippet>179</a>        </span><span class="kw">if </span>header_children &gt; <span class="number">0 </span>{
+<a href=#180 id=180 data-nosnippet>180</a>            imp.header_shown.set(<span class="bool-val">true</span>);
+<a href=#181 id=181 data-nosnippet>181</a>            <span class="self">self</span>.prepend(<span class="kw-2">&amp;</span>header);
+<a href=#182 id=182 data-nosnippet>182</a>            <span class="kw">let _ </span>= imp.header.set(header.upcast());
+<a href=#183 id=183 data-nosnippet>183</a>        }
+<a href=#184 id=184 data-nosnippet>184</a>    }
+<a href=#185 id=185 data-nosnippet>185</a>
+<a href=#186 id=186 data-nosnippet>186</a>    <span class="doccomment">/// Mounts the grip widget for `element` on the card's content
+<a href=#187 id=187 data-nosnippet>187</a>    /// overlay and records it in the matching `CardImpl` cell.
+<a href=#188 id=188 data-nosnippet>188</a>    /// Non-grip elements are ignored.
+<a href=#189 id=189 data-nosnippet>189</a>    </span><span class="kw">fn </span>mount_grip(<span class="kw-2">&amp;</span><span class="self">self</span>, element: ChromeElement) {
+<a href=#190 id=190 data-nosnippet>190</a>        <span class="kw">let </span>imp = <span class="self">self</span>.imp();
+<a href=#191 id=191 data-nosnippet>191</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(overlay) = imp.content_overlay.get() <span class="kw">else </span>{
+<a href=#192 id=192 data-nosnippet>192</a>            <span class="kw">return</span>;
+<a href=#193 id=193 data-nosnippet>193</a>        };
+<a href=#194 id=194 data-nosnippet>194</a>        <span class="kw">let </span>(grip, cell) = <span class="kw">match </span>element {
+<a href=#195 id=195 data-nosnippet>195</a>            ChromeElement::ResizeGrip =&gt; (resize_grip(), <span class="kw-2">&amp;</span>imp.resize_grip),
+<a href=#196 id=196 data-nosnippet>196</a>            ChromeElement::RotateGrip =&gt; (rotate_grip(), <span class="kw-2">&amp;</span>imp.rotate_grip),
+<a href=#197 id=197 data-nosnippet>197</a>            <span class="kw">_ </span>=&gt; <span class="kw">return</span>,
+<a href=#198 id=198 data-nosnippet>198</a>        };
+<a href=#199 id=199 data-nosnippet>199</a>        overlay.add_overlay(<span class="kw-2">&amp;</span>grip);
+<a href=#200 id=200 data-nosnippet>200</a>        <span class="kw">let _ </span>= cell.set(grip);
+<a href=#201 id=201 data-nosnippet>201</a>    }
+<a href=#202 id=202 data-nosnippet>202</a>
+<a href=#203 id=203 data-nosnippet>203</a>    <span class="doccomment">/// Mount-agnostic minimize button (P1.5): the same builder serves
+<a href=#204 id=204 data-nosnippet>204</a>    /// the inline header slot and, later, the satellite mount;
+<a href=#205 id=205 data-nosnippet>205</a>    /// `icon_name` differs per mount (`go-down-symbolic` inline,
+<a href=#206 id=206 data-nosnippet>206</a>    /// `window-minimize-symbolic` satellite). Wired to `Card::fold`,
+<a href=#207 id=207 data-nosnippet>207</a>    /// tooltip `card-fold`.
+<a href=#208 id=208 data-nosnippet>208</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>build_minimize_button(<span class="kw-2">&amp;</span><span class="self">self</span>, icon_name: <span class="kw-2">&amp;</span>str) -&gt; Button {
+<a href=#209 id=209 data-nosnippet>209</a>        <span class="kw">let </span>button = Button::from_icon_name(icon_name);
+<a href=#210 id=210 data-nosnippet>210</a>        button.add_css_class(<span class="string">"flat"</span>);
+<a href=#211 id=211 data-nosnippet>211</a>        button.set_tooltip_text(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>l10n().message(<span class="string">"card-fold"</span>)));
+<a href=#212 id=212 data-nosnippet>212</a>        <span class="kw">let </span>card_weak = <span class="self">self</span>.downgrade();
+<a href=#213 id=213 data-nosnippet>213</a>        button.connect_clicked(<span class="kw">move </span>|<span class="kw">_</span>| {
+<a href=#214 id=214 data-nosnippet>214</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(card) = card_weak.upgrade() {
+<a href=#215 id=215 data-nosnippet>215</a>                card.fold();
+<a href=#216 id=216 data-nosnippet>216</a>            }
+<a href=#217 id=217 data-nosnippet>217</a>        });
+<a href=#218 id=218 data-nosnippet>218</a>        button
+<a href=#219 id=219 data-nosnippet>219</a>    }
+<a href=#220 id=220 data-nosnippet>220</a>
+<a href=#221 id=221 data-nosnippet>221</a>    <span class="doccomment">/// Mount-agnostic close button: inline header slot today, satellite
+<a href=#222 id=222 data-nosnippet>222</a>    /// mount later. Wired to `FloatingBoard::close_card` (the board and
+<a href=#223 id=223 data-nosnippet>223</a>    /// id come from the card's own backlink), tooltip `card-close`.
+<a href=#224 id=224 data-nosnippet>224</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>build_close_button(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Button {
+<a href=#225 id=225 data-nosnippet>225</a>        <span class="kw">let </span>button = Button::from_icon_name(<span class="string">"window-close-symbolic"</span>);
+<a href=#226 id=226 data-nosnippet>226</a>        button.add_css_class(<span class="string">"flat"</span>);
+<a href=#227 id=227 data-nosnippet>227</a>        button.set_tooltip_text(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>l10n().message(<span class="string">"card-close"</span>)));
+<a href=#228 id=228 data-nosnippet>228</a>        <span class="kw">let </span>board_weak = <span class="self">self</span>.imp().board.borrow().clone();
+<a href=#229 id=229 data-nosnippet>229</a>        <span class="kw">let </span>id = <span class="self">self</span>.id();
+<a href=#230 id=230 data-nosnippet>230</a>        button.connect_clicked(<span class="kw">move </span>|<span class="kw">_</span>| {
+<a href=#231 id=231 data-nosnippet>231</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(board) = board_weak.upgrade() {
+<a href=#232 id=232 data-nosnippet>232</a>                <span class="kw">let _ </span>= board.close_card(<span class="kw-2">&amp;</span>id);
+<a href=#233 id=233 data-nosnippet>233</a>            }
+<a href=#234 id=234 data-nosnippet>234</a>        });
+<a href=#235 id=235 data-nosnippet>235</a>        button
+<a href=#236 id=236 data-nosnippet>236</a>    }
+<a href=#237 id=237 data-nosnippet>237</a>
+<a href=#238 id=238 data-nosnippet>238</a>    <span class="doccomment">/// Mount-agnostic rotate button stepping the card one snap step in
+<a href=#239 id=239 data-nosnippet>239</a>    /// `direction` per click (`Card::rotate_to_next_quarter`) - the
+<a href=#240 id=240 data-nosnippet>240</a>    /// shared builder for `ChromeElement::RotateClockwise` and
+<a href=#241 id=241 data-nosnippet>241</a>    /// `RotateCounterClockwise`, inline and satellite mounts alike.
+<a href=#242 id=242 data-nosnippet>242</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>build_rotate_button(<span class="kw-2">&amp;</span><span class="self">self</span>, direction: RotationDirection) -&gt; Button {
+<a href=#243 id=243 data-nosnippet>243</a>        <span class="kw">let </span>(icon_name, tooltip) = <span class="kw">match </span>direction {
+<a href=#244 id=244 data-nosnippet>244</a>            RotationDirection::Clockwise =&gt; (<span class="string">"object-rotate-right-symbolic"</span>, <span class="string">"card-rotate-clockwise"</span>),
+<a href=#245 id=245 data-nosnippet>245</a>            RotationDirection::CounterClockwise =&gt; (<span class="string">"object-rotate-left-symbolic"</span>, <span class="string">"card-rotate-counter-clockwise"</span>),
+<a href=#246 id=246 data-nosnippet>246</a>        };
+<a href=#247 id=247 data-nosnippet>247</a>        <span class="kw">let </span>button = Button::from_icon_name(icon_name);
+<a href=#248 id=248 data-nosnippet>248</a>        button.add_css_class(<span class="string">"flat"</span>);
+<a href=#249 id=249 data-nosnippet>249</a>        button.set_tooltip_text(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>l10n().message(tooltip)));
+<a href=#250 id=250 data-nosnippet>250</a>        <span class="kw">let </span>card_weak = <span class="self">self</span>.downgrade();
+<a href=#251 id=251 data-nosnippet>251</a>        button.connect_clicked(<span class="kw">move </span>|<span class="kw">_</span>| {
+<a href=#252 id=252 data-nosnippet>252</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(card) = card_weak.upgrade() {
+<a href=#253 id=253 data-nosnippet>253</a>                card.rotate_to_next_quarter(direction);
+<a href=#254 id=254 data-nosnippet>254</a>            }
+<a href=#255 id=255 data-nosnippet>255</a>        });
+<a href=#256 id=256 data-nosnippet>256</a>        button
+<a href=#257 id=257 data-nosnippet>257</a>    }
+<a href=#258 id=258 data-nosnippet>258</a>
+<a href=#259 id=259 data-nosnippet>259</a>    <span class="doccomment">/// Mount-agnostic pass button handing the card one table side in
+<a href=#260 id=260 data-nosnippet>260</a>    /// `direction` per click (`Card::pass_to_next_user`) - the shared
+<a href=#261 id=261 data-nosnippet>261</a>    /// builder for `ChromeElement::NextSeat` and `PreviousSeat`, inline
+<a href=#262 id=262 data-nosnippet>262</a>    /// and satellite mounts alike. `move_to_edge` is fixed to `true`:
+<a href=#263 id=263 data-nosnippet>263</a>    /// a passed card lands at the seat's edge lane.
+<a href=#264 id=264 data-nosnippet>264</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>build_pass_button(<span class="kw-2">&amp;</span><span class="self">self</span>, direction: TurnDirection) -&gt; Button {
+<a href=#265 id=265 data-nosnippet>265</a>        <span class="kw">let </span>(icon_name, tooltip) = <span class="kw">match </span>direction {
+<a href=#266 id=266 data-nosnippet>266</a>            TurnDirection::Clockwise =&gt; (<span class="string">"go-previous-symbolic"</span>, <span class="string">"card-next-seat"</span>),
+<a href=#267 id=267 data-nosnippet>267</a>            TurnDirection::CounterClockwise =&gt; (<span class="string">"go-next-symbolic"</span>, <span class="string">"card-previous-seat"</span>),
+<a href=#268 id=268 data-nosnippet>268</a>        };
+<a href=#269 id=269 data-nosnippet>269</a>        <span class="kw">let </span>button = Button::from_icon_name(icon_name);
+<a href=#270 id=270 data-nosnippet>270</a>        button.add_css_class(<span class="string">"flat"</span>);
+<a href=#271 id=271 data-nosnippet>271</a>        button.set_tooltip_text(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>l10n().message(tooltip)));
+<a href=#272 id=272 data-nosnippet>272</a>        <span class="kw">let </span>card_weak = <span class="self">self</span>.downgrade();
+<a href=#273 id=273 data-nosnippet>273</a>        button.connect_clicked(<span class="kw">move </span>|<span class="kw">_</span>| {
+<a href=#274 id=274 data-nosnippet>274</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(card) = card_weak.upgrade() {
+<a href=#275 id=275 data-nosnippet>275</a>                <span class="kw">let _ </span>= card.pass_to_next_user(direction, <span class="bool-val">true</span>);
+<a href=#276 id=276 data-nosnippet>276</a>            }
+<a href=#277 id=277 data-nosnippet>277</a>        });
+<a href=#278 id=278 data-nosnippet>278</a>        button
+<a href=#279 id=279 data-nosnippet>279</a>    }
+<a href=#280 id=280 data-nosnippet>280</a>}
+<a href=#281 id=281 data-nosnippet>281</a>
+<a href=#282 id=282 data-nosnippet>282</a><span class="doccomment">/// A `Satellite` slot never mounts inline - satellite-capable elements
+<a href=#283 id=283 data-nosnippet>283</a>/// are picked up by the board's satellite mounting (`CardConfig::
+<a href=#284 id=284 data-nosnippet>284</a>/// effective_satellites`); elements that can never be satellites warn.
+<a href=#285 id=285 data-nosnippet>285</a></span><span class="kw">fn </span>skip_satellite(element: ChromeElement) {
+<a href=#286 id=286 data-nosnippet>286</a>    <span class="kw">if </span>element.supports_satellite() {
+<a href=#287 id=287 data-nosnippet>287</a>        <span class="macro">debug!</span>(<span class="string">"Chrome element {element:?} configured as satellite - mounted by the board, not inline"</span>);
+<a href=#288 id=288 data-nosnippet>288</a>    } <span class="kw">else </span>{
+<a href=#289 id=289 data-nosnippet>289</a>        <span class="macro">warn!</span>(<span class="string">"Chrome element {element:?} does not support satellite placement - slot ignored"</span>);
+<a href=#290 id=290 data-nosnippet>290</a>    }
+<a href=#291 id=291 data-nosnippet>291</a>}
+<a href=#292 id=292 data-nosnippet>292</a>
+<a href=#293 id=293 data-nosnippet>293</a><span class="doccomment">/// The `≡` drag affordance shown in `DragHandle::Handle` mode.
+<a href=#294 id=294 data-nosnippet>294</a></span><span class="kw">fn </span>drag_handle_label() -&gt; Label {
+<a href=#295 id=295 data-nosnippet>295</a>    <span class="kw">let </span>handle = Label::new(<span class="prelude-val">Some</span>(<span class="string">"\u{2261}"</span>));
+<a href=#296 id=296 data-nosnippet>296</a>    handle.add_css_class(CLASS_HANDLE);
+<a href=#297 id=297 data-nosnippet>297</a>    handle.set_tooltip_text(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>l10n().message(<span class="string">"card-handle"</span>)));
+<a href=#298 id=298 data-nosnippet>298</a>    handle
+<a href=#299 id=299 data-nosnippet>299</a>}
+<a href=#300 id=300 data-nosnippet>300</a>
+<a href=#301 id=301 data-nosnippet>301</a><span class="doccomment">/// The header title: expanding label, start-aligned, ellipsized.
+<a href=#302 id=302 data-nosnippet>302</a>/// `title_text` in `CardImpl` stays the source of truth for
+<a href=#303 id=303 data-nosnippet>303</a>/// `Card::title` because the adwaita renderer swaps this for an
+<a href=#304 id=304 data-nosnippet>304</a>/// `adw::WindowTitle`.
+<a href=#305 id=305 data-nosnippet>305</a></span><span class="kw">fn </span>title_label(title: <span class="kw-2">&amp;</span>str) -&gt; Label {
+<a href=#306 id=306 data-nosnippet>306</a>    <span class="kw">let </span>label = Label::new(<span class="prelude-val">Some</span>(title));
+<a href=#307 id=307 data-nosnippet>307</a>    label.set_hexpand(<span class="bool-val">true</span>);
+<a href=#308 id=308 data-nosnippet>308</a>    label.set_halign(Align::Start);
+<a href=#309 id=309 data-nosnippet>309</a>    label.set_ellipsize(EllipsizeMode::End);
+<a href=#310 id=310 data-nosnippet>310</a>    label
+<a href=#311 id=311 data-nosnippet>311</a>}
+<a href=#312 id=312 data-nosnippet>312</a>
+<a href=#313 id=313 data-nosnippet>313</a><span class="doccomment">/// Edge length of the resize grip's diagonal strokes (px).
+<a href=#314 id=314 data-nosnippet>314</a></span><span class="kw">const </span>RESIZE_GRIP_SIZE: i32 = <span class="number">18</span>;
+<a href=#315 id=315 data-nosnippet>315</a>
+<a href=#316 id=316 data-nosnippet>316</a><span class="doccomment">/// The bottom-right resize affordance: three diagonal strokes in the
+<a href=#317 id=317 data-nosnippet>317</a>/// card's foreground color, `nwse-resize` cursor on hover.
+<a href=#318 id=318 data-nosnippet>318</a></span><span class="kw">fn </span>resize_grip() -&gt; DrawingArea {
+<a href=#319 id=319 data-nosnippet>319</a>    <span class="kw">let </span>grip = DrawingArea::new();
+<a href=#320 id=320 data-nosnippet>320</a>    grip.add_css_class(CLASS_RESIZE_GRIP);
+<a href=#321 id=321 data-nosnippet>321</a>    <span class="comment">// Overlay children default to `Align::Fill` - without End
+<a href=#322 id=322 data-nosnippet>322</a>    // alignment the grip would cover the whole content area.
+<a href=#323 id=323 data-nosnippet>323</a>    </span>grip.set_halign(Align::End);
+<a href=#324 id=324 data-nosnippet>324</a>    grip.set_valign(Align::End);
+<a href=#325 id=325 data-nosnippet>325</a>    grip.set_content_width(RESIZE_GRIP_SIZE);
+<a href=#326 id=326 data-nosnippet>326</a>    grip.set_content_height(RESIZE_GRIP_SIZE);
+<a href=#327 id=327 data-nosnippet>327</a>    grip.set_cursor_from_name(<span class="prelude-val">Some</span>(<span class="string">"nwse-resize"</span>));
+<a href=#328 id=328 data-nosnippet>328</a>    grip.set_tooltip_text(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>l10n().message(<span class="string">"card-resize"</span>)));
+<a href=#329 id=329 data-nosnippet>329</a>    grip.set_draw_func(|grip, cr, <span class="kw">_</span>, <span class="kw">_</span>| {
+<a href=#330 id=330 data-nosnippet>330</a>        <span class="kw">let </span>color = grip.color();
+<a href=#331 id=331 data-nosnippet>331</a>        <span class="kw">let </span>width = f64::from(grip.width());
+<a href=#332 id=332 data-nosnippet>332</a>        <span class="kw">let </span>height = f64::from(grip.height());
+<a href=#333 id=333 data-nosnippet>333</a>        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
+<a href=#334 id=334 data-nosnippet>334</a>        cr.set_line_width(<span class="number">1.5</span>);
+<a href=#335 id=335 data-nosnippet>335</a>        cr.set_line_cap(LineCap::Round);
+<a href=#336 id=336 data-nosnippet>336</a>        <span class="kw">for </span>inset <span class="kw">in </span>[<span class="number">4.0</span>, <span class="number">8.0</span>, <span class="number">12.0</span>] {
+<a href=#337 id=337 data-nosnippet>337</a>            cr.move_to(width - inset, height - <span class="number">2.0</span>);
+<a href=#338 id=338 data-nosnippet>338</a>            cr.line_to(width - <span class="number">2.0</span>, height - inset);
+<a href=#339 id=339 data-nosnippet>339</a>            <span class="kw">let _ </span>= cr.stroke();
+<a href=#340 id=340 data-nosnippet>340</a>        }
+<a href=#341 id=341 data-nosnippet>341</a>    });
+<a href=#342 id=342 data-nosnippet>342</a>    grip
+<a href=#343 id=343 data-nosnippet>343</a>}
+<a href=#344 id=344 data-nosnippet>344</a>
+<a href=#345 id=345 data-nosnippet>345</a><span class="doccomment">/// Edge length of the rotate grip's circular arrow (px).
+<a href=#346 id=346 data-nosnippet>346</a></span><span class="kw">const </span>ROTATE_GRIP_SIZE: i32 = <span class="number">18</span>;
+<a href=#347 id=347 data-nosnippet>347</a>
+<a href=#348 id=348 data-nosnippet>348</a><span class="doccomment">/// The bottom-left rotate affordance: a circular arrow in the card's
+<a href=#349 id=349 data-nosnippet>349</a>/// foreground color, `grab` cursor on hover.
+<a href=#350 id=350 data-nosnippet>350</a></span><span class="kw">fn </span>rotate_grip() -&gt; DrawingArea {
+<a href=#351 id=351 data-nosnippet>351</a>    <span class="kw">let </span>grip = DrawingArea::new();
+<a href=#352 id=352 data-nosnippet>352</a>    grip.add_css_class(CLASS_ROTATE_GRIP);
+<a href=#353 id=353 data-nosnippet>353</a>    <span class="comment">// Overlay children default to `Align::Fill` - without Start/End
+<a href=#354 id=354 data-nosnippet>354</a>    // alignment the grip would cover the whole content area.
+<a href=#355 id=355 data-nosnippet>355</a>    </span>grip.set_halign(Align::Start);
+<a href=#356 id=356 data-nosnippet>356</a>    grip.set_valign(Align::End);
+<a href=#357 id=357 data-nosnippet>357</a>    grip.set_content_width(ROTATE_GRIP_SIZE);
+<a href=#358 id=358 data-nosnippet>358</a>    grip.set_content_height(ROTATE_GRIP_SIZE);
+<a href=#359 id=359 data-nosnippet>359</a>    grip.set_cursor_from_name(<span class="prelude-val">Some</span>(<span class="string">"grab"</span>));
+<a href=#360 id=360 data-nosnippet>360</a>    grip.set_tooltip_text(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>l10n().message(<span class="string">"card-rotate"</span>)));
+<a href=#361 id=361 data-nosnippet>361</a>    grip.set_draw_func(|grip, cr, <span class="kw">_</span>, <span class="kw">_</span>| {
+<a href=#362 id=362 data-nosnippet>362</a>        <span class="kw">let </span>color = grip.color();
+<a href=#363 id=363 data-nosnippet>363</a>        <span class="kw">let </span>width = f64::from(grip.width());
+<a href=#364 id=364 data-nosnippet>364</a>        <span class="kw">let </span>height = f64::from(grip.height());
+<a href=#365 id=365 data-nosnippet>365</a>        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
+<a href=#366 id=366 data-nosnippet>366</a>        cr.set_line_width(<span class="number">1.5</span>);
+<a href=#367 id=367 data-nosnippet>367</a>        cr.set_line_cap(LineCap::Round);
+<a href=#368 id=368 data-nosnippet>368</a>        <span class="comment">// A three-quarter clockwise arc with an arrowhead on its tip:
+<a href=#369 id=369 data-nosnippet>369</a>        // the circular arrow suggests turning in either direction.
+<a href=#370 id=370 data-nosnippet>370</a>        </span><span class="kw">let </span>radius = width.min(height) / <span class="number">2.0 </span>- <span class="number">3.0</span>;
+<a href=#371 id=371 data-nosnippet>371</a>        <span class="kw">let </span>center_x = width / <span class="number">2.0</span>;
+<a href=#372 id=372 data-nosnippet>372</a>        <span class="kw">let </span>center_y = height / <span class="number">2.0</span>;
+<a href=#373 id=373 data-nosnippet>373</a>        <span class="kw">let </span>start = -FRAC_PI_2 + <span class="number">0.7</span>;
+<a href=#374 id=374 data-nosnippet>374</a>        <span class="kw">let </span>end = start + <span class="number">3.0 </span>* FRAC_PI_2;
+<a href=#375 id=375 data-nosnippet>375</a>        cr.arc(center_x, center_y, radius, start, end);
+<a href=#376 id=376 data-nosnippet>376</a>        <span class="kw">let _ </span>= cr.stroke();
+<a href=#377 id=377 data-nosnippet>377</a>        <span class="kw">let </span>tip_x = center_x + radius * end.cos();
+<a href=#378 id=378 data-nosnippet>378</a>        <span class="kw">let </span>tip_y = center_y + radius * end.sin();
+<a href=#379 id=379 data-nosnippet>379</a>        <span class="kw">let </span>tangent = end + FRAC_PI_2;
+<a href=#380 id=380 data-nosnippet>380</a>        <span class="kw">for </span>spread <span class="kw">in </span>[-<span class="number">0.7</span>, <span class="number">0.7</span>] {
+<a href=#381 id=381 data-nosnippet>381</a>            cr.move_to(tip_x, tip_y);
+<a href=#382 id=382 data-nosnippet>382</a>            cr.line_to(tip_x - <span class="number">4.0 </span>* (tangent + spread).cos(), tip_y - <span class="number">4.0 </span>* (tangent + spread).sin());
+<a href=#383 id=383 data-nosnippet>383</a>        }
+<a href=#384 id=384 data-nosnippet>384</a>        <span class="kw">let _ </span>= cr.stroke();
+<a href=#385 id=385 data-nosnippet>385</a>    });
+<a href=#386 id=386 data-nosnippet>386</a>    grip
+<a href=#387 id=387 data-nosnippet>387</a>}
+<a href=#388 id=388 data-nosnippet>388</a>
+<a href=#389 id=389 data-nosnippet>389</a><span class="doccomment">/// `Adwaita` renderer (feature `adwaita`): libadwaita chrome per P1.4 -
+<a href=#390 id=390 data-nosnippet>390</a>/// `adw::HeaderBar` as the header strip (with `default-decoration`, the
+<a href=#391 id=391 data-nosnippet>391</a>/// slim window-titlebar variant), `adw::WindowTitle` for the `Title`
+<a href=#392 id=392 data-nosnippet>392</a>/// element. `Minimize`/`Close` render as real wired buttons (the same
+<a href=#393 id=393 data-nosnippet>393</a>/// builders the builtin renderer uses) inside `windowcontrols`-named
+<a href=#394 id=394 data-nosnippet>394</a>/// containers placed by `gtk-decoration-layout`, so the libadwaita
+<a href=#395 id=395 data-nosnippet>395</a>/// stylesheet and GTK themes (e.g. Rewaita) treat them exactly like
+<a href=#396 id=396 data-nosnippet>396</a>/// window controls; `DragHandle` and the grips stay custom widgets.
+<a href=#397 id=397 data-nosnippet>397</a>///
+<a href=#398 id=398 data-nosnippet>398</a>/// Requires `adw::init()` (or an `adw::Application`) in the consumer -
+<a href=#399 id=399 data-nosnippet>399</a>/// libadwaita warns otherwise. A configured `CardPalette` keeps
+<a href=#400 id=400 data-nosnippet>400</a>/// precedence over the Adwaita theme through the scoped CSS installed
+<a href=#401 id=401 data-nosnippet>401</a>/// by `install_palette`; the widget structure stays Adwaita.
+<a href=#402 id=402 data-nosnippet>402</a></span><span class="attr">#[cfg(feature = <span class="string">"adwaita"</span>)]
+<a href=#403 id=403 data-nosnippet>403</a></span><span class="kw">mod </span>adwaita {
+<a href=#404 id=404 data-nosnippet>404</a>    <span class="kw">use </span><span class="kw">crate</span>::domain::ChromeElement;
+<a href=#405 id=405 data-nosnippet>405</a>    <span class="kw">use </span><span class="kw">crate</span>::domain::ChromePlacement;
+<a href=#406 id=406 data-nosnippet>406</a>    <span class="kw">use </span><span class="kw">crate</span>::domain::ChromeSlot;
+<a href=#407 id=407 data-nosnippet>407</a>    <span class="kw">use </span><span class="kw">crate</span>::domain::TurnDirection;
+<a href=#408 id=408 data-nosnippet>408</a>    <span class="kw">use </span><span class="kw">crate</span>::widget::card::Card;
+<a href=#409 id=409 data-nosnippet>409</a>    <span class="kw">use </span><span class="kw">crate</span>::widget::card_config::CardConfig;
+<a href=#410 id=410 data-nosnippet>410</a>    <span class="kw">use </span><span class="kw">crate</span>::widget::chrome::CARD_GESTURE_NAME;
+<a href=#411 id=411 data-nosnippet>411</a>    <span class="kw">use </span><span class="kw">crate</span>::widget::chrome::ICON_MINIMIZE_SYMBOLIC;
+<a href=#412 id=412 data-nosnippet>412</a>    <span class="kw">use </span><span class="kw">crate</span>::widget::chrome::drag_handle_label;
+<a href=#413 id=413 data-nosnippet>413</a>    <span class="kw">use </span><span class="kw">crate</span>::widget::chrome::skip_satellite;
+<a href=#414 id=414 data-nosnippet>414</a>    <span class="kw">use </span><span class="kw">crate</span>::widget::css::CLASS_HEADER;
+<a href=#415 id=415 data-nosnippet>415</a>    <span class="kw">use </span>glib::object::Cast;
+<a href=#416 id=416 data-nosnippet>416</a>    <span class="kw">use </span>glib::object::IsA;
+<a href=#417 id=417 data-nosnippet>417</a>    <span class="kw">use </span>glib::prelude::ObjectExt;
+<a href=#418 id=418 data-nosnippet>418</a>    <span class="kw">use </span>gtk4::gio::prelude::ListModelExt;
+<a href=#419 id=419 data-nosnippet>419</a>    <span class="kw">use </span>gtk4::prelude::BoxExt;
+<a href=#420 id=420 data-nosnippet>420</a>    <span class="kw">use </span>gtk4::prelude::EventControllerExt;
+<a href=#421 id=421 data-nosnippet>421</a>    <span class="kw">use </span>gtk4::prelude::WidgetExt;
+<a href=#422 id=422 data-nosnippet>422</a>    <span class="kw">use </span>gtk4::subclass::prelude::ObjectSubclassIsExt;
+<a href=#423 id=423 data-nosnippet>423</a>    <span class="kw">use </span>libadwaita <span class="kw">as </span>adw;
+<a href=#424 id=424 data-nosnippet>424</a>    <span class="kw">use </span>smearor_commons_geometry::RotationDirection;
+<a href=#425 id=425 data-nosnippet>425</a>    <span class="kw">use </span>tracing::debug;
+<a href=#426 id=426 data-nosnippet>426</a>
+<a href=#427 id=427 data-nosnippet>427</a>    <span class="kw">pub mod </span>imp {
+<a href=#428 id=428 data-nosnippet>428</a>        <span class="kw">use </span>glib::subclass::prelude::ObjectSubclass;
+<a href=#429 id=429 data-nosnippet>429</a>        <span class="kw">use </span>gtk4::subclass::prelude::BoxImpl;
+<a href=#430 id=430 data-nosnippet>430</a>        <span class="kw">use </span>gtk4::subclass::prelude::ObjectImpl;
+<a href=#431 id=431 data-nosnippet>431</a>        <span class="kw">use </span>gtk4::subclass::prelude::WidgetClassExt;
+<a href=#432 id=432 data-nosnippet>432</a>        <span class="kw">use </span>gtk4::subclass::prelude::WidgetImpl;
+<a href=#433 id=433 data-nosnippet>433</a>
+<a href=#434 id=434 data-nosnippet>434</a>        <span class="doccomment">/// A `gtk4::Box` whose CSS node name is `windowcontrols`, so the
+<a href=#435 id=435 data-nosnippet>435</a>        /// libadwaita stylesheet renders its buttons exactly like the
+<a href=#436 id=436 data-nosnippet>436</a>        /// window controls of a real titlebar (sizing, circular image
+<a href=#437 id=437 data-nosnippet>437</a>        /// hover) - the node selector cannot be faked with a CSS class.
+<a href=#438 id=438 data-nosnippet>438</a>        </span><span class="attr">#[derive(Default)]
+<a href=#439 id=439 data-nosnippet>439</a>        </span><span class="kw">pub struct </span>ChromeControls;
+<a href=#440 id=440 data-nosnippet>440</a>
+<a href=#441 id=441 data-nosnippet>441</a>        <span class="attr">#[glib::object_subclass]
+<a href=#442 id=442 data-nosnippet>442</a>        </span><span class="kw">impl </span>ObjectSubclass <span class="kw">for </span>ChromeControls {
+<a href=#443 id=443 data-nosnippet>443</a>            <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"FloatingBoardChromeControls"</span>;
+<a href=#444 id=444 data-nosnippet>444</a>            <span class="kw">type </span>Type = <span class="kw">super</span>::ChromeControls;
+<a href=#445 id=445 data-nosnippet>445</a>            <span class="kw">type </span>ParentType = gtk4::Box;
+<a href=#446 id=446 data-nosnippet>446</a>
+<a href=#447 id=447 data-nosnippet>447</a>            <span class="kw">fn </span>class_init(klass: <span class="kw-2">&amp;mut </span><span class="self">Self</span>::Class) {
+<a href=#448 id=448 data-nosnippet>448</a>                klass.set_css_name(<span class="string">"windowcontrols"</span>);
+<a href=#449 id=449 data-nosnippet>449</a>            }
+<a href=#450 id=450 data-nosnippet>450</a>        }
+<a href=#451 id=451 data-nosnippet>451</a>
+<a href=#452 id=452 data-nosnippet>452</a>        <span class="kw">impl </span>ObjectImpl <span class="kw">for </span>ChromeControls {}
+<a href=#453 id=453 data-nosnippet>453</a>        <span class="kw">impl </span>WidgetImpl <span class="kw">for </span>ChromeControls {}
+<a href=#454 id=454 data-nosnippet>454</a>        <span class="kw">impl </span>BoxImpl <span class="kw">for </span>ChromeControls {}
+<a href=#455 id=455 data-nosnippet>455</a>    }
+<a href=#456 id=456 data-nosnippet>456</a>
+<a href=#457 id=457 data-nosnippet>457</a>    <span class="macro">glib::wrapper!</span> {
+<a href=#458 id=458 data-nosnippet>458</a>        <span class="doccomment">/// `gtk4::Box` carrying the `windowcontrols` CSS node name - see
+<a href=#459 id=459 data-nosnippet>459</a>        /// [`imp::ChromeControls`].
+<a href=#460 id=460 data-nosnippet>460</a>        </span><span class="kw">pub struct </span>ChromeControls(ObjectSubclass&lt;imp::ChromeControls&gt;)
+<a href=#461 id=461 data-nosnippet>461</a>            @extends gtk4::Box, gtk4::Widget,
+<a href=#462 id=462 data-nosnippet>462</a>            @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget, gtk4::Orientable;
+<a href=#463 id=463 data-nosnippet>463</a>    }
+<a href=#464 id=464 data-nosnippet>464</a>
+<a href=#465 id=465 data-nosnippet>465</a>    <span class="kw">impl </span>ChromeControls {
+<a href=#466 id=466 data-nosnippet>466</a>        <span class="doccomment">/// An empty controls container; libadwaita's `border-spacing`
+<a href=#467 id=467 data-nosnippet>467</a>        /// rule spaces the children.
+<a href=#468 id=468 data-nosnippet>468</a>        </span><span class="kw">fn </span>new() -&gt; <span class="self">Self </span>{
+<a href=#469 id=469 data-nosnippet>469</a>            glib::Object::new()
+<a href=#470 id=470 data-nosnippet>470</a>        }
+<a href=#471 id=471 data-nosnippet>471</a>    }
+<a href=#472 id=472 data-nosnippet>472</a>
+<a href=#473 id=473 data-nosnippet>473</a>    <span class="kw">impl </span>Card {
+<a href=#474 id=474 data-nosnippet>474</a>        <span class="doccomment">/// Builds the `adw::HeaderBar` chrome for the card.
+<a href=#475 id=475 data-nosnippet>475</a>        </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>mount_adwaita_chrome(<span class="kw-2">&amp;</span><span class="self">self</span>, config: <span class="kw-2">&amp;</span>CardConfig, title: <span class="kw-2">&amp;</span>str, slots: <span class="kw-2">&amp;</span>[ChromeSlot]) {
+<a href=#476 id=476 data-nosnippet>476</a>            <span class="kw">let </span>imp = <span class="self">self</span>.imp();
+<a href=#477 id=477 data-nosnippet>477</a>            <span class="kw">if </span>!adw::is_initialized() {
+<a href=#478 id=478 data-nosnippet>478</a>                <span class="macro">debug!</span>(<span class="string">"ChromeStyle::Adwaita configured - call `adw::init()` (or use `adw::Application`) for themed styling"</span>);
+<a href=#479 id=479 data-nosnippet>479</a>            }
+<a href=#480 id=480 data-nosnippet>480</a>            <span class="kw">let </span>header = adw::HeaderBar::new();
+<a href=#481 id=481 data-nosnippet>481</a>            header.set_show_start_title_buttons(<span class="bool-val">false</span>);
+<a href=#482 id=482 data-nosnippet>482</a>            header.set_show_end_title_buttons(<span class="bool-val">false</span>);
+<a href=#483 id=483 data-nosnippet>483</a>            <span class="comment">// The headerbar paints the window chrome background; keep the
+<a href=#484 id=484 data-nosnippet>484</a>            // card's header CSS class so the palette/theme keeps styling
+<a href=#485 id=485 data-nosnippet>485</a>            // the frame around it.
+<a href=#486 id=486 data-nosnippet>486</a>            </span>header.add_css_class(CLASS_HEADER);
+<a href=#487 id=487 data-nosnippet>487</a>            <span class="comment">// Real Adwaita *window* titlebars carry `default-decoration`:
+<a href=#488 id=488 data-nosnippet>488</a>            // the stylesheet shrinks them to 37px with 22px controls. A
+<a href=#489 id=489 data-nosnippet>489</a>            // plain `adw::HeaderBar` would render at the 46px app-header
+<a href=#490 id=490 data-nosnippet>490</a>            // height - noticeably taller than both our builtin header and
+<a href=#491 id=491 data-nosnippet>491</a>            // a real window titlebar.
+<a href=#492 id=492 data-nosnippet>492</a>            </span>header.add_css_class(<span class="string">"default-decoration"</span>);
+<a href=#493 id=493 data-nosnippet>493</a>            <span class="comment">// The HeaderBar registers internal gestures that drive the
+<a href=#494 id=494 data-nosnippet>494</a>            // *toplevel window* (move-drag, double-click maximize). On a
+<a href=#495 id=495 data-nosnippet>495</a>            // card they race the card's own drag - a fast drag moved the
+<a href=#496 id=496 data-nosnippet>496</a>            // whole window instead of the card. Watch for them from the
+<a href=#497 id=497 data-nosnippet>497</a>            // start, then strip the subtree after our children exist.
+<a href=#498 id=498 data-nosnippet>498</a>            </span><span class="kw">let </span>watcher = header.observe_controllers();
+<a href=#499 id=499 data-nosnippet>499</a>            watch_foreign_gestures(<span class="kw-2">&amp;</span>header, <span class="kw-2">&amp;</span>watcher);
+<a href=#500 id=500 data-nosnippet>500</a>            <span class="comment">// The watcher only covers the header's *own* controller
+<a href=#501 id=501 data-nosnippet>501</a>            // list; libadwaita can also register gestures lazily on
+<a href=#502 id=502 data-nosnippet>502</a>            // inner widgets (windowhandle) at map time. Strip the whole
+<a href=#503 id=503 data-nosnippet>503</a>            // subtree once more when the header is actually shown.
+<a href=#504 id=504 data-nosnippet>504</a>            </span>header.connect_map(strip_foreign_gestures);
+<a href=#505 id=505 data-nosnippet>505</a>            <span class="comment">// Wired control buttons, collected per slot and placed by
+<a href=#506 id=506 data-nosnippet>506</a>            // `pack_window_controls` afterwards: side and order follow
+<a href=#507 id=507 data-nosnippet>507</a>            // the `gtk-decoration-layout` setting (themes like Rewaita
+<a href=#508 id=508 data-nosnippet>508</a>            // move window buttons to the left).
+<a href=#509 id=509 data-nosnippet>509</a>            // Control buttons route by placement: `InlineStart`
+<a href=#510 id=510 data-nosnippet>510</a>            // collects into the start `windowcontrols` container,
+<a href=#511 id=511 data-nosnippet>511</a>            // `InlineEnd` into the end container, neutral `Inline`
+<a href=#512 id=512 data-nosnippet>512</a>            // keeps the historical behavior - `Minimize`/`Close`
+<a href=#513 id=513 data-nosnippet>513</a>            // follow `gtk-decoration-layout`, other actions append to
+<a href=#514 id=514 data-nosnippet>514</a>            // the end controls.
+<a href=#515 id=515 data-nosnippet>515</a>            </span><span class="kw">let </span><span class="kw-2">mut </span>minimize_button: <span class="prelude-ty">Option</span>&lt;gtk4::Button&gt; = <span class="prelude-val">None</span>;
+<a href=#516 id=516 data-nosnippet>516</a>            <span class="kw">let </span><span class="kw-2">mut </span>close_button: <span class="prelude-ty">Option</span>&lt;gtk4::Button&gt; = <span class="prelude-val">None</span>;
+<a href=#517 id=517 data-nosnippet>517</a>            <span class="kw">let </span><span class="kw-2">mut </span>start_extras: Vec&lt;gtk4::Button&gt; = Vec::new();
+<a href=#518 id=518 data-nosnippet>518</a>            <span class="kw">let </span><span class="kw-2">mut </span>end_extras: Vec&lt;gtk4::Button&gt; = Vec::new();
+<a href=#519 id=519 data-nosnippet>519</a>            <span class="kw">let </span><span class="kw-2">mut </span>header_children = <span class="number">0usize</span>;
+<a href=#520 id=520 data-nosnippet>520</a>            <span class="kw">for </span>slot <span class="kw">in </span>slots {
+<a href=#521 id=521 data-nosnippet>521</a>                <span class="kw">if </span>slot.placement == ChromePlacement::Satellite {
+<a href=#522 id=522 data-nosnippet>522</a>                    skip_satellite(slot.element);
+<a href=#523 id=523 data-nosnippet>523</a>                    <span class="kw">continue</span>;
+<a href=#524 id=524 data-nosnippet>524</a>                }
+<a href=#525 id=525 data-nosnippet>525</a>                <span class="kw">match </span>slot.element {
+<a href=#526 id=526 data-nosnippet>526</a>                    ChromeElement::DragHandle =&gt; {
+<a href=#527 id=527 data-nosnippet>527</a>                        <span class="kw">let </span>handle = drag_handle_label();
+<a href=#528 id=528 data-nosnippet>528</a>                        <span class="kw">match </span>slot.placement {
+<a href=#529 id=529 data-nosnippet>529</a>                            ChromePlacement::InlineEnd =&gt; header.pack_end(<span class="kw-2">&amp;</span>handle),
+<a href=#530 id=530 data-nosnippet>530</a>                            <span class="kw">_ </span>=&gt; header.pack_start(<span class="kw-2">&amp;</span>handle),
+<a href=#531 id=531 data-nosnippet>531</a>                        }
+<a href=#532 id=532 data-nosnippet>532</a>                        <span class="kw">let _ </span>= imp.handle_label.set(handle);
+<a href=#533 id=533 data-nosnippet>533</a>                        header_children += <span class="number">1</span>;
+<a href=#534 id=534 data-nosnippet>534</a>                    }
+<a href=#535 id=535 data-nosnippet>535</a>                    ChromeElement::Title =&gt; {
+<a href=#536 id=536 data-nosnippet>536</a>                        <span class="kw">let </span>title_widget = adw::WindowTitle::new(title, <span class="string">""</span>);
+<a href=#537 id=537 data-nosnippet>537</a>                        title_widget.set_visible(!config.headerless);
+<a href=#538 id=538 data-nosnippet>538</a>                        <span class="kw">match </span>slot.placement {
+<a href=#539 id=539 data-nosnippet>539</a>                            ChromePlacement::InlineStart =&gt; header.pack_start(<span class="kw-2">&amp;</span>title_widget),
+<a href=#540 id=540 data-nosnippet>540</a>                            ChromePlacement::InlineEnd =&gt; header.pack_end(<span class="kw-2">&amp;</span>title_widget),
+<a href=#541 id=541 data-nosnippet>541</a>                            <span class="kw">_ </span>=&gt; header.set_title_widget(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>title_widget)),
+<a href=#542 id=542 data-nosnippet>542</a>                        }
+<a href=#543 id=543 data-nosnippet>543</a>                        header_children += <span class="number">1</span>;
+<a href=#544 id=544 data-nosnippet>544</a>                    }
+<a href=#545 id=545 data-nosnippet>545</a>                    <span class="kw">_ </span>=&gt; {
+<a href=#546 id=546 data-nosnippet>546</a>                        <span class="kw">let </span>(button, class) = <span class="kw">match </span>slot.element {
+<a href=#547 id=547 data-nosnippet>547</a>                            ChromeElement::Minimize =&gt; (<span class="self">self</span>.build_minimize_button(ICON_MINIMIZE_SYMBOLIC), <span class="string">"minimize"</span>),
+<a href=#548 id=548 data-nosnippet>548</a>                            ChromeElement::Close =&gt; (<span class="self">self</span>.build_close_button(), <span class="string">"close"</span>),
+<a href=#549 id=549 data-nosnippet>549</a>                            ChromeElement::RotateClockwise =&gt; (<span class="self">self</span>.build_rotate_button(RotationDirection::Clockwise), <span class="string">"rotate-clockwise"</span>),
+<a href=#550 id=550 data-nosnippet>550</a>                            ChromeElement::RotateCounterClockwise =&gt; {
+<a href=#551 id=551 data-nosnippet>551</a>                                (<span class="self">self</span>.build_rotate_button(RotationDirection::CounterClockwise), <span class="string">"rotate-counter-clockwise"</span>)
+<a href=#552 id=552 data-nosnippet>552</a>                            }
+<a href=#553 id=553 data-nosnippet>553</a>                            ChromeElement::NextSeat =&gt; (<span class="self">self</span>.build_pass_button(TurnDirection::Clockwise), <span class="string">"next-seat"</span>),
+<a href=#554 id=554 data-nosnippet>554</a>                            ChromeElement::PreviousSeat =&gt; (<span class="self">self</span>.build_pass_button(TurnDirection::CounterClockwise), <span class="string">"previous-seat"</span>),
+<a href=#555 id=555 data-nosnippet>555</a>                            ChromeElement::ResizeGrip =&gt; {
+<a href=#556 id=556 data-nosnippet>556</a>                                <span class="self">self</span>.mount_grip(ChromeElement::ResizeGrip);
+<a href=#557 id=557 data-nosnippet>557</a>                                <span class="kw">continue</span>;
+<a href=#558 id=558 data-nosnippet>558</a>                            }
+<a href=#559 id=559 data-nosnippet>559</a>                            ChromeElement::RotateGrip =&gt; {
+<a href=#560 id=560 data-nosnippet>560</a>                                <span class="self">self</span>.mount_grip(ChromeElement::RotateGrip);
+<a href=#561 id=561 data-nosnippet>561</a>                                <span class="kw">continue</span>;
+<a href=#562 id=562 data-nosnippet>562</a>                            }
+<a href=#563 id=563 data-nosnippet>563</a>                            ChromeElement::DragHandle | ChromeElement::Title =&gt; <span class="kw">continue</span>,
+<a href=#564 id=564 data-nosnippet>564</a>                        };
+<a href=#565 id=565 data-nosnippet>565</a>                        <span class="comment">// A real wired button: `WindowControls` buttons
+<a href=#566 id=566 data-nosnippet>566</a>                        // are decorative (they target a real toplevel).
+<a href=#567 id=567 data-nosnippet>567</a>                        // Let the `windowcontrols` node rules own the
+<a href=#568 id=568 data-nosnippet>568</a>                        // look (the `flat` class would fight their
+<a href=#569 id=569 data-nosnippet>569</a>                        // padding/hover styling), and carry the role
+<a href=#570 id=570 data-nosnippet>570</a>                        // class themes key colors off.
+<a href=#571 id=571 data-nosnippet>571</a>                        </span>button.remove_css_class(<span class="string">"flat"</span>);
+<a href=#572 id=572 data-nosnippet>572</a>                        button.add_css_class(class);
+<a href=#573 id=573 data-nosnippet>573</a>                        <span class="kw">match </span>slot.placement {
+<a href=#574 id=574 data-nosnippet>574</a>                            ChromePlacement::InlineStart =&gt; start_extras.push(button.clone()),
+<a href=#575 id=575 data-nosnippet>575</a>                            ChromePlacement::InlineEnd =&gt; end_extras.push(button.clone()),
+<a href=#576 id=576 data-nosnippet>576</a>                            <span class="kw">_ </span>=&gt; <span class="kw">match </span>slot.element {
+<a href=#577 id=577 data-nosnippet>577</a>                                ChromeElement::Minimize =&gt; minimize_button = <span class="prelude-val">Some</span>(button.clone()),
+<a href=#578 id=578 data-nosnippet>578</a>                                ChromeElement::Close =&gt; close_button = <span class="prelude-val">Some</span>(button.clone()),
+<a href=#579 id=579 data-nosnippet>579</a>                                <span class="kw">_ </span>=&gt; end_extras.push(button.clone()),
+<a href=#580 id=580 data-nosnippet>580</a>                            },
+<a href=#581 id=581 data-nosnippet>581</a>                        }
+<a href=#582 id=582 data-nosnippet>582</a>                        <span class="kw">if </span>slot.element == ChromeElement::Minimize {
+<a href=#583 id=583 data-nosnippet>583</a>                            <span class="kw">let _ </span>= imp.fold_button.set(button.clone());
+<a href=#584 id=584 data-nosnippet>584</a>                        }
+<a href=#585 id=585 data-nosnippet>585</a>                        <span class="kw">if </span>slot.element == ChromeElement::Close {
+<a href=#586 id=586 data-nosnippet>586</a>                            <span class="kw">let _ </span>= imp.close_button.set(button);
+<a href=#587 id=587 data-nosnippet>587</a>                        }
+<a href=#588 id=588 data-nosnippet>588</a>                        header_children += <span class="number">1</span>;
+<a href=#589 id=589 data-nosnippet>589</a>                    }
+<a href=#590 id=590 data-nosnippet>590</a>                }
+<a href=#591 id=591 data-nosnippet>591</a>            }
+<a href=#592 id=592 data-nosnippet>592</a>            pack_window_controls(<span class="kw-2">&amp;</span>header, minimize_button, close_button, start_extras, end_extras);
+<a href=#593 id=593 data-nosnippet>593</a>            strip_foreign_gestures(<span class="kw-2">&amp;</span>header);
+<a href=#594 id=594 data-nosnippet>594</a>            <span class="comment">// Same rule as the builtin renderer: no children, no header -
+<a href=#595 id=595 data-nosnippet>595</a>            // `drag_source(DragHandle::Header)` falls back to the card.
+<a href=#596 id=596 data-nosnippet>596</a>            </span><span class="kw">if </span>header_children &gt; <span class="number">0 </span>{
+<a href=#597 id=597 data-nosnippet>597</a>                imp.header_shown.set(<span class="bool-val">true</span>);
+<a href=#598 id=598 data-nosnippet>598</a>                <span class="self">self</span>.prepend(<span class="kw-2">&amp;</span>header);
+<a href=#599 id=599 data-nosnippet>599</a>                <span class="kw">let _ </span>= imp.header.set(header.upcast());
+<a href=#600 id=600 data-nosnippet>600</a>            }
+<a href=#601 id=601 data-nosnippet>601</a>        }
+<a href=#602 id=602 data-nosnippet>602</a>    }
+<a href=#603 id=603 data-nosnippet>603</a>
+<a href=#604 id=604 data-nosnippet>604</a>    <span class="doccomment">/// Fallback when `gtk-decoration-layout` is unset: all controls on
+<a href=#605 id=605 data-nosnippet>605</a>    /// the right in GNOME order.
+<a href=#606 id=606 data-nosnippet>606</a>    </span><span class="kw">const </span>DEFAULT_DECORATION_LAYOUT: <span class="kw-2">&amp;</span>str = <span class="string">":minimize,maximize,close"</span>;
+<a href=#607 id=607 data-nosnippet>607</a>
+<a href=#608 id=608 data-nosnippet>608</a>    <span class="doccomment">/// Splits `gtk-decoration-layout` into the button names left and
+<a href=#609 id=609 data-nosnippet>609</a>    /// right of the `:` separator (e.g. Rewaita's `"close,minimize:"`
+<a href=#610 id=610 data-nosnippet>610</a>    /// moves all controls to the left side).
+<a href=#611 id=611 data-nosnippet>611</a>    </span><span class="kw">fn </span>decoration_layout_names() -&gt; (Vec&lt;String&gt;, Vec&lt;String&gt;) {
+<a href=#612 id=612 data-nosnippet>612</a>        <span class="kw">let </span>layout = gtk4::Settings::default()
+<a href=#613 id=613 data-nosnippet>613</a>            .and_then(|settings| settings.gtk_decoration_layout())
+<a href=#614 id=614 data-nosnippet>614</a>            .map(|layout| layout.to_string())
+<a href=#615 id=615 data-nosnippet>615</a>            .unwrap_or_else(|| DEFAULT_DECORATION_LAYOUT.to_string());
+<a href=#616 id=616 data-nosnippet>616</a>        <span class="kw">let </span>names = |side: <span class="kw-2">&amp;</span>str| side.split(<span class="string">','</span>).map(str::trim).filter(|name| !name.is_empty()).map(str::to_string).collect();
+<a href=#617 id=617 data-nosnippet>617</a>        <span class="kw">let </span><span class="kw-2">mut </span>sides = layout.splitn(<span class="number">2</span>, <span class="string">':'</span>);
+<a href=#618 id=618 data-nosnippet>618</a>        <span class="kw">let </span>start = names(sides.next().unwrap_or_default());
+<a href=#619 id=619 data-nosnippet>619</a>        <span class="kw">let </span>end = names(sides.next().unwrap_or_default());
+<a href=#620 id=620 data-nosnippet>620</a>        (start, end)
+<a href=#621 id=621 data-nosnippet>621</a>    }
+<a href=#622 id=622 data-nosnippet>622</a>
+<a href=#623 id=623 data-nosnippet>623</a>    <span class="doccomment">/// Packs the card's control buttons into `windowcontrols` containers,
+<a href=#624 id=624 data-nosnippet>624</a>    /// following the decoration layout: a button goes to its named side in
+<a href=#625 id=625 data-nosnippet>625</a>    /// layout order; slotted buttons the layout does not mention append to
+<a href=#626 id=626 data-nosnippet>626</a>    /// the end side (a configured slot is never dropped, only reordered).
+<a href=#627 id=627 data-nosnippet>627</a>    /// `extras` are card actions outside the window-button vocabulary
+<a href=#628 id=628 data-nosnippet>628</a>    /// (rotate/pass steps): `start_extras` lead the start controls
+<a href=#629 id=629 data-nosnippet>629</a>    /// (outermost first, like GNOME's app-buttons-left convention),
+<a href=#630 id=630 data-nosnippet>630</a>    /// `end_extras` trail the end controls.
+<a href=#631 id=631 data-nosnippet>631</a>    </span><span class="kw">fn </span>pack_window_controls(
+<a href=#632 id=632 data-nosnippet>632</a>        header: <span class="kw-2">&amp;</span>adw::HeaderBar,
+<a href=#633 id=633 data-nosnippet>633</a>        minimize: <span class="prelude-ty">Option</span>&lt;gtk4::Button&gt;,
+<a href=#634 id=634 data-nosnippet>634</a>        close: <span class="prelude-ty">Option</span>&lt;gtk4::Button&gt;,
+<a href=#635 id=635 data-nosnippet>635</a>        start_extras: Vec&lt;gtk4::Button&gt;,
+<a href=#636 id=636 data-nosnippet>636</a>        end_extras: Vec&lt;gtk4::Button&gt;,
+<a href=#637 id=637 data-nosnippet>637</a>    ) {
+<a href=#638 id=638 data-nosnippet>638</a>        <span class="kw">let </span>(start_names, end_names) = decoration_layout_names();
+<a href=#639 id=639 data-nosnippet>639</a>        <span class="kw">let </span>start_controls = ChromeControls::new();
+<a href=#640 id=640 data-nosnippet>640</a>        <span class="kw">let </span>end_controls = ChromeControls::new();
+<a href=#641 id=641 data-nosnippet>641</a>        <span class="kw">let </span><span class="kw-2">mut </span>minimize = minimize;
+<a href=#642 id=642 data-nosnippet>642</a>        <span class="kw">let </span><span class="kw-2">mut </span>close = close;
+<a href=#643 id=643 data-nosnippet>643</a>        <span class="kw">let </span><span class="kw-2">mut </span>take = |name: <span class="kw-2">&amp;</span>str| <span class="kw">match </span>name {
+<a href=#644 id=644 data-nosnippet>644</a>            <span class="string">"minimize" </span>=&gt; minimize.take(),
+<a href=#645 id=645 data-nosnippet>645</a>            <span class="string">"close" </span>=&gt; close.take(),
+<a href=#646 id=646 data-nosnippet>646</a>            <span class="kw">_ </span>=&gt; <span class="prelude-val">None</span>,
+<a href=#647 id=647 data-nosnippet>647</a>        };
+<a href=#648 id=648 data-nosnippet>648</a>        <span class="kw">for </span>extra <span class="kw">in </span><span class="kw-2">&amp;</span>start_extras {
+<a href=#649 id=649 data-nosnippet>649</a>            start_controls.append(extra);
+<a href=#650 id=650 data-nosnippet>650</a>        }
+<a href=#651 id=651 data-nosnippet>651</a>        <span class="kw">for </span>name <span class="kw">in </span><span class="kw-2">&amp;</span>start_names {
+<a href=#652 id=652 data-nosnippet>652</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(button) = take(name) {
+<a href=#653 id=653 data-nosnippet>653</a>                start_controls.append(<span class="kw-2">&amp;</span>button);
+<a href=#654 id=654 data-nosnippet>654</a>            }
+<a href=#655 id=655 data-nosnippet>655</a>        }
+<a href=#656 id=656 data-nosnippet>656</a>        <span class="kw">for </span>name <span class="kw">in </span><span class="kw-2">&amp;</span>end_names {
+<a href=#657 id=657 data-nosnippet>657</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(button) = take(name) {
+<a href=#658 id=658 data-nosnippet>658</a>                end_controls.append(<span class="kw-2">&amp;</span>button);
+<a href=#659 id=659 data-nosnippet>659</a>            }
+<a href=#660 id=660 data-nosnippet>660</a>        }
+<a href=#661 id=661 data-nosnippet>661</a>        drop(take);
+<a href=#662 id=662 data-nosnippet>662</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(button) = minimize.take() {
+<a href=#663 id=663 data-nosnippet>663</a>            end_controls.append(<span class="kw-2">&amp;</span>button);
+<a href=#664 id=664 data-nosnippet>664</a>        }
+<a href=#665 id=665 data-nosnippet>665</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(button) = close.take() {
+<a href=#666 id=666 data-nosnippet>666</a>            end_controls.append(<span class="kw-2">&amp;</span>button);
+<a href=#667 id=667 data-nosnippet>667</a>        }
+<a href=#668 id=668 data-nosnippet>668</a>        <span class="kw">for </span>extra <span class="kw">in </span><span class="kw-2">&amp;</span>end_extras {
+<a href=#669 id=669 data-nosnippet>669</a>            end_controls.append(extra);
+<a href=#670 id=670 data-nosnippet>670</a>        }
+<a href=#671 id=671 data-nosnippet>671</a>        <span class="kw">if </span>start_controls.first_child().is_some() {
+<a href=#672 id=672 data-nosnippet>672</a>            <span class="comment">// `start`/`end` mirror what GtkWindowControls' own boxes
+<a href=#673 id=673 data-nosnippet>673</a>            // carry; idempotent where the headerbar already adds them.
+<a href=#674 id=674 data-nosnippet>674</a>            </span>start_controls.add_css_class(<span class="string">"start"</span>);
+<a href=#675 id=675 data-nosnippet>675</a>            header.pack_start(<span class="kw-2">&amp;</span>start_controls);
+<a href=#676 id=676 data-nosnippet>676</a>        }
+<a href=#677 id=677 data-nosnippet>677</a>        <span class="kw">if </span>end_controls.first_child().is_some() {
+<a href=#678 id=678 data-nosnippet>678</a>            end_controls.add_css_class(<span class="string">"end"</span>);
+<a href=#679 id=679 data-nosnippet>679</a>            header.pack_end(<span class="kw-2">&amp;</span>end_controls);
+<a href=#680 id=680 data-nosnippet>680</a>        }
+<a href=#681 id=681 data-nosnippet>681</a>    }
+<a href=#682 id=682 data-nosnippet>682</a>
+<a href=#683 id=683 data-nosnippet>683</a>    <span class="doccomment">/// A gesture controller not tagged `CARD_GESTURE_NAME` - i.e. one of
+<a href=#684 id=684 data-nosnippet>684</a>    /// the HeaderBar's internal window gestures.
+<a href=#685 id=685 data-nosnippet>685</a>    </span><span class="kw">fn </span>is_foreign_gesture(controller: <span class="kw-2">&amp;</span>gtk4::EventController) -&gt; bool {
+<a href=#686 id=686 data-nosnippet>686</a>        controller.is::&lt;gtk4::Gesture&gt;() &amp;&amp; controller.name().as_deref() != <span class="prelude-val">Some</span>(CARD_GESTURE_NAME)
+<a href=#687 id=687 data-nosnippet>687</a>    }
+<a href=#688 id=688 data-nosnippet>688</a>
+<a href=#689 id=689 data-nosnippet>689</a>    <span class="doccomment">/// Removes every foreign gesture on `widget` and its descendants,
+<a href=#690 id=690 data-nosnippet>690</a>    /// recursing into children but skipping `gtk4::Button` subtrees
+<a href=#691 id=691 data-nosnippet>691</a>    /// *before* touching controllers - a button's internal `GestureClick`
+<a href=#692 id=692 data-nosnippet>692</a>    /// is a foreign gesture by the tag rule, yet it is exactly what
+<a href=#693 id=693 data-nosnippet>693</a>    /// makes the button work.
+<a href=#694 id=694 data-nosnippet>694</a>    </span><span class="kw">fn </span>strip_foreign_gestures(widget: <span class="kw-2">&amp;</span><span class="kw">impl </span>IsA&lt;gtk4::Widget&gt;) {
+<a href=#695 id=695 data-nosnippet>695</a>        <span class="kw">let </span>widget = widget.upcast_ref::&lt;gtk4::Widget&gt;();
+<a href=#696 id=696 data-nosnippet>696</a>        <span class="kw">if </span>widget.is::&lt;gtk4::Button&gt;() {
+<a href=#697 id=697 data-nosnippet>697</a>            <span class="kw">return</span>;
+<a href=#698 id=698 data-nosnippet>698</a>        }
+<a href=#699 id=699 data-nosnippet>699</a>        <span class="kw">let </span>controllers = widget.observe_controllers();
+<a href=#700 id=700 data-nosnippet>700</a>        <span class="kw">for </span>index <span class="kw">in </span>(<span class="number">0</span>..controllers.n_items()).rev() {
+<a href=#701 id=701 data-nosnippet>701</a>            <span class="kw">let </span><span class="prelude-val">Some</span>(item) = controllers.item(index) <span class="kw">else </span>{ <span class="kw">continue </span>};
+<a href=#702 id=702 data-nosnippet>702</a>            <span class="kw">let </span><span class="prelude-val">Ok</span>(controller) = item.downcast::&lt;gtk4::EventController&gt;() <span class="kw">else </span>{
+<a href=#703 id=703 data-nosnippet>703</a>                <span class="kw">continue</span>;
+<a href=#704 id=704 data-nosnippet>704</a>            };
+<a href=#705 id=705 data-nosnippet>705</a>            <span class="kw">if </span>is_foreign_gesture(<span class="kw-2">&amp;</span>controller) {
+<a href=#706 id=706 data-nosnippet>706</a>                widget.remove_controller(<span class="kw-2">&amp;</span>controller);
+<a href=#707 id=707 data-nosnippet>707</a>            }
+<a href=#708 id=708 data-nosnippet>708</a>        }
+<a href=#709 id=709 data-nosnippet>709</a>        <span class="kw">let </span><span class="kw-2">mut </span>child = widget.first_child();
+<a href=#710 id=710 data-nosnippet>710</a>        <span class="kw">while let </span><span class="prelude-val">Some</span>(sub) = child {
+<a href=#711 id=711 data-nosnippet>711</a>            strip_foreign_gestures(<span class="kw-2">&amp;</span>sub);
+<a href=#712 id=712 data-nosnippet>712</a>            child = sub.next_sibling();
+<a href=#713 id=713 data-nosnippet>713</a>        }
+<a href=#714 id=714 data-nosnippet>714</a>    }
+<a href=#715 id=715 data-nosnippet>715</a>
+<a href=#716 id=716 data-nosnippet>716</a>    <span class="doccomment">/// Watches the header's controller list for foreign gestures
+<a href=#717 id=717 data-nosnippet>717</a>    /// registered *after* construction (e.g. on realize) and removes
+<a href=#718 id=718 data-nosnippet>718</a>    /// them. Removal is deferred out of the `items_changed` emission -
+<a href=#719 id=719 data-nosnippet>719</a>    /// mutating a list model inside its own change handler is fragile.
+<a href=#720 id=720 data-nosnippet>720</a>    </span><span class="kw">fn </span>watch_foreign_gestures(header: <span class="kw-2">&amp;</span>adw::HeaderBar, controllers: <span class="kw-2">&amp;</span>gtk4::gio::ListModel) {
+<a href=#721 id=721 data-nosnippet>721</a>        <span class="kw">let </span>header_weak = header.downgrade();
+<a href=#722 id=722 data-nosnippet>722</a>        controllers.connect_items_changed(<span class="kw">move </span>|model, position, _removed, added| {
+<a href=#723 id=723 data-nosnippet>723</a>            <span class="kw">for </span>index <span class="kw">in </span>position..position + added {
+<a href=#724 id=724 data-nosnippet>724</a>                <span class="kw">let </span><span class="prelude-val">Some</span>(item) = model.item(index) <span class="kw">else </span>{ <span class="kw">continue </span>};
+<a href=#725 id=725 data-nosnippet>725</a>                <span class="kw">let </span><span class="prelude-val">Ok</span>(controller) = item.downcast::&lt;gtk4::EventController&gt;() <span class="kw">else </span>{
+<a href=#726 id=726 data-nosnippet>726</a>                    <span class="kw">continue</span>;
+<a href=#727 id=727 data-nosnippet>727</a>                };
+<a href=#728 id=728 data-nosnippet>728</a>                <span class="kw">if </span>!is_foreign_gesture(<span class="kw-2">&amp;</span>controller) {
+<a href=#729 id=729 data-nosnippet>729</a>                    <span class="kw">continue</span>;
+<a href=#730 id=730 data-nosnippet>730</a>                }
+<a href=#731 id=731 data-nosnippet>731</a>                <span class="kw">let </span><span class="prelude-val">Some</span>(header) = header_weak.upgrade() <span class="kw">else </span>{ <span class="kw">continue </span>};
+<a href=#732 id=732 data-nosnippet>732</a>                gtk4::glib::idle_add_local_once(<span class="kw">move </span>|| header.remove_controller(<span class="kw-2">&amp;</span>controller));
+<a href=#733 id=733 data-nosnippet>733</a>            }
+<a href=#734 id=734 data-nosnippet>734</a>        });
+<a href=#735 id=735 data-nosnippet>735</a>    }
+<a href=#736 id=736 data-nosnippet>736</a>}
+</code></pre></div></section></main></body></html>
