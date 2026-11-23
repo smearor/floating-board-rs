@@ -1,5 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run satellites + Adwaita" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+    <option name="buildProfileId" value="dev" />
     <option name="command" value="run --package floating-board --example satellites --features adwaita" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs />

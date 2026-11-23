@@ -18,6 +18,8 @@ mod circular_clip;
 mod floating_board_layout;
 mod satellite;
 mod satellite_config;
+#[cfg(feature = "fx")]
+mod satellite_fx;
 mod scaling;
 
 pub(crate) mod css;

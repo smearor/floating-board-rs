@@ -42,4 +42,5 @@ pub use satellite::SatelliteKind;
 pub use satellite::SatelliteLayout;
 pub use satellite::SatellitePlacement;
 pub use satellite::SatelliteRotationMode;
+pub(crate) use satellite::collapsed_seed;
 pub use satellite::resolve;

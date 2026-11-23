@@ -11,6 +11,7 @@ mod placement;
 mod radial_config;
 mod resolver;
 mod rotation_mode;
+mod seed;
 
 pub use collision_mode::SatelliteCollisionMode;
 pub use distribution::SatelliteDistribution;
@@ -22,3 +23,4 @@ pub use placement::SatellitePlacement;
 pub use radial_config::RadialConfig;
 pub use resolver::resolve;
 pub use rotation_mode::SatelliteRotationMode;
+pub(crate) use seed::collapsed_seed;

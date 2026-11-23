@@ -13,6 +13,7 @@ use crate::widget::board::FloatingBoard;
 use crate::widget::card_config::CardConfig;
 use crate::widget::card_layer::CardLayer;
 use crate::widget::card_signal::CardSignal;
+use crate::widget::circular_clip::CircularClip;
 use crate::widget::css::CLASS_CARD_CIRCLE;
 use crate::widget::css::CLASS_COLLAPSED;
 use crate::widget::css::CLASS_FOLDED;
@@ -42,7 +43,6 @@ use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
 use smearor_commons_layout::Seat;
 use tracing::debug;
-use crate::widget::circular_clip::CircularClip;
 
 glib::wrapper! {
     /// A floating card on the board: header strip plus consumer content.

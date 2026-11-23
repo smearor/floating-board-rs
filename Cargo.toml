@@ -14,6 +14,7 @@ rust-version = "1.98.0"
 default = ["serde"]
 serde = ["dep:serde"]
 adwaita = ["dep:libadwaita"]
+fx = ["dep:smearor-commons-fx"]
 
 [dependencies]
 fluent-bundle = "0.16"
@@ -24,6 +25,7 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 smearor-commons-animation = { git = "https://github.com/smearor/smearor-commons.git", features = ["gtk4"] }
 smearor-commons-color = { git = "https://github.com/smearor/smearor-commons.git" }
 smearor-commons-geometry = { git = "https://github.com/smearor/smearor-commons.git", features = ["cairo", "gtk4"] }
+smearor-commons-fx = { git = "https://github.com/smearor/smearor-commons.git", features = ["gtk4"], optional = true }
 smearor-commons-layout = { git = "https://github.com/smearor/smearor-commons.git" }
 smearor-wrot-rotation = { git = "https://github.com/smearor/smearor-wrot-rotation.git" }
 thiserror = "2"

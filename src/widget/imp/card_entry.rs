@@ -111,6 +111,15 @@ pub(crate) struct CardEntry {
     /// their transform stacks on every geometry change
     /// (`apply_position`), raises and hides them with the card.
     pub satellites: RefCell<Vec<SatelliteEntry>>,
+    /// Generation of the running satellite motion tick batch - a new
+    /// transition batch bumps it and stale tick callbacks stop
+    /// themselves (same pattern as `layout_generation`).
+    pub satellites_generation: Cell<GenerationCounter>,
+    /// Fold choreography state (Phase 5): while `true` the entry is in
+    /// the "close satellites, then collapse" sequence - the
+    /// `card-folded` handler treats the intermediate re-unfold as part
+    /// of the choreography instead of a real unfold.
+    pub fold_choreo_closing: Cell<bool>,
 }
 
 /// Smallest radial grab distance the resize drag accepts as its

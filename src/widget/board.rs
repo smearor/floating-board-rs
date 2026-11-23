@@ -205,7 +205,10 @@ impl FloatingBoard {
             // inverse-solve shrinks non-square children near 45°.
             .with_natural_child_size_enabled(true);
         rotation_widget.set_animation_speed(config.animation_speed_ms);
-        rotation_widget.set_animation_speed(config.animation_speed_ms);
+        // `RotationWidget` defaults `animations_enabled` to false -
+        // enable its zoom-snap rotation animation unless the session
+        // requests reduced motion.
+        rotation_widget.set_animations_enabled(gtk4::Settings::default().is_none_or(|settings| settings.is_gtk_enable_animations()));
         rotation_widget.set_child(Some(&card));
         let scaling = ScalingWidget::new(&rotation_widget);
         layer.put(&scaling, 0.0, 0.0);
@@ -241,8 +244,22 @@ impl FloatingBoard {
             layout_generation: Cell::new(GenerationCounter::default()),
             glide_target: Cell::new(None),
             satellites: RefCell::new(satellites),
+            satellites_generation: Cell::new(GenerationCounter::default()),
+            fold_choreo_closing: Cell::new(false),
         };
         self.imp().cards.borrow_mut().insert(id.clone(), entry);
+
+        // Satellite mount reveal (P5.2): an initially-open set emerges
+        // from the collapsed seed instead of appearing at once.
+        {
+            let cards = self.imp().cards.borrow();
+            if let Some(entry) = cards.get(&id) {
+                let (settings, _) = entry.config.effective_satellites();
+                if settings.open && !entry.satellites.borrow().is_empty() {
+                    self.begin_satellite_transitions(entry, true, false);
+                }
+            }
+        }
 
         // Place the stack immediately for explicit anchors; named anchors
         // resolve at the first board allocation.
@@ -753,13 +770,18 @@ impl FloatingBoard {
     /// Opens or closes the card's whole satellite set. The initial
     /// state comes from `CardSatellites::open`; a closed set hides
     /// like a folded card hides it - placements keep resolving in the
-    /// background, so reopening lands on current positions. The open
-    /// *transition* itself is Phase-5 animation matter.
+    /// background, so reopening lands on current positions. With
+    /// animations enabled the satellites stagger-tween between the
+    /// collapsed seed and their resolved placements (Phase 5).
     pub fn set_satellites_open(&self, id: &CardId, open: bool) -> Result<(), BoardError> {
         let cards = self.imp().cards.borrow();
         let Some(entry) = cards.get(id) else {
             return Err(BoardError::UnknownCard(id.clone()));
         };
+        // Transitions begin from the pre-flip state: `begin`'s close
+        // eligibility checks the logical `open` flag, so the flag commit
+        // happens only after the batch was created.
+        self.begin_satellite_transitions(entry, open, false);
         for satellite in entry.satellites.borrow().iter() {
             satellite.open.set(open);
         }
@@ -1535,16 +1557,19 @@ impl FloatingBoard {
     fn wire_gestures(&self, id: &CardId, card: &Card, scaling: &ScalingWidget, rotation_widget: &RotationWidget, config: &CardConfig) {
         // Fold changes the card footprint - layout persistence and
         // input-region consumers track it through `geometry-changed`.
-        // Satellites hide with the folded card (v1 rule).
+        // Fold choreography (P5.4): a fold first animates the satellite
+        // set into the collapsed seed, then the card collapses; an
+        // unfold replays the reveal.
         let board_weak = self.downgrade();
         let card_id = id.clone();
         card.connect_local("card-folded", false, move |_| {
             if let Some(board) = board_weak.upgrade() {
-                let cards = board.imp().cards.borrow();
-                if let Some(entry) = cards.get(&card_id) {
-                    board.sync_satellites(entry);
+                {
+                    let cards = board.imp().cards.borrow();
+                    if let Some(entry) = cards.get(&card_id) {
+                        board.on_card_folded(entry);
+                    }
                 }
-                drop(cards);
                 board.emit_geometry_changed();
             }
             None

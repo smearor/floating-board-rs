@@ -41,6 +41,7 @@ use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::Vec2;
 use std::cell::Cell;
 use std::f64::consts::TAU;
+use std::rc::Rc;
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
@@ -54,6 +55,10 @@ fn dot_button(class: &str) -> Button {
 
 /// Wires a color-dot satellite to re-color `card_id` on click via
 /// `Card::set_palette`.
+/// Starting point size of the memo card label (font satellites scale
+/// it between 6 and 36 pt).
+const MEMO_FONT_PT: f64 = 11.0;
+
 fn wire_color_dot(board: &FloatingBoard, card_id: &CardId, button: &Button, background: DotColor, header: DotColor) {
     let board = board.clone();
     let id = card_id.clone();
@@ -122,9 +127,13 @@ fn build_ui(application: &gtk4::Application) {
 
     // --- Card "memo": Even radial distribution, co-rotating ----------
     let memo = gtk4::Box::new(Orientation::Vertical, 6);
-    memo.append(&Label::new(Some("Memo card\n- pick a color")));
+    let memo_label = Label::new(Some("Memo card\n- pick a color"));
+    memo.append(&memo_label);
     let open_button = Button::with_label("Toggle satellites");
     memo.append(&open_button);
+    // Font-size satellites: zoom icons, wired below the card mount.
+    let font_larger = Button::from_icon_name("zoom-in-symbolic");
+    let font_smaller = Button::from_icon_name("zoom-out-symbolic");
     let green = dot_button("memo-green");
     let red = dot_button("memo-red");
     let yellow = dot_button("memo-yellow");
@@ -157,6 +166,8 @@ fn build_ui(application: &gtk4::Application) {
                         SatelliteConfig::custom("green", green.clone()),
                         SatelliteConfig::custom("red", red.clone()),
                         SatelliteConfig::custom("yellow", yellow.clone()),
+                        SatelliteConfig::custom("font-larger", font_larger.clone()),
+                        SatelliteConfig::custom("font-smaller", font_smaller.clone()),
                     ],
                     ..Default::default()
                 }),
@@ -176,6 +187,18 @@ fn build_ui(application: &gtk4::Application) {
     // the memo card via `Card::set_palette`.
     for (button, (_, background, header)) in memo_dots.iter().zip(DOT_SPECS) {
         wire_color_dot(&board, &memo_id, button, background, header);
+    }
+    // Custom wiring: the font satellites scale the card's label via
+    // Pango markup (absolute sizes are 1024ths of a point).
+    let font_size = Rc::new(Cell::new(MEMO_FONT_PT));
+    for (button, factor) in [(&font_larger, 1.25), (&font_smaller, 0.8)] {
+        let memo_label = memo_label.clone();
+        let font_size = font_size.clone();
+        button.connect_clicked(move |_| {
+            let size = (font_size.get() * factor).clamp(6.0, 36.0);
+            font_size.set(size);
+            memo_label.set_markup(&format!("<span size=\"{}\">Memo card\n- pick a color</span>", (size * 1024.0) as i64));
+        });
     }
 
     // --- Card "anchored": QuarterTurn anchors, CounterRotate ---------
