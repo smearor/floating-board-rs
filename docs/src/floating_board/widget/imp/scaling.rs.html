@@ -114,28 +114,35 @@
 <a href=#114 id=114 data-nosnippet>114</a>    <span class="kw">fn </span>measure(<span class="kw-2">&amp;</span><span class="self">self</span>, widget: <span class="kw-2">&amp;</span>gtk4::Widget, orientation: Orientation, for_size: i32) -&gt; (i32, i32, i32, i32) {
 <a href=#115 id=115 data-nosnippet>115</a>        <span class="kw">let </span>scale = <span class="self">self</span>.scale.get();
 <a href=#116 id=116 data-nosnippet>116</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(child) = widget.first_child() {
-<a href=#117 id=117 data-nosnippet>117</a>            <span class="kw">let </span>extent = (child.measure_axis(orientation, for_size).to_f64() * scale).to_i32_ceil();
-<a href=#118 id=118 data-nosnippet>118</a>            (extent.x, extent.y, -<span class="number">1</span>, -<span class="number">1</span>)
-<a href=#119 id=119 data-nosnippet>119</a>        } <span class="kw">else </span>{
-<a href=#120 id=120 data-nosnippet>120</a>            (<span class="number">0</span>, <span class="number">0</span>, -<span class="number">1</span>, -<span class="number">1</span>)
-<a href=#121 id=121 data-nosnippet>121</a>        }
-<a href=#122 id=122 data-nosnippet>122</a>    }
-<a href=#123 id=123 data-nosnippet>123</a>
-<a href=#124 id=124 data-nosnippet>124</a>    <span class="kw">fn </span>allocate(<span class="kw-2">&amp;</span><span class="self">self</span>, widget: <span class="kw-2">&amp;</span>gtk4::Widget, width: i32, height: i32, baseline: i32) {
-<a href=#125 id=125 data-nosnippet>125</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(child) = widget.first_child() <span class="kw">else </span>{
-<a href=#126 id=126 data-nosnippet>126</a>            <span class="kw">return</span>;
-<a href=#127 id=127 data-nosnippet>127</a>        };
-<a href=#128 id=128 data-nosnippet>128</a>        <span class="kw">let </span>allocated = Size::new(width, height);
-<a href=#129 id=129 data-nosnippet>129</a>        <span class="kw">let </span>natural = <span class="self">self</span>.natural_child_size(widget);
-<a href=#130 id=130 data-nosnippet>130</a>        <span class="kw">let </span>child_size = Size::new(<span class="kw">if </span>natural.x &gt; <span class="number">0 </span>{ natural.x } <span class="kw">else </span>{ allocated.x }, <span class="kw">if </span>natural.y &gt; <span class="number">0 </span>{ natural.y } <span class="kw">else </span>{ allocated.y });
-<a href=#131 id=131 data-nosnippet>131</a>        <span class="comment">// Center the unscaled child in the allocation, then scale around the center.
-<a href=#132 id=132 data-nosnippet>132</a>        </span><span class="kw">let </span>transform = Transform::from(CenteredTransform::new(
-<a href=#133 id=133 data-nosnippet>133</a>            allocated.to_f32().half(),
-<a href=#134 id=134 data-nosnippet>134</a>            child_size.to_f32(),
-<a href=#135 id=135 data-nosnippet>135</a>            RotationRad::ZERO,
-<a href=#136 id=136 data-nosnippet>136</a>            ScaleFactor::new(<span class="self">self</span>.scale.get()),
-<a href=#137 id=137 data-nosnippet>137</a>        ));
-<a href=#138 id=138 data-nosnippet>138</a>        child.allocate(child_size.x, child_size.y, baseline, <span class="prelude-val">Some</span>(transform));
-<a href=#139 id=139 data-nosnippet>139</a>    }
-<a href=#140 id=140 data-nosnippet>140</a>}
+<a href=#117 id=117 data-nosnippet>117</a>            <span class="comment">// `for_size` arrives in the parent's scaled coordinate
+<a href=#118 id=118 data-nosnippet>118</a>            // space - the child needs it unscaled, or a shrunken
+<a href=#119 id=119 data-nosnippet>119</a>            // allocation under-constrains it (GTK measure warnings).
+<a href=#120 id=120 data-nosnippet>120</a>            </span><span class="kw">let </span>child_for_size = <span class="kw">match </span>for_size &gt;= <span class="number">0 </span>&amp;&amp; scale &gt; <span class="number">0.0 </span>{
+<a href=#121 id=121 data-nosnippet>121</a>                <span class="bool-val">true </span>=&gt; (f64::from(for_size) / scale).ceil() <span class="kw">as </span>i32,
+<a href=#122 id=122 data-nosnippet>122</a>                <span class="bool-val">false </span>=&gt; for_size,
+<a href=#123 id=123 data-nosnippet>123</a>            };
+<a href=#124 id=124 data-nosnippet>124</a>            <span class="kw">let </span>extent = (child.measure_axis(orientation, child_for_size).to_f64() * scale).to_i32_ceil();
+<a href=#125 id=125 data-nosnippet>125</a>            (extent.x, extent.y, -<span class="number">1</span>, -<span class="number">1</span>)
+<a href=#126 id=126 data-nosnippet>126</a>        } <span class="kw">else </span>{
+<a href=#127 id=127 data-nosnippet>127</a>            (<span class="number">0</span>, <span class="number">0</span>, -<span class="number">1</span>, -<span class="number">1</span>)
+<a href=#128 id=128 data-nosnippet>128</a>        }
+<a href=#129 id=129 data-nosnippet>129</a>    }
+<a href=#130 id=130 data-nosnippet>130</a>
+<a href=#131 id=131 data-nosnippet>131</a>    <span class="kw">fn </span>allocate(<span class="kw-2">&amp;</span><span class="self">self</span>, widget: <span class="kw-2">&amp;</span>gtk4::Widget, width: i32, height: i32, baseline: i32) {
+<a href=#132 id=132 data-nosnippet>132</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(child) = widget.first_child() <span class="kw">else </span>{
+<a href=#133 id=133 data-nosnippet>133</a>            <span class="kw">return</span>;
+<a href=#134 id=134 data-nosnippet>134</a>        };
+<a href=#135 id=135 data-nosnippet>135</a>        <span class="kw">let </span>allocated = Size::new(width, height);
+<a href=#136 id=136 data-nosnippet>136</a>        <span class="kw">let </span>natural = <span class="self">self</span>.natural_child_size(widget);
+<a href=#137 id=137 data-nosnippet>137</a>        <span class="kw">let </span>child_size = Size::new(<span class="kw">if </span>natural.x &gt; <span class="number">0 </span>{ natural.x } <span class="kw">else </span>{ allocated.x }, <span class="kw">if </span>natural.y &gt; <span class="number">0 </span>{ natural.y } <span class="kw">else </span>{ allocated.y });
+<a href=#138 id=138 data-nosnippet>138</a>        <span class="comment">// Center the unscaled child in the allocation, then scale around the center.
+<a href=#139 id=139 data-nosnippet>139</a>        </span><span class="kw">let </span>transform = Transform::from(CenteredTransform::new(
+<a href=#140 id=140 data-nosnippet>140</a>            allocated.to_f32().half(),
+<a href=#141 id=141 data-nosnippet>141</a>            child_size.to_f32(),
+<a href=#142 id=142 data-nosnippet>142</a>            RotationRad::ZERO,
+<a href=#143 id=143 data-nosnippet>143</a>            ScaleFactor::new(<span class="self">self</span>.scale.get()),
+<a href=#144 id=144 data-nosnippet>144</a>        ));
+<a href=#145 id=145 data-nosnippet>145</a>        child.allocate(child_size.x, child_size.y, baseline, <span class="prelude-val">Some</span>(transform));
+<a href=#146 id=146 data-nosnippet>146</a>    }
+<a href=#147 id=147 data-nosnippet>147</a>}
 </code></pre></div></section></main></body></html>
