@@ -26,6 +26,7 @@ use gtk4::Accessible;
 use gtk4::Buildable;
 use gtk4::ConstraintTarget;
 use gtk4::Orientable;
+use gtk4::Orientation;
 use gtk4::Widget;
 use gtk4::cairo::Region;
 use gtk4::glib;
@@ -346,9 +347,15 @@ impl Card {
         }
     }
 
-    /// Toggles the folded state.
+    /// Toggles the folded state, animated per
+    /// `CardConfig::fold_animation` when the card sits on a board.
     pub fn fold(&self) {
-        self.set_folded(!self.folded());
+        let folded = !self.folded();
+        if let Some(board) = self.board() {
+            board.set_card_folded_animated(&self.id(), folded);
+        } else {
+            self.set_folded(folded);
+        }
     }
 
     /// Folds or unfolds the card. With `CardConfig::folded_content` set,
@@ -378,27 +385,43 @@ impl Card {
             return;
         }
         imp.folded.set(folded);
+        self.apply_folded_presentation(folded);
+        // Folding changes the measured size; the center anchor must be kept.
+        if let Some(board) = self.board() {
+            board.recenter_card(&self.id());
+        }
+        debug!(card = %self.id(), folded, "card folded state changed");
+        self.emit_by_name::<()>(CardSignal::Folded.name(), &[]);
+    }
+
+    /// Applies the folded state's presentation: pane visibility, size
+    /// pins, grip availability and CSS classes. `set_folded` runs this
+    /// on each state change; the fold transition
+    /// (`CardConfig::fold_animation`) replays it at the transition end,
+    /// so the last animated frame hands over to the exact target state.
+    pub(crate) fn apply_folded_presentation(&self, folded: bool) {
+        let imp = self.imp();
+        // A fold morph's measure override ends with the target
+        // presentation - the card returns to child-driven measure
+        // (or the folded pin below).
+        imp.morph_measure.set(None);
         let collapsed = imp.folded_holder.get().is_some_and(|holder| holder.first_child().is_some());
         if let Some(holder) = imp.content_holder.get() {
-            if folded {
+            if folded && !collapsed {
                 // Pin the card width while folded to the header: without
                 // the content the natural width shrinks and the fold
                 // button would end up outside the shrunken header. A
                 // collapsed card is meant to shrink instead.
-                if !collapsed {
-                    let (_, natural) = self.measure_size();
-                    if imp.shape.get() == CardShape::Circle {
-                        // A folded circle collapses onto its ring: the
-                        // diameter stays pinned so the empty disc keeps
-                        // the card's size.
-                        let diameter = natural.x.max(natural.y);
-                        self.set_size_request(diameter, diameter);
-                    } else {
-                        self.set_size_request(natural.x, -1);
-                    }
+                let (_, natural) = self.measure_size();
+                if imp.shape.get() == CardShape::Circle {
+                    // A folded circle collapses onto its ring: the
+                    // diameter stays pinned so the empty disc keeps
+                    // the card's size.
+                    let diameter = natural.x.max(natural.y);
+                    self.set_size_request(diameter, diameter);
+                } else {
+                    self.set_size_request(natural.x, -1);
                 }
-            } else {
-                self.set_size_request(-1, -1);
             }
             holder.set_visible(!folded);
         }
@@ -412,6 +435,21 @@ impl Card {
         }
         if let Some(holder) = imp.folded_holder.get() {
             holder.set_visible(folded && collapsed);
+        }
+        // The folded pane is an overlay child of the stage and never
+        // claims layout space - a collapsed card's size must be pinned
+        // to the folded presentation's natural measure explicitly.
+        if folded && collapsed {
+            if imp.shape.get() == CardShape::Circle {
+                let (_, natural_width, _, natural_height) = imp.circle_measure();
+                self.set_size_request(natural_width, natural_height);
+            } else if let Some(holder) = imp.folded_holder.get() {
+                let (_, natural_width, _, _) = holder.measure(Orientation::Horizontal, -1);
+                let (_, natural_height, _, _) = holder.measure(Orientation::Vertical, -1);
+                self.set_size_request(natural_width, natural_height);
+            }
+        } else if !folded {
+            self.set_size_request(-1, -1);
         }
         // The grips sit on the content overlay - hide them while folded.
         if let Some(grip) = imp.resize_grip.get() {
@@ -437,17 +475,37 @@ impl Card {
             self.remove_css_class(CLASS_FOLDED);
             self.remove_css_class(CLASS_COLLAPSED);
         }
-        // Folding changes the measured size; the center anchor must be kept.
-        if let Some(board) = self.board() {
-            board.recenter_card(&self.id());
+        // Fold-transition handoff: restore steady-state opacity and
+        // targeting on both panes (a running transition animates them).
+        if let Some(pane) = imp.content_overlay.get() {
+            pane.set_opacity(1.0);
+            pane.set_can_target(true);
         }
-        debug!(card = %self.id(), folded, "card folded state changed");
-        self.emit_by_name::<()>(CardSignal::Folded.name(), &[]);
+        if let Some(holder) = imp.folded_holder.get() {
+            holder.set_opacity(1.0);
+            holder.set_can_target(true);
+        }
+        if let Some(holder) = imp.content_holder.get() {
+            holder.set_can_target(true);
+        }
     }
 
     /// Whether the card is folded to its header.
     pub fn folded(&self) -> bool {
         self.imp().folded.get()
+    }
+
+    /// The card's natural size in its folded presentation, measured by
+    /// applying the folded state, measuring, and restoring - all
+    /// synchronously within one frame, so nothing renders the
+    /// intermediate state. The fold choreography needs the folded
+    /// footprint *before* the real swap when an `Overlap` morph starts
+    /// mid-close.
+    pub(crate) fn folded_natural_size(&self) -> Vec2<Pixels> {
+        self.apply_folded_presentation(true);
+        let (_, folded_natural) = self.measure_size();
+        self.apply_folded_presentation(false);
+        folded_natural.to_f64().with_unit::<Pixels>()
     }
 
     /// Rotated footprint of the card in widget (rendered) coordinates.

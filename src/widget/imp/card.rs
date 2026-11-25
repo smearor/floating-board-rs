@@ -95,6 +95,12 @@ pub struct CardImpl {
     pub max_width: Cell<Option<Pixels>>,
     /// Upper bound on the reported height (`CardConfig::max_height`).
     pub max_height: Cell<Option<Pixels>>,
+    /// Fold-morph measure override (`CardFoldAnimation`): while a
+    /// morph runs, `CardShapeLayout` reports this pinned size instead
+    /// of measuring children - a `size_request` cannot shrink a card
+    /// below its content's own minimum, so the footprint tween needs
+    /// the layout-level override. `apply_folded_presentation` clears it.
+    pub morph_measure: Cell<Option<Vec2<Pixels, i32>>>,
     /// The card's outline (`CardConfig::shape`) - drives the circle
     /// branches in `measure`/`size_allocate`/`contains`.
     pub shape: Cell<CardShape>,
@@ -124,6 +130,7 @@ impl Default for CardImpl {
             rotate_grip_enabled: Cell::new(false),
             folded: Cell::new(false),
             folded_holder: OnceCell::new(),
+            morph_measure: Cell::new(None),
             max_width: Cell::new(None),
             max_height: Cell::new(None),
             shape: Cell::new(CardShape::default()),
@@ -174,9 +181,19 @@ impl ObjectImpl for CardImpl {
         let folded_holder = gtk4::Box::new(Orientation::Horizontal, 0);
         folded_holder.add_css_class(crate::widget::css::CLASS_FOLDED_CONTENT);
         folded_holder.set_visible(false);
+        folded_holder.set_halign(gtk4::Align::Center);
+        folded_holder.set_valign(gtk4::Align::Center);
 
-        card.append(&content_overlay);
-        card.append(&folded_holder);
+        // The stage stacks the folded pane over the content pane:
+        // while folded - or mid-crossfade in a `CardFoldAnimation`
+        // transition - both panes share the same area. The folded pane
+        // is an overlay child, so it never claims layout space; the
+        // folded state's size is pinned explicitly in `set_folded`.
+        let stage = Overlay::new();
+        stage.set_child(Some(&content_overlay));
+        stage.add_overlay(&folded_holder);
+
+        card.append(&stage);
 
         let _ = self.content_overlay.set(content_overlay);
         let _ = self.content_holder.set(content_holder);

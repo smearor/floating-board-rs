@@ -1,4 +1,5 @@
 use crate::domain::CardAnchor;
+use crate::domain::CardFoldAnimation;
 use crate::domain::CardGeometry;
 use crate::domain::CardPosition;
 use crate::domain::GenerationCounter;
@@ -7,6 +8,7 @@ use crate::domain::ScaleFactor;
 use crate::domain::SequenceNumber;
 use crate::widget::card::Card;
 use crate::widget::card_config::CardConfig;
+use crate::widget::imp::fold_animation::FoldAnimation;
 use crate::widget::imp::quad_baseline::QuadBaseline;
 use crate::widget::imp::satellite_entry::SatelliteEntry;
 use crate::widget::imp::tracked_touch::TrackedTouch;
@@ -14,7 +16,9 @@ use crate::widget::scaling::ScalingWidget;
 use gtk4::GestureDrag;
 use gtk4::gdk::EventSequence;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Radians;
 use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::ScaleFactor as GeometryScaleFactor;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_layout::Seat;
 use smearor_wrot_rotation::RotationWidget;
@@ -22,6 +26,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::time::Duration;
 use std::time::Instant;
 
 /// Board-owned state of one card: the transform stack widgets plus the
@@ -126,6 +131,31 @@ pub(crate) struct CardEntry {
     /// `card-folded` handler treats the intermediate re-unfold as part
     /// of the choreography instead of a real unfold.
     pub fold_choreo_closing: Cell<bool>,
+    /// The running fold transition (`CardConfig::fold_animation`) -
+    /// evaluated on the board's fold tick; replaced when a new fold
+    /// interrupts it.
+    pub fold_animation: RefCell<Option<FoldAnimation>>,
+    /// An animated fold was diverted into the satellite close
+    /// choreography - the tick's `ApplyFold` step replays the request
+    /// through the animation path instead of an atomic swap.
+    pub fold_morph_pending: Cell<bool>,
+    /// Generation of the running fold transition tick - starting a new
+    /// fold animation bumps it and stale tick callbacks stop
+    /// themselves (same pattern as `satellites_generation`).
+    pub fold_generation: Cell<GenerationCounter>,
+    /// Rotation excursion the running fold morph applied on the
+    /// last tick - kept outside the `fold_animation` RefCell so
+    /// re-entrant footprint math during the tick reads it without
+    /// borrowing; composed onto the logical rotation in render math.
+    pub fold_render_rotation: Cell<Radians>,
+    /// Zoom excursion the running fold morph applied - same purpose
+    /// as `fold_render_rotation`.
+    pub fold_render_zoom: Cell<GeometryScaleFactor>,
+    /// The unfold morph gates the satellite reveal
+    /// (`CardConfig::unfold_timing`): while set, `on_card_folded`
+    /// skips `begin_satellite_transitions` and the fold tick fires
+    /// the reveal once its progress passes the timing's fraction.
+    pub unfold_reveal_pending: Cell<bool>,
 }
 
 /// Smallest radial grab distance the resize drag accepts as its
@@ -173,6 +203,27 @@ impl CardEntry {
             return None;
         }
         Some(next_quarter_turn(current, sweep > RotationRad::ZERO))
+    }
+
+    /// The transition duration the card's `animation_speed_ms`
+    /// budget allows - clamped to a nonzero duration for
+    /// `TimedAnimation`.
+    pub(crate) fn transition_duration(&self) -> Duration {
+        Duration::from_millis(self.config.animation_speed_ms.max(1))
+    }
+
+    /// Whether satellite placement animations run for this entry:
+    /// GTK's `gtk-enable-animations` setting (reduced motion) and the
+    /// card's own `animation_speed_ms` budget both have to allow it.
+    pub(crate) fn satellite_animations_enabled(&self) -> bool {
+        self.config.animation_speed_ms > 0 && gtk4::Settings::default().is_none_or(|settings| settings.is_gtk_enable_animations())
+    }
+
+    /// Whether a fold morph animates for this entry in direction
+    /// `to_folded`: the direction-resolved `CardFoldAnimation` must not
+    /// be `Instant`, and animations must be enabled overall.
+    pub(crate) fn fold_animation_enabled(&self, to_folded: bool) -> bool {
+        self.config.effective_fold_animation(to_folded) != CardFoldAnimation::Instant && self.satellite_animations_enabled()
     }
 
     /// Current center position as a board-coordinate vector.

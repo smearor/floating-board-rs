@@ -76,9 +76,19 @@ impl LayoutManagerImpl for CardShapeLayoutImpl {
             return self.box_layout.measure(widget, orientation, for_size);
         };
         let imp = card.imp();
-        let (minimum, natural, minimum_baseline, natural_baseline) = match imp.shape.get() {
-            CardShape::Circle => imp.circle_measure(),
-            CardShape::Rectangle => self.box_layout.measure(widget, orientation, for_size),
+        let (minimum, natural, minimum_baseline, natural_baseline) = match imp.morph_measure.get() {
+            // Fold morph: the pinned pose size replaces the child
+            // measure entirely - `size_request` alone cannot shrink a
+            // card below its content's own minimum, so the footprint
+            // tween needs the layout-level override.
+            Some(pin) => match orientation {
+                Orientation::Horizontal => (pin.x, pin.x, -1, -1),
+                _ => (pin.y, pin.y, -1, -1),
+            },
+            None => match imp.shape.get() {
+                CardShape::Circle => imp.circle_measure(),
+                CardShape::Rectangle => self.box_layout.measure(widget, orientation, for_size),
+            },
         };
         // `CardConfig::max_width`/`max_height` cap the reported size (the
         // diameter on a circle card); the parent layer allocates at most

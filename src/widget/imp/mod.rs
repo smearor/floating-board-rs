@@ -5,6 +5,7 @@ pub(crate) mod card_layer;
 pub(crate) mod card_layout;
 pub(crate) mod circular_clip;
 pub(crate) mod floating_board_layout;
+pub(crate) mod fold_animation;
 pub(crate) mod quad_baseline;
 pub(crate) mod satellite_entry;
 pub(crate) mod scaling;

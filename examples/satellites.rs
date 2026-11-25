@@ -16,6 +16,8 @@
 use floating_board::CardAnchor;
 use floating_board::CardColor;
 use floating_board::CardConfig;
+use floating_board::CardFoldAnimation;
+use floating_board::CardFoldTiming;
 use floating_board::CardId;
 use floating_board::CardPalette;
 use floating_board::CardPosition;
@@ -27,6 +29,7 @@ use floating_board::ChromeStyle;
 use floating_board::CircleContent;
 use floating_board::DragHandle;
 use floating_board::FloatingBoard;
+use floating_board::Fraction;
 use floating_board::SatelliteConfig;
 use floating_board::SatelliteDistribution;
 use floating_board::SatelliteLayout;
@@ -213,6 +216,7 @@ fn build_ui(application: &gtk4::Application) {
                 // Unfolded drags only via the header (buttons stay
                 // usable); the folded strip drags anywhere.
                 drag_handle: DragHandle::WholeCardFolded,
+                fold_animation: CardFoldAnimation::Crossfade,
                 chrome: Some(vec![
                     ChromeSlot::inline(ChromeElement::Title),
                     ChromeSlot::inline(ChromeElement::Minimize),
@@ -353,6 +357,16 @@ fn build_ui(application: &gtk4::Application) {
                 folded_content: Some(orb_folded.upcast()),
                 unfold_on_click: true,
                 drag_handle: DragHandle::WholeCard,
+                // The big clock twirls into its folded miniature
+                // (footprint tween + full turn + zoom dip + crossfade),
+                // starting while the satellites are still sinking. The
+                // way back differs: a quiet shrink-blend, then the set
+                // re-emerges halfway through.
+                fold_animation: CardFoldAnimation::Spin,
+                fold_timing: CardFoldTiming::Overlap(Fraction::new(0.35)),
+                unfold_animation: Some(CardFoldAnimation::Shrink),
+                unfold_timing: Some(CardFoldTiming::Overlap(Fraction::new(0.5))),
+                animation_speed_ms: 833,
                 satellites: Some(CardSatellites {
                     layout: SatelliteLayout::Radial(Default::default()),
                     satellites: vec![
@@ -401,7 +415,7 @@ fn build_ui(application: &gtk4::Application) {
         let board = board.clone();
         move |_| {
             if let Ok(card) = board.card(&CardId::new("orb")) {
-                card.set_folded(!card.folded());
+                card.fold();
             }
         }
     });

@@ -114,7 +114,14 @@ impl LayoutManagerImpl for ScalingLayoutImpl {
     fn measure(&self, widget: &gtk4::Widget, orientation: Orientation, for_size: i32) -> (i32, i32, i32, i32) {
         let scale = self.scale.get();
         if let Some(child) = widget.first_child() {
-            let extent = (child.measure_axis(orientation, for_size).to_f64() * scale).to_i32_ceil();
+            // `for_size` arrives in the parent's scaled coordinate
+            // space - the child needs it unscaled, or a shrunken
+            // allocation under-constrains it (GTK measure warnings).
+            let child_for_size = match for_size >= 0 && scale > 0.0 {
+                true => (f64::from(for_size) / scale).ceil() as i32,
+                false => for_size,
+            };
+            let extent = (child.measure_axis(orientation, child_for_size).to_f64() * scale).to_i32_ceil();
             (extent.x, extent.y, -1, -1)
         } else {
             (0, 0, -1, -1)

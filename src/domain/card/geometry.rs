@@ -1,8 +1,11 @@
 use crate::domain::CardPosition;
 use crate::domain::ScaleFactor;
 use smearor_commons_animation::Interpolate;
+use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::Fraction;
+use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rotation;
+use smearor_commons_geometry::Vec2;
 
 /// Complete geometric state of a card: center position, rotation and scale.
 ///
@@ -18,6 +21,29 @@ pub struct CardGeometry {
     pub rotation: Rotation,
     /// Scale factor of the card (`1.0` = natural size).
     pub scale: ScaleFactor,
+}
+
+/// Retargeting deadband for geometry comparisons: layout measure
+/// noise below these magnitudes must not retrigger tweens.
+const POSITION_DEADBAND: Pixels = Pixels(2.0);
+
+/// Rotation deadband - see [`POSITION_DEADBAND`].
+const ROTATION_DEADBAND: Degrees = Degrees(2.0);
+
+/// Scale deadband (factor units) - see [`POSITION_DEADBAND`].
+const SCALE_DEADBAND: f64 = 0.02;
+
+impl CardGeometry {
+    /// Whether `other` differs from `self` beyond the retargeting
+    /// deadband (`POSITION_DEADBAND`, `ROTATION_DEADBAND`,
+    /// `SCALE_DEADBAND` factor units). For exact comparison use
+    /// `PartialEq`.
+    pub(crate) fn differs_beyond_deadband(&self, other: &Self) -> bool {
+        let position_delta = Vec2::<Pixels>::from(self.position).distance(&Vec2::<Pixels>::from(other.position));
+        let rotation_delta = (self.rotation.to_rotation_rad() - other.rotation.to_rotation_rad()).abs().degrees();
+        let scale_delta = (self.scale.value() - other.scale.value()).abs();
+        position_delta > POSITION_DEADBAND || rotation_delta > ROTATION_DEADBAND || scale_delta > SCALE_DEADBAND
+    }
 }
 
 impl Default for CardGeometry {

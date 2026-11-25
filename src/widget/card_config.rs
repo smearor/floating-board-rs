@@ -1,6 +1,8 @@
 use crate::domain::ANCHOR_MARGIN;
 use crate::domain::BoundsMode;
 use crate::domain::CardAnchor;
+use crate::domain::CardFoldAnimation;
+use crate::domain::CardFoldTiming;
 use crate::domain::CardPalette;
 use crate::domain::CardShape;
 use crate::domain::ChromeElement;
@@ -15,6 +17,7 @@ use crate::widget::card_close_action::CardCloseAction;
 use crate::widget::card_satellites::CardSatellites;
 use crate::widget::satellite_config::SatelliteConfig;
 use gtk4::Widget;
+use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_layout::Seat;
 
@@ -142,6 +145,30 @@ pub struct CardConfig {
     /// satellite closes with the rest of the set.
     #[cfg_attr(feature = "serde", serde(default))]
     pub unfold_on_click: bool,
+    /// How the card transitions between unfolded and folded
+    /// presentation (`CardFoldAnimation`): an eased program over the
+    /// axes width, height, rotation, zoom and content opacity,
+    /// budgeted by `animation_speed_ms`. `Instant` (default) swaps
+    /// atomically; reduced motion lands instantly too.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub fold_animation: CardFoldAnimation,
+    /// The morph program for the unfold direction - `None` replays
+    /// `fold_animation` mirrored, so a single setting animates both
+    /// directions.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub unfold_animation: Option<CardFoldAnimation>,
+    /// When an animated fold plays relative to the satellite close
+    /// choreography: `Sequential` (default) morphs after the last
+    /// satellite sank into the card, `Overlap(fraction)` starts the
+    /// morph mid-close (`0.0` = parallel). Unfolds always morph while
+    /// the set reveals.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub fold_timing: CardFoldTiming,
+    /// The unfold-direction choreography timing relative to the
+    /// satellite reveal - `None` resolves to `Overlap(0.0)`, the
+    /// morph and the reveal run in lockstep.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub unfold_timing: Option<CardFoldTiming>,
     /// Pins the card to the screen instead of the workspace: a sticky
     /// card ignores the `View` camera entirely and keeps its on-screen
     /// position, rotation and zoom while the view pans, zooms or
@@ -209,6 +236,10 @@ impl Default for CardConfig {
             seat: None,
             folded_content: None,
             unfold_on_click: false,
+            fold_animation: CardFoldAnimation::default(),
+            unfold_animation: None,
+            fold_timing: CardFoldTiming::default(),
+            unfold_timing: None,
             sticky: false,
             chrome: None,
             chrome_style: ChromeStyle::default(),
@@ -218,6 +249,26 @@ impl Default for CardConfig {
 }
 
 impl CardConfig {
+    /// The fold morph program for a transition direction:
+    /// `unfold_animation` falls back to `fold_animation`, so a single
+    /// setting animates both directions.
+    pub fn effective_fold_animation(&self, to_folded: bool) -> CardFoldAnimation {
+        match to_folded {
+            true => self.fold_animation,
+            false => self.unfold_animation.unwrap_or(self.fold_animation),
+        }
+    }
+
+    /// The choreography timing for a transition direction: the unfold
+    /// side defaults to `Overlap(0.0)` - morph and satellite reveal
+    /// run in lockstep.
+    pub fn effective_fold_timing(&self, to_folded: bool) -> CardFoldTiming {
+        match to_folded {
+            true => self.fold_timing,
+            false => self.unfold_timing.unwrap_or(CardFoldTiming::Overlap(Fraction::ZERO)),
+        }
+    }
+
     /// The effective ordered chrome slots - either the explicit
     /// `CardConfig::chrome` list or the list derived from the legacy
     /// flags (default: `DragHandle`, `Title`, `Minimize`, `Close`,

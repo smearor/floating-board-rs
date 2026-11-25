@@ -2,6 +2,7 @@ use crate::domain::BoardError;
 use crate::domain::BoardLayout;
 use crate::domain::BoundsMode;
 use crate::domain::CardAnchor;
+use crate::domain::CardFoldTiming;
 use crate::domain::CardGeometry;
 use crate::domain::CardId;
 use crate::domain::CardPlacement;
@@ -23,6 +24,7 @@ use crate::widget::css::CLASS_VIEW_CONTROLS;
 use crate::widget::css::ensure_default_css;
 use crate::widget::imp::board::FloatingBoardImpl;
 use crate::widget::imp::card_entry::CardEntry;
+use crate::widget::imp::fold_animation::FoldAnimation;
 use crate::widget::imp::quad_baseline::QuadBaseline;
 use crate::widget::imp::tracked_touch::TrackedTouch;
 use crate::widget::scaling::ScalingWidget;
@@ -70,6 +72,7 @@ use smearor_commons_animation::TimedAnimation;
 use smearor_commons_animation::Trajectory;
 use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Radians;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::RotationRad;
@@ -247,6 +250,12 @@ impl FloatingBoard {
             satellites: RefCell::new(satellites),
             satellites_generation: Cell::new(GenerationCounter::default()),
             fold_choreo_closing: Cell::new(false),
+            fold_animation: RefCell::new(None),
+            fold_morph_pending: Cell::new(false),
+            fold_generation: Cell::new(GenerationCounter::default()),
+            fold_render_rotation: Cell::new(Radians::ZERO),
+            fold_render_zoom: Cell::new(ViewScaleFactor::ONE),
+            unfold_reveal_pending: Cell::new(false),
         };
         self.imp().cards.borrow_mut().insert(id.clone(), entry);
 
@@ -719,6 +728,244 @@ impl FloatingBoard {
         }
     }
 
+    /// Animated counterpart of `Card::set_folded`: the card state swaps
+    /// atomically, then the configured `fold_animation` program tweens
+    /// footprint, zoom, rotation and content-pane opacities into the
+    /// target presentation. Falls back to the atomic swap when
+    /// animations are off; when the satellite close choreography
+    /// diverts the fold, the pending morph replays in `finish_fold`.
+    pub(crate) fn set_card_folded_animated(&self, id: &CardId, folded: bool) {
+        let (animated, card, start_size) = {
+            let cards = self.imp().cards.borrow();
+            let Some(entry) = cards.get(id) else {
+                return;
+            };
+            if entry.card.folded() == folded {
+                return;
+            }
+            let animated = entry.fold_animation_enabled(folded);
+            // Mark folds up front: the choreography's revert and the
+            // motion tick consult this flag while `set_folded` is still
+            // unwinding, deciding when the morph plays
+            // (`CardFoldTiming`).
+            entry.fold_morph_pending.set(animated && folded);
+            // The unfold morph may gate the satellite reveal
+            // (`unfold_timing`): `on_card_folded` checks this flag
+            // while `set_folded` is still unwinding.
+            let reveal_gated = match entry.config.effective_fold_timing(false) {
+                CardFoldTiming::Overlap(at) => at > Fraction::ZERO,
+                CardFoldTiming::Sequential => true,
+            };
+            entry.unfold_reveal_pending.set(animated && !folded && reveal_gated);
+            let (_, natural) = entry.card.measure_size();
+            (animated, entry.card.clone(), natural.to_f64().with_unit::<Pixels>())
+        };
+        card.set_folded(folded);
+        if !animated {
+            return;
+        }
+        let cards = self.imp().cards.borrow();
+        let Some(entry) = cards.get(id) else {
+            return;
+        };
+        if entry.card.folded() == folded {
+            // No choreography diverted the fold - the morph plays now
+            // and no pending request remains.
+            entry.fold_morph_pending.set(false);
+            let (_, end) = entry.card.measure_size();
+            self.begin_fold_animation(entry, folded, start_size, end.to_f64().with_unit::<Pixels>());
+        }
+    }
+
+    /// The satellite choreography's final step (`ApplyFold` in the
+    /// motion tick): applies the real fold - through the fold
+    /// animation when a `set_card_folded_animated` request was
+    /// diverted into the choreography.
+    pub(crate) fn finish_fold(&self, entry: &CardEntry) {
+        if entry.fold_morph_pending.replace(false) && entry.fold_animation_enabled(true) && !entry.card.folded() {
+            let (_, natural) = entry.card.measure_size();
+            let start_size = natural.to_f64().with_unit::<Pixels>();
+            entry.card.set_folded(true);
+            if entry.card.folded() {
+                let (_, end) = entry.card.measure_size();
+                self.begin_fold_animation(entry, true, start_size, end.to_f64().with_unit::<Pixels>());
+            }
+        } else {
+            entry.card.set_folded(true);
+        }
+    }
+
+    /// Installs the fold-transition ghost on an already-swapped card:
+    /// both content panes render in the stage overlay while the fold
+    /// tick tweens footprint, zoom, rotation and pane opacities per
+    /// `CardFoldAnimation::pose`. `end_size` is the target footprint -
+    /// measured after the swap, or `Card::folded_natural_size` when an
+    /// overlapping morph starts while the card still stands unfolded.
+    /// The last frame hands over to `Card::apply_folded_presentation`.
+    pub(crate) fn begin_fold_animation(&self, entry: &CardEntry, to_folded: bool, start_size: Vec2<Pixels>, end_size: Vec2<Pixels>) {
+        // A fold interrupted mid-flight normalizes to the old
+        // animation's target before the new one starts.
+        if let Some(previous) = entry.fold_animation.take() {
+            entry.fold_generation.set(entry.fold_generation.get().incremented());
+            entry.fold_render_rotation.set(Radians::ZERO);
+            entry.fold_render_zoom.set(ViewScaleFactor::ONE);
+            entry.card.apply_folded_presentation(previous.to_folded);
+            entry.scaling.set_scale(entry.scale.get().value() * self.card_view_zoom(entry));
+            entry
+                .rotation_widget
+                .set_rotation(SmearorRotation::from(entry.rotation.get() + self.card_view(entry).rotation));
+            // A gated reveal from the interrupted unfold must not
+            // strand the satellite set - fire it now.
+            if entry.unfold_reveal_pending.replace(false) {
+                self.begin_satellite_transitions(entry, true, false);
+            }
+        }
+        let imp = entry.card.imp();
+        let collapsed = imp.folded_holder.get().is_some_and(|holder| holder.first_child().is_some());
+        // The pane the transition leaves renders again for its
+        // fade-out and stops accepting input.
+        if let Some(holder) = imp.content_holder.get() {
+            holder.set_visible(true);
+        }
+        if collapsed && let Some(holder) = imp.folded_holder.get() {
+            holder.set_visible(true);
+        }
+        let (out_pane, in_pane): (Option<Widget>, Option<Widget>) = if to_folded {
+            (
+                imp.content_overlay.get().map(|pane| pane.clone().upcast()),
+                imp.folded_holder.get().filter(|_| collapsed).map(|pane| pane.clone().upcast()),
+            )
+        } else {
+            (
+                imp.folded_holder.get().filter(|_| collapsed).map(|pane| pane.clone().upcast()),
+                imp.content_overlay.get().map(|pane| pane.clone().upcast()),
+            )
+        };
+        if let Some(pane) = &out_pane {
+            pane.set_opacity(1.0);
+            pane.set_can_target(false);
+        }
+        if let Some(pane) = &in_pane {
+            pane.set_opacity(0.0);
+        }
+        let mut animation = TimedAnimation::new(Span::new(0.0, 1.0), entry.transition_duration(), EasingFunction::EaseInOut);
+        animation.start();
+        let reveal_at = match entry.config.effective_fold_timing(false) {
+            CardFoldTiming::Sequential => Fraction::ONE,
+            CardFoldTiming::Overlap(at) => at.clamped(),
+        };
+        entry.fold_animation.replace(Some(FoldAnimation {
+            animation,
+            to_folded,
+            kind: entry.config.effective_fold_animation(to_folded),
+            reveal_at,
+            start_size,
+            end_size,
+            base_rotation: entry.rotation.get() + self.card_view(entry).rotation,
+            base_scale: ViewScaleFactor::new(entry.scale.get().value() * self.card_view_zoom(entry)),
+        }));
+        entry.fold_render_rotation.set(Radians::ZERO);
+        entry.fold_render_zoom.set(ViewScaleFactor::ONE);
+        // Pin the measure to the start size right away - without it
+        // the card would render one frame at its real post-swap size
+        // before the first tick pose lands.
+        imp.morph_measure.set(Some(start_size.to_i32_round()));
+        entry.card.queue_resize();
+        let generation = entry.fold_generation.get().incremented();
+        entry.fold_generation.set(generation);
+        let card_id = entry.card.id();
+        self.add_tick_callback(move |board, _frame_clock| {
+            let done = {
+                let cards = board.imp().cards.borrow();
+                let Some(entry) = cards.get(&card_id) else {
+                    return ControlFlow::Break;
+                };
+                if entry.fold_generation.get() != generation {
+                    return ControlFlow::Break;
+                }
+                let (complete, reveal_due) = {
+                    let mut slot = entry.fold_animation.borrow_mut();
+                    let Some(state) = slot.as_mut() else {
+                        return ControlFlow::Break;
+                    };
+                    let progress = Fraction::new(state.animation.value().unwrap_or(0.0));
+                    if let Some(pose) = state.kind.pose(progress, state.start_size, state.end_size) {
+                        let imp = entry.card.imp();
+                        // Excursion cells go first - the GTK calls
+                        // below re-enter footprint math synchronously
+                        // through notify handlers.
+                        entry.fold_render_rotation.set(pose.rotation);
+                        entry.fold_render_zoom.set(pose.zoom);
+                        // The footprint tween goes through the layout:
+                        // `size_request` could never shrink the card
+                        // below the fading pane's own minimum.
+                        imp.morph_measure.set(Some(pose.footprint.to_i32_round()));
+                        entry.card.queue_resize();
+                        entry.scaling.set_scale((pose.zoom * state.base_scale).as_f64());
+                        entry
+                            .rotation_widget
+                            .set_rotation(SmearorRotation::from(state.base_rotation + RotationRad::from(pose.rotation)));
+                        if state.to_folded {
+                            if let Some(pane) = imp.content_overlay.get() {
+                                pane.set_opacity(pose.opacity_out.as_f64());
+                            }
+                            if let Some(pane) = imp.folded_holder.get() {
+                                pane.set_opacity(pose.opacity_in.as_f64());
+                            }
+                        } else {
+                            if let Some(pane) = imp.folded_holder.get() {
+                                pane.set_opacity(pose.opacity_out.as_f64());
+                            }
+                            if let Some(pane) = imp.content_overlay.get() {
+                                pane.set_opacity(pose.opacity_in.as_f64());
+                            }
+                        }
+                    }
+                    // A gated satellite reveal fires once the unfold
+                    // morph's progress passes the `unfold_timing`
+                    // fraction (`Sequential` fires at completion).
+                    let reveal_due = !state.to_folded && entry.unfold_reveal_pending.get() && progress >= state.reveal_at;
+                    if reveal_due {
+                        entry.unfold_reveal_pending.set(false);
+                    }
+                    (state.animation.is_complete(), reveal_due)
+                };
+                if reveal_due {
+                    board.begin_satellite_transitions(entry, true, false);
+                }
+                // The shrinking footprint re-centers on its anchor -
+                // after the fold slot borrow is released, since the
+                // position math reads the applied excursions.
+                board.apply_position(entry);
+                complete
+            };
+            if done {
+                {
+                    let cards = board.imp().cards.borrow();
+                    if let Some(entry) = cards.get(&card_id)
+                        && let Some(state) = entry.fold_animation.take()
+                    {
+                        entry.fold_render_rotation.set(Radians::ZERO);
+                        entry.fold_render_zoom.set(ViewScaleFactor::ONE);
+                        entry.card.apply_folded_presentation(state.to_folded);
+                        entry.scaling.set_scale(entry.scale.get().value() * board.card_view_zoom(entry));
+                        entry
+                            .rotation_widget
+                            .set_rotation(SmearorRotation::from(entry.rotation.get() + board.card_view(entry).rotation));
+                        // A reveal still gated at morph end fires now -
+                        // its trigger point was never reached.
+                        if entry.unfold_reveal_pending.replace(false) {
+                            board.begin_satellite_transitions(entry, true, false);
+                        }
+                    }
+                }
+                board.recenter_card(&card_id);
+                return ControlFlow::Break;
+            }
+            ControlFlow::Continue
+        });
+    }
+
     /// Rotated footprint of a card in card-layer (board) coordinates - for
     /// safe-area unions and input regions.
     pub fn card_footprint(&self, id: &CardId) -> Result<Region, BoardError> {
@@ -894,14 +1141,17 @@ impl FloatingBoard {
     /// rotation, centered on its board position.
     fn entry_footprint(&self, entry: &CardEntry) -> Region {
         let (_, natural) = entry.card.measure_size();
-        let scale = entry.scale.get().value() * self.card_view_zoom(entry);
+        let (excursion, zoom) = self.fold_render_transform(entry);
+        let scale = entry.scale.get().value() * zoom * self.card_view_zoom(entry);
         let view = self.card_view(entry);
         let center = view.to_widget(entry.position.get().into(), self.widget_bounds());
         let footprint = Rect::<Pixels>::centered(center, natural.to_f64().with_unit::<Pixels>() * scale);
-        footprint.rotated_region(entry.rotation.get() + view.rotation).unwrap_or_else(|error| {
-            warn!(%error, "failed to build card footprint region");
-            Region::create()
-        })
+        footprint
+            .rotated_region(entry.rotation.get() + excursion + view.rotation)
+            .unwrap_or_else(|error| {
+                warn!(%error, "failed to build card footprint region");
+                Region::create()
+            })
     }
 
     /// Whether an external consumer manages the surface input region.
@@ -975,15 +1225,24 @@ impl FloatingBoard {
     /// `notify::rotation` on the card's `RotatedLayout`: re-centers the card
     /// (the rotated bounding box changes size), clamps and emits signals.
     fn on_card_rotated(&self, id: &CardId) {
-        let card = {
+        let (card, folding) = {
             let cards = self.imp().cards.borrow();
             let Some(entry) = cards.get(id) else {
                 return;
             };
+            // While the fold morph drives the rotation widget the
+            // rendered angle is a transient pose excursion, not a
+            // logical rotation - writing it back would fold the
+            // excursion into the model. `try_borrow`: the notify fires
+            // synchronously out of the fold tick's own `set_rotation`,
+            // while that state is mutably borrowed.
+            let folding = entry.fold_animation.try_borrow().map(|slot| slot.is_some()).unwrap_or(true);
             // The widget carries card rotation + view rotation; the model
             // keeps the workspace part. Synced before position/clamp work
             // reads it.
-            entry.rotation.set(entry.rotation_widget.rotation() - self.card_view(entry).rotation);
+            if !folding {
+                entry.rotation.set(entry.rotation_widget.rotation() - self.card_view(entry).rotation);
+            }
             // smearor-wrot-rotation queues allocation rather than resize, so
             // the RotatedLayout measure would stay stale; `layout_changed`
             // invalidates the measure chain and a 90 degree turn correctly
@@ -994,9 +1253,11 @@ impl FloatingBoard {
             entry.scaling.queue_resize();
             self.apply_position(entry);
             self.clamp_entry(entry);
-            entry.card.clone()
+            (entry.card.clone(), folding)
         };
-        card.emit_card_rotated();
+        if !folding {
+            card.emit_card_rotated();
+        }
         self.emit_geometry_changed();
     }
 
@@ -1677,14 +1938,18 @@ impl FloatingBoard {
                     let Some(board) = board_weak.upgrade() else {
                         return;
                     };
-                    let cards = board.imp().cards.borrow();
-                    let Some(entry) = cards.get(&card_id) else {
-                        return;
+                    let tap = {
+                        let cards = board.imp().cards.borrow();
+                        cards.get(&card_id).is_some_and(|entry| {
+                            let (position, rotation, scale) = press_geometry.get();
+                            entry.position.get() == position
+                                && entry.rotation.get().to_degrees() == rotation
+                                && entry.scale.get().value() == scale
+                                && entry.card.folded()
+                        })
                     };
-                    let (position, rotation, scale) = press_geometry.get();
-                    let manipulated = entry.position.get() != position || entry.rotation.get().to_degrees() != rotation || entry.scale.get().value() != scale;
-                    if !manipulated && entry.card.folded() {
-                        entry.card.set_folded(false);
+                    if tap {
+                        board.set_card_folded_animated(&card_id, false);
                     }
                 });
                 card.add_controller(unfold_click);
@@ -2392,11 +2657,15 @@ impl FloatingBoard {
     /// card scale x view zoom, position = `to_widget(center)`.
     /// `notify::rotation` syncs the model rotation back.
     fn sync_rendered_transform(&self, entry: &CardEntry) {
-        let rendered_rotation = entry.rotation.get() + self.card_view(entry).rotation;
+        // The fold morph's excursions compose on top of the logical
+        // transform - syncing without them would erase the pose every
+        // allocation pass (the morph triggers one per frame).
+        let (excursion, zoom) = self.fold_render_transform(entry);
+        let rendered_rotation = entry.rotation.get() + excursion + self.card_view(entry).rotation;
         if rendered_rotation.signed_delta_to(entry.rotation_widget.rotation()).abs() > RotationRad::from_degrees(0.0001) {
             entry.rotation_widget.set_rotation(SmearorRotation::from(rendered_rotation));
         }
-        let rendered_scale = entry.scale.get().value() * self.card_view_zoom(entry);
+        let rendered_scale = entry.scale.get().value() * zoom * self.card_view_zoom(entry);
         if (entry.scaling.scale() - rendered_scale).abs() > 1e-6 {
             entry.scaling.set_scale(rendered_scale);
         }
@@ -2415,6 +2684,9 @@ impl FloatingBoard {
     /// by its rotation, centered on its position.
     fn workspace_footprint_at(&self, entry: &CardEntry, geometry: &CardGeometry) -> Rect<Pixels> {
         let (_, natural) = entry.card.measure_size();
+        // The fold morph's rotation/zoom excursions are a render-time
+        // pose, not logical geometry - clamping and seat math would
+        // fight the transiently growing rotated bounding box.
         let size = (natural.to_f64().with_unit::<Pixels>() * geometry.scale.value()).rotated_bounds(geometry.rotation.to_rotation_rad());
         let size = match size.x > 0.0 && size.y > 0.0 {
             true => size,
@@ -2438,8 +2710,9 @@ impl FloatingBoard {
     fn rendered_footprint_at(&self, entry: &CardEntry, geometry: &CardGeometry) -> Rect<Pixels> {
         let view = self.card_view(entry);
         let (_, natural) = entry.card.measure_size();
-        let size = (natural.to_f64().with_unit::<Pixels>() * (geometry.scale.value() * self.card_view_zoom(entry)))
-            .rotated_bounds(geometry.rotation.to_rotation_rad() + view.rotation);
+        let (excursion, zoom) = self.fold_render_transform(entry);
+        let size = (natural.to_f64().with_unit::<Pixels>() * (geometry.scale.value() * zoom * self.card_view_zoom(entry)))
+            .rotated_bounds(geometry.rotation.to_rotation_rad() + excursion + view.rotation);
         let size = match size.x > 0.0 && size.y > 0.0 {
             true => size,
             false => entry.scaling.allocated_size().to_f64().with_unit::<Pixels>(),
@@ -2460,8 +2733,14 @@ impl FloatingBoard {
     /// footprint min renders displaced by `(nat - min) / 2`.
     fn stack_alloc_size(&self, entry: &CardEntry, geometry: &CardGeometry) -> Vec2<Pixels> {
         let (minimum, natural) = entry.card.measure_size();
-        let scale = geometry.scale.value() * self.card_view_zoom(entry);
-        let rotation = geometry.rotation.to_rotation_rad() + self.card_view(entry).rotation;
+        // The fold morph's excursions must be predicted here: the
+        // `Fixed` layer allocates the stack at the scaling widget's
+        // measured natural - which includes the zoom - so leaving it
+        // out would mis-place the stack and wobble the card off its
+        // center during the dip.
+        let (excursion, zoom) = self.fold_render_transform(entry);
+        let scale = geometry.scale.value() * zoom * self.card_view_zoom(entry);
+        let rotation = geometry.rotation.to_rotation_rad() + excursion + self.card_view(entry).rotation;
         let min_size = (minimum.to_f64().with_unit::<Pixels>() * scale).rotated_bounds(rotation);
         let nat_size = (natural.to_f64().with_unit::<Pixels>() * scale).rotated_bounds(rotation);
         Vec2::new(min_size.x, nat_size.y)
@@ -2609,8 +2888,19 @@ impl FloatingBoard {
         }
     }
 
+    /// Transient render transform while the fold morph runs: the
+    /// pose's rotation/zoom excursions the last tick applied. Every
+    /// footprint and allocation calculation composes them onto the
+    /// logical values so the spinning, zooming card gets its true
+    /// rendered bounds.
+    fn fold_render_transform(&self, entry: &CardEntry) -> (RotationRad, f64) {
+        (RotationRad::from(entry.fold_render_rotation.get()), entry.fold_render_zoom.get().as_f64())
+    }
+
     /// Predicted workspace extent: rotated bounding box of the card's
-    /// natural size times the card scale.
+    /// natural size times the card scale. Workspace semantics see the
+    /// logical geometry - the fold morph's transient excursions only
+    /// matter on the rendered side.
     fn predicted_workspace_size(&self, entry: &CardEntry) -> Vec2<Pixels> {
         let (_, natural) = entry.card.measure_size();
         (natural.to_f64().with_unit::<Pixels>() * entry.scale.get().value()).rotated_bounds(entry.rotation.get())
@@ -2620,8 +2910,9 @@ impl FloatingBoard {
     /// natural size times the rendered scale (card scale x view zoom).
     fn predicted_rendered_size(&self, entry: &CardEntry) -> Vec2<Pixels> {
         let (_, natural) = entry.card.measure_size();
-        let scale = entry.scale.get().value() * self.card_view_zoom(entry);
-        (natural.to_f64().with_unit::<Pixels>() * scale).rotated_bounds(entry.rotation.get() + self.card_view(entry).rotation)
+        let (excursion, zoom) = self.fold_render_transform(entry);
+        let scale = entry.scale.get().value() * zoom * self.card_view_zoom(entry);
+        (natural.to_f64().with_unit::<Pixels>() * scale).rotated_bounds(entry.rotation.get() + excursion + self.card_view(entry).rotation)
     }
 
     pub(crate) fn entry_geometry(&self, entry: &CardEntry) -> CardGeometry {

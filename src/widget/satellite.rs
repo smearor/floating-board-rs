@@ -8,6 +8,7 @@
 //! [`FloatingBoard::apply_position`], so satellites follow drag, rotate,
 //! pinch and layout animations without their own tracking code.
 
+use crate::domain::CardFoldTiming;
 use crate::domain::CardGeometry;
 use crate::domain::CardPosition;
 use crate::domain::CardShape;
@@ -56,7 +57,6 @@ use smearor_wrot_rotation::RotationWidget;
 use smearor_wrot_rotation::SmearorRotation;
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::time::Duration;
 use std::time::Instant;
 use tracing::warn;
 
@@ -276,17 +276,17 @@ impl FloatingBoard {
             || satellite.transition.borrow().is_some()
             || entry.card.folded()
             || entry.fold_choreo_closing.get()
-            || !self.satellite_animations_enabled(entry)
+            || !entry.satellite_animations_enabled()
         {
             return;
         }
         let Some(previous) = previous else {
             return;
         };
-        if !local_geometry_differs(&previous, &local) {
+        if !previous.differs_beyond_deadband(&local) {
             return;
         }
-        let mut animation = TimedAnimation::new(Span::new(0.0, 1.0), satellite_transition_duration(entry), EasingFunction::EaseInOut);
+        let mut animation = TimedAnimation::new(Span::new(0.0, 1.0), entry.transition_duration(), EasingFunction::EaseInOut);
         animation.start();
         *satellite.transition.borrow_mut() = Some(SatelliteTransition {
             animation,
@@ -305,7 +305,7 @@ impl FloatingBoard {
     /// while folded. Reduced motion and `animation_speed_ms == 0`
     /// resolve instantly instead.
     pub(crate) fn begin_satellite_transitions(&self, entry: &CardEntry, opening: bool, skip_fold_control: bool) {
-        if !self.satellite_animations_enabled(entry) {
+        if !entry.satellite_animations_enabled() {
             self.sync_satellites(entry);
             return;
         }
@@ -323,7 +323,7 @@ impl FloatingBoard {
             self.sync_satellites(entry);
             return;
         }
-        let duration = satellite_transition_duration(entry);
+        let duration = entry.transition_duration();
         // The stagger spreads the starts over the first 40% of the
         // shared duration so the set reads as one choreographed motion.
         let stagger = duration.mul_f64(0.4) / satellites.len().max(1) as u32;
@@ -373,13 +373,6 @@ impl FloatingBoard {
         self.sync_satellites(entry);
     }
 
-    /// Whether satellite placement animations run for `entry`: GTK's
-    /// `gtk-enable-animations` setting (reduced motion) and the card's
-    /// own `animation_speed_ms` budget both have to allow it.
-    fn satellite_animations_enabled(&self, entry: &CardEntry) -> bool {
-        entry.config.animation_speed_ms > 0 && gtk4::Settings::default().is_none_or(|settings| settings.is_gtk_enable_animations())
-    }
-
     /// Starts (or restarts) the per-entry motion tick that re-syncs
     /// satellite transitions frame by frame until none are left. A new
     /// batch bumps `satellites_generation`, so a stale tick stops
@@ -416,7 +409,30 @@ impl FloatingBoard {
                     }
                 }
                 if entry.satellites.borrow().iter().any(|satellite| satellite.transition.borrow().is_some()) {
+                    // `Overlap(at)` fold timing: the morph starts once
+                    // the leading close transition passes the fraction.
+                    // `.get()` keeps the flag for `Sequential` entries
+                    // and for fractions not reached yet.
+                    if entry.fold_morph_pending.get()
+                        && let CardFoldTiming::Overlap(at) = entry.config.fold_timing
+                    {
+                        let progress = entry
+                            .satellites
+                            .borrow()
+                            .iter()
+                            .filter_map(|satellite| satellite.transition.borrow().as_ref().and_then(|transition| transition.animation.value()))
+                            .fold(0.0, f64::max);
+                        if progress >= at.as_f64().max(0.0) {
+                            entry.fold_morph_pending.set(false);
+                            let (_, natural) = entry.card.measure_size();
+                            board.begin_fold_animation(entry, true, natural.to_f64().with_unit::<Pixels>(), entry.card.folded_natural_size());
+                        }
+                    }
                     board.sync_satellites(entry);
+                    Next::Running
+                } else if entry.fold_choreo_closing.get() && entry.fold_animation.borrow().is_some() {
+                    // An overlapping fold morph is still running - let
+                    // it finish before the real fold lands.
                     Next::Running
                 } else if entry.fold_choreo_closing.get() {
                     // Fold choreography finalization happens through
@@ -430,12 +446,11 @@ impl FloatingBoard {
                 }
             };
             if matches!(next, Next::ApplyFold) {
-                let card = {
+                {
                     let cards = board.imp().cards.borrow();
-                    cards.get(&card_id).map(|entry| entry.card.clone())
-                };
-                if let Some(card) = card {
-                    card.set_folded(true);
+                    if let Some(entry) = cards.get(&card_id) {
+                        board.finish_fold(entry);
+                    }
                 }
                 return ControlFlow::Break;
             }
@@ -469,7 +484,7 @@ impl FloatingBoard {
                             && matches!(satellite.kind, SatelliteKind::Chrome(ChromeElement::Minimize)))
                 })
             };
-            if closeable && self.satellite_animations_enabled(entry) {
+            if closeable && entry.satellite_animations_enabled() {
                 entry.fold_choreo_closing.set(true);
                 // Re-enters this handler with `folded == false` and the
                 // choreography flag set - the branch below starts the
@@ -486,11 +501,27 @@ impl FloatingBoard {
             // the end even when no transition was actually created.
             self.begin_satellite_transitions(entry, false, true);
             self.start_satellite_motion(entry);
+            // `Overlap(0)` fold timing: the morph starts in lockstep
+            // with the close (later fractions fire in the motion tick).
+            // `.get()` first - `replace` must not eat a pending flag
+            // that belongs to a later trigger point.
+            if entry.fold_morph_pending.get() && matches!(entry.config.fold_timing, CardFoldTiming::Overlap(at) if at <= Fraction::ZERO) {
+                entry.fold_morph_pending.set(false);
+                let (_, natural) = entry.card.measure_size();
+                self.begin_fold_animation(entry, true, natural.to_f64().with_unit::<Pixels>(), entry.card.folded_natural_size());
+            }
+            return;
+        }
+        // The unfold morph gates the reveal (`unfold_timing`): while
+        // it runs below its trigger fraction the set stays hidden and
+        // the fold tick fires the reveal itself.
+        if entry.unfold_reveal_pending.get() {
+            self.sync_satellites(entry);
             return;
         }
         // A genuine unfold reveals the satellite set again.
         let open = entry.satellites.borrow().iter().any(|satellite| satellite.open.get());
-        if open && self.satellite_animations_enabled(entry) {
+        if open && entry.satellite_animations_enabled() {
             self.begin_satellite_transitions(entry, true, false);
             return;
         }
@@ -560,12 +591,6 @@ fn satellite_items(satellites: &[SatelliteEntry]) -> Vec<SatelliteItem> {
         .collect()
 }
 
-/// The transition duration the card's `animation_speed_ms` budget
-/// allows - clamped to a nonzero duration for `TimedAnimation`.
-fn satellite_transition_duration(entry: &CardEntry) -> Duration {
-    Duration::from_millis(entry.config.animation_speed_ms.max(1))
-}
-
 /// Expresses a resolved workspace placement in the card's local frame:
 /// the position offset unrotated and unscaled, rotation and scale
 /// relative to the card. Card gestures transform the resolved placement
@@ -580,13 +605,4 @@ fn card_local_geometry(placement: &CardGeometry, card_geometry: &CardGeometry) -
         rotation: Rotation::quantized(placement.rotation.to_rotation_rad() - card_geometry.rotation.to_rotation_rad()),
         scale: ScaleFactor::new(placement.scale.value() / scale),
     }
-}
-
-/// Whether two card-local placements differ beyond a deadband - small
-/// measure jitter must not retarget a tween.
-fn local_geometry_differs(previous: &CardGeometry, current: &CardGeometry) -> bool {
-    let position_delta = (Vec2::<Pixels>::from(previous.position) - Vec2::<Pixels>::from(current.position)).magnitude_f64();
-    let rotation_delta = (previous.rotation.to_rotation_rad() - current.rotation.to_rotation_rad()).abs().to_degrees();
-    let scale_delta = (previous.scale.value() - current.scale.value()).abs();
-    position_delta > 2.0 || rotation_delta > 2.0 || scale_delta > 0.02
 }
