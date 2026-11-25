@@ -13,6 +13,7 @@ use crate::domain::CardGeometry;
 use crate::domain::CardPosition;
 use crate::domain::CardShape;
 use crate::domain::ChromeElement;
+use crate::domain::ChromeStyle;
 use crate::domain::SatelliteItem;
 use crate::domain::SatelliteKind;
 use crate::domain::SatelliteLayout;
@@ -69,9 +70,10 @@ impl FloatingBoard {
     pub(crate) fn build_satellites(&self, layer: &CardLayer, card: &Card, card_scaling: &ScalingWidget, config: &CardConfig) -> Vec<SatelliteEntry> {
         let (settings, configs) = config.effective_satellites();
         let radial = matches!(settings.layout, SatelliteLayout::Radial(_));
+        let chrome_style = config.chrome_style.resolved();
         let mut entries = Vec::with_capacity(configs.len());
         for satellite in configs {
-            let Some(widget) = satellite_widget(card, &satellite) else {
+            let Some(widget) = satellite_widget(card, &satellite, chrome_style) else {
                 continue;
             };
             if radial {
@@ -532,7 +534,9 @@ impl FloatingBoard {
 /// Builds the satellite's widget: chrome elements come from the card's
 /// own mount-agnostic builders (P1.5), custom satellites hand over the
 /// consumer's widget (the board owns placement and lifetime only).
-fn satellite_widget(card: &Card, config: &SatelliteConfig) -> Option<Widget> {
+/// `chrome_style` is the resolved `CardConfig::chrome_style`: `Adwaita`
+/// dresses chrome satellites as themed round buttons.
+fn satellite_widget(card: &Card, config: &SatelliteConfig, chrome_style: ChromeStyle) -> Option<Widget> {
     let widget = match config.kind {
         SatelliteKind::Chrome(ChromeElement::Minimize) => card.build_minimize_button(ICON_MINIMIZE_SYMBOLIC).upcast(),
         SatelliteKind::Chrome(ChromeElement::Close) => card.build_close_button().upcast(),
@@ -553,10 +557,20 @@ fn satellite_widget(card: &Card, config: &SatelliteConfig) -> Option<Widget> {
         },
     };
     widget.add_css_class(CLASS_SATELLITE);
-    widget.add_css_class(match config.kind {
-        SatelliteKind::Chrome(_) => CLASS_SATELLITE_CHROME,
-        SatelliteKind::Custom => CLASS_SATELLITE_CUSTOM,
-    });
+    match config.kind {
+        SatelliteKind::Chrome(_) => {
+            widget.add_css_class(CLASS_SATELLITE_CHROME);
+            if chrome_style == ChromeStyle::Adwaita {
+                // The libadwaita look: a raised themed round button
+                // (`circular`) instead of the builtin flat icon
+                // button. `circular` is a core GTK4 class - without
+                // `adw::init()` it still renders a round button face.
+                widget.remove_css_class("flat");
+                widget.add_css_class("circular");
+            }
+        }
+        SatelliteKind::Custom => widget.add_css_class(CLASS_SATELLITE_CUSTOM),
+    }
     Some(widget)
 }
 

@@ -6,6 +6,8 @@
 /// the crate's `adwaita` feature; without it the card falls back to
 /// `Builtin` with a warning. Adwaita also requires the consumer to call
 /// `adw::init()` (or run an `adw::Application`) before cards are built.
+/// Chrome *satellites* follow the style too: under `Adwaita` they draw
+/// as themed `circular` buttons instead of flat icon buttons.
 ///
 /// A configured non-default `CardPalette` overrides the Adwaita theme
 /// colors through scoped CSS - the palette wins over the theme, the
