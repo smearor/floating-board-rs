@@ -20,13 +20,14 @@ checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
 
 [[package]]
 name = "ahash"
-version = "0.8.12"
+version = "0.8.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
+checksum = "54dae3d1d7b8956f3506c4e999a74e77f932a59153ccf38ab8cf96db74bb9dc0"
 dependencies = [
  "cfg-if",
  "getrandom",
  "once_cell",
+ "serde",
  "version_check",
  "zerocopy",
 ]
@@ -51,6 +52,12 @@ name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+
+[[package]]
+name = "bumpalo"
+version = "3.20.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87a0cf66fd1eb2fb7b822cb78370d82303750809bc6ba855f3f58e517d3238db"
 
 [[package]]
 name = "cairo-rs"
@@ -298,14 +305,15 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.3.4"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
+checksum = "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "r-efi",
- "wasip2",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -487,30 +495,27 @@ dependencies = [
 
 [[package]]
 name = "gtk4-layer-shell"
-version = "0.8.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17c28ea0f4676fdaaae7ff2413a24d0d35c8657424f84856c1103c73454c9da4"
+checksum = "cc070e72e5e2cf5deab2adc68b7c8cd759ca99b4f9044a6578c84001cf7f9db0"
 dependencies = [
- "bitflags",
  "gdk4",
  "glib",
- "glib-sys",
  "gtk4",
  "gtk4-layer-shell-sys",
- "libc",
 ]
 
 [[package]]
 name = "gtk4-layer-shell-sys"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcf19bb884ef0ef55b9e6b2b369c39b4fcc0c41e3a0c1cbc8c267720338b690b"
+checksum = "58f38ce9d3abb33f7a37567b713fca1d6a6ed9d7751e96a62b48795a93ca9e38"
 dependencies = [
  "gdk4-sys",
  "glib-sys",
  "gtk4-sys",
  "libc",
- "system-deps 8.0.0",
+ "system-deps 9.0.1",
 ]
 
 [[package]]
@@ -590,6 +595,16 @@ name = "itoa"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
+
+[[package]]
+name = "js-sys"
+version = "0.3.107"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8dc09d2154098bbf4ef54eab6b117a3c24cbbffe94046b16ee6d6d4510584d3a"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "khronos_api"
@@ -763,9 +778,9 @@ dependencies = [
 
 [[package]]
 name = "r-efi"
-version = "5.3.0"
+version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "regex-automata"
@@ -798,6 +813,12 @@ checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
 ]
+
+[[package]]
+name = "rustversion"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "self_cell"
@@ -887,7 +908,7 @@ checksum = "3244542535d5de959d90ec55d1b5ff0fd2bb7b1310223907d5f11932847f7b59"
 [[package]]
 name = "smearor-commons-animation"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#543f35ac721f166111721b1d0e43724f288be797"
+source = "git+https://github.com/smearor/smearor-commons.git#e3a1d9af766981551c90047a9725df79fa9f2ecd"
 dependencies = [
  "gtk4",
  "serde",
@@ -897,7 +918,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-buffer"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#543f35ac721f166111721b1d0e43724f288be797"
+source = "git+https://github.com/smearor/smearor-commons.git#e3a1d9af766981551c90047a9725df79fa9f2ecd"
 dependencies = [
  "gtk4",
  "serde",
@@ -909,7 +930,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-color"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#543f35ac721f166111721b1d0e43724f288be797"
+source = "git+https://github.com/smearor/smearor-commons.git#e3a1d9af766981551c90047a9725df79fa9f2ecd"
 dependencies = [
  "cairo-rs",
  "serde",
@@ -919,7 +940,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-drawing"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#543f35ac721f166111721b1d0e43724f288be797"
+source = "git+https://github.com/smearor/smearor-commons.git#e3a1d9af766981551c90047a9725df79fa9f2ecd"
 dependencies = [
  "ab_glyph",
  "ahash",
@@ -936,7 +957,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-font"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#543f35ac721f166111721b1d0e43724f288be797"
+source = "git+https://github.com/smearor/smearor-commons.git#e3a1d9af766981551c90047a9725df79fa9f2ecd"
 dependencies = [
  "ab_glyph",
  "serde",
@@ -947,7 +968,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-fx"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#543f35ac721f166111721b1d0e43724f288be797"
+source = "git+https://github.com/smearor/smearor-commons.git#e3a1d9af766981551c90047a9725df79fa9f2ecd"
 dependencies = [
  "cairo-rs",
  "gtk4",
@@ -964,7 +985,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-geometry"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#543f35ac721f166111721b1d0e43724f288be797"
+source = "git+https://github.com/smearor/smearor-commons.git#e3a1d9af766981551c90047a9725df79fa9f2ecd"
 dependencies = [
  "ab_glyph",
  "cairo-rs",
@@ -976,7 +997,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-layer"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#543f35ac721f166111721b1d0e43724f288be797"
+source = "git+https://github.com/smearor/smearor-commons.git#e3a1d9af766981551c90047a9725df79fa9f2ecd"
 dependencies = [
  "gtk4-layer-shell",
  "serde",
@@ -987,7 +1008,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-layout"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#543f35ac721f166111721b1d0e43724f288be797"
+source = "git+https://github.com/smearor/smearor-commons.git#e3a1d9af766981551c90047a9725df79fa9f2ecd"
 dependencies = [
  "serde",
  "smearor-commons-animation",
@@ -998,7 +1019,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-noise"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#543f35ac721f166111721b1d0e43724f288be797"
+source = "git+https://github.com/smearor/smearor-commons.git#e3a1d9af766981551c90047a9725df79fa9f2ecd"
 dependencies = [
  "serde",
  "smearor-commons-geometry",
@@ -1007,7 +1028,7 @@ dependencies = [
 [[package]]
 name = "smearor-wrot-rotation"
 version = "0.3.0"
-source = "git+https://github.com/smearor/smearor-wrot-rotation.git#da0877bf796ac400c79f1519100ebc40e5c4497b"
+source = "git+https://github.com/smearor/smearor-wrot-rotation.git#5df778ba115c14fb503992b681ffa637df76d49d"
 dependencies = [
  "glib",
  "gtk4",
@@ -1046,19 +1067,6 @@ name = "system-deps"
 version = "7.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "396a35feb67335377e0251fcbc1092fc85c484bd4e3a7a54319399da127796e7"
-dependencies = [
- "cfg-expr",
- "heck",
- "pkg-config",
- "toml",
- "version-compare",
-]
-
-[[package]]
-name = "system-deps"
-version = "8.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83779a5c956bcb6ba627a4ecf0a9d7625db47d7537e0892d97f712ac995648a3"
 dependencies = [
  "cfg-expr",
  "heck",
@@ -1128,9 +1136,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "1.2.2+spec-1.1.0"
+version = "1.2.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5426cb1b964690d913f6c5c1a1ae0b42f428ec506bb4d452876d7a209c9bca3b"
+checksum = "26b1f26e9485c1fa43ee89fe76e9f3fb9e2e52bb227f8594b4d687496b83d073"
 dependencies = [
  "indexmap",
  "serde_core",
@@ -1152,9 +1160,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.25.20+spec-1.1.0"
+version = "0.25.21+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e76360e201d6dbd6583e17795ba71a88f47365a9139c8450a7979c32303b8e73"
+checksum = "88497dab46de5bf343ec66b05c251e48c6213f3e9170c70a70a823f7abe886a4"
 dependencies = [
  "indexmap",
  "toml_datetime",
@@ -1164,9 +1172,9 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.1.6+spec-1.1.0"
+version = "1.1.7+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6769c452d71ba30696c6b37770c439a9cc9110f47f7d5cdbeda79840ef5ea31"
+checksum = "0bb28d6e049a9766c3bd91a8326e6179f5b132dec87906bb97018ef7a2f3431a"
 dependencies = [
  "winnow",
 ]
@@ -1321,12 +1329,47 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
-name = "wasip2"
-version = "1.0.4+wasi-0.2.12"
+name = "wasm-bindgen"
+version = "0.2.130"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b67efb37e106e55ce722a510d6b5f9c17f083e5fc79afc2badeb12cc313d9487"
+checksum = "a0181c14ddd6c7b8b0b0132a5f1ea2f32be0d893cd3ea97b6e3b28886b8a3d1c"
 dependencies = [
- "wit-bindgen",
+ "cfg-if",
+ "rustversion",
+ "wasm-bindgen-macro",
+ "wasm-bindgen-shared",
+]
+
+[[package]]
+name = "wasm-bindgen-macro"
+version = "0.2.130"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e931a02a39abdbf66966fc35902b5ed58344750a70885bed4ebb3d8eaf28ed9"
+dependencies = [
+ "quote",
+ "wasm-bindgen-macro-support",
+]
+
+[[package]]
+name = "wasm-bindgen-macro-support"
+version = "0.2.130"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ca4b54280e455bd831e33a6b8e734baf432fe63fbc35c42ac14ce67a043a53a"
+dependencies = [
+ "bumpalo",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.10",
+ "wasm-bindgen-shared",
+]
+
+[[package]]
+name = "wasm-bindgen-shared"
+version = "0.2.130"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b1f9c3798725016c6ee5f2f57869ec0831e8bbc0ab0310a86e787e97f41389e"
+dependencies = [
+ "unicode-ident",
 ]
 
 [[package]]
@@ -1354,12 +1397,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wit-bindgen"
-version = "0.57.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
-
-[[package]]
 name = "xml-rs"
 version = "0.8.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1367,18 +1404,18 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "zerocopy"
-version = "0.8.64"
+version = "0.8.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed43f3060383c64b000f3c630550aebdfa9d3b76d48de32390483dd2cc7e0865"
+checksum = "cba8a86aee14fc8cc6c208af60854b3d4ab7185a9a369a12c648faa2716ff42a"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.64"
+version = "0.8.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5cbd820fe3e35fb38c83b6dc7e6b1618bc46e0cd10073ae94e8d52dc468d8b9"
+checksum = "f89bca3b96ceb3cfcb4572790402f977442270d252b9a8504ebc258760c55f94"
 dependencies = [
  "proc-macro2",
  "quote",
