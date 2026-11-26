@@ -18,7 +18,9 @@
 //!
 //! Card "pie" carries a palette and a second band: its bottom arc
 //! mirrors the top one and hosts the seat-pass actions for a user
-//! facing the card's bottom edge.
+//! facing the card's bottom edge. One satellite dot per slice color
+//! orbits the disc - a click grows the matching slice by 5% (red's
+//! first click seeds a 10% slice); no slice drops below 10%.
 //!
 //! Run with `cargo run --example arc_chrome` (optionally
 //! `--features adwaita` for themed chrome).
@@ -30,6 +32,7 @@ use floating_board::CardFoldAnimation;
 use floating_board::CardId;
 use floating_board::CardPalette;
 use floating_board::CardPosition;
+use floating_board::CardSatellites;
 use floating_board::CardShape;
 use floating_board::ChromeElement;
 use floating_board::ChromeSlot;
@@ -37,6 +40,10 @@ use floating_board::ChromeStyle;
 use floating_board::CircleContent;
 use floating_board::DragHandle;
 use floating_board::FloatingBoard;
+use floating_board::SatelliteConfig;
+use floating_board::SatelliteLayout;
+use gtk4::Button;
+use gtk4::CssProvider;
 use gtk4::Orientation;
 use gtk4::glib::closure_local;
 use gtk4::prelude::*;
@@ -48,7 +55,10 @@ use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
+use std::cell::RefCell;
+use std::f64::consts::FRAC_PI_2;
 use std::f64::consts::TAU;
+use std::rc::Rc;
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
@@ -141,6 +151,87 @@ fn compass_color(slot: CompassColor) -> Color<f64> {
     COMPASS_PALETTE.get_or(&slot, Color::<f64>::BLACK)
 }
 
+palette_definition! {
+    /// The pie chart's named colors - each is both a slice fill and
+    /// the matching satellite dot's color.
+    pub enum PieColor {
+        /// The blue slice and satellite.
+        Blue => "blue",
+        /// The green slice and satellite.
+        Green => "green",
+        /// The yellow slice and satellite.
+        Yellow => "yellow",
+        /// The red slice and satellite - the slice starts absent.
+        Red => "red"
+    }
+}
+
+/// The sRGB values of the [`PieColor`] slots.
+static PIE_PALETTE: StaticPalette<PieColor, f64> = static_palette! {
+    PieColor::Blue => Color::<f64>::new(0.32, 0.62, 0.84),
+    PieColor::Green => Color::<f64>::new(0.24, 0.72, 0.48),
+    PieColor::Yellow => Color::<f64>::new(0.92, 0.66, 0.20),
+    PieColor::Red => Color::<f64>::new(0.85, 0.25, 0.22),
+};
+
+/// The color registered under `slot` in the pie palette - black on a
+/// miss, unreachable while the definition stays complete.
+fn pie_color(slot: PieColor) -> Color<f64> {
+    PIE_PALETTE.get_or(&slot, Color::<f64>::BLACK)
+}
+
+/// No slice may drop below this share.
+const SLICE_FLOOR: f64 = 0.10;
+/// The share a slice satellite adds per click.
+const SLICE_STEP: f64 = 0.05;
+
+/// The pie's slice shares, summing to 1 - `Red` starts at 0 (no
+/// slice) until its satellite's first click seeds it. Shared between
+/// the face's draw func and the satellite buttons.
+#[derive(Clone)]
+struct PieShares {
+    /// `(slot, share)` pairs in draw order - a zero share is absent.
+    shares: [(PieColor, f64); 4],
+}
+
+impl PieShares {
+    /// The starting pie: blue 40%, green 35%, yellow 25%, no red.
+    const INITIAL: Self = Self {
+        shares: [(PieColor::Blue, 0.40), (PieColor::Green, 0.35), (PieColor::Yellow, 0.25), (PieColor::Red, 0.0)],
+    };
+
+    /// `slot`'s current share (`0` when absent).
+    fn share(&self, slot: PieColor) -> f64 {
+        self.shares.iter().find(|(s, _)| *s == slot).map(|(_, share)| *share).unwrap_or_default()
+    }
+
+    /// Grows `slot` by `amount`, taking the room proportionally from
+    /// the other slices' headroom above `SLICE_FLOOR`: donors lose in
+    /// proportion to what they can still give, so no slice drops below
+    /// the floor and growth caps at the total headroom. A zero-share
+    /// slot only seeds when the full `amount` fits - a partial seed
+    /// would undercut the floor.
+    fn grow(&mut self, slot: PieColor, amount: f64) {
+        let headroom: f64 = self
+            .shares
+            .iter()
+            .filter(|(s, _)| *s != slot)
+            .map(|(_, share)| (share - SLICE_FLOOR).max(0.0))
+            .sum();
+        if headroom <= 0.0 || (self.share(slot) <= 0.0 && headroom < amount) {
+            return;
+        }
+        let taken = headroom.min(amount);
+        for (s, share) in self.shares.iter_mut() {
+            if *s == slot {
+                *share += taken;
+            } else {
+                *share -= taken * (*share - SLICE_FLOOR).max(0.0) / headroom;
+            }
+        }
+    }
+}
+
 /// A compass needle: a `length`-long triangle pointing `angle`
 /// clockwise off the face's "up", plus a shorter tail on the opposite
 /// side. `RotationRad::ZERO` points to the widget's top edge.
@@ -204,27 +295,56 @@ fn build_compass(size: i32) -> gtk4::DrawingArea {
     compass
 }
 
-/// A three-slice pie chart - fixed consumer colors, mounted as
+/// A pie chart drawing `shares` - mounted as
 /// `CircleContent::Inscribed` so the surrounding ring stays chrome.
-fn build_pie(size: i32) -> gtk4::DrawingArea {
+/// The draw func reads the shared state, so satellite clicks repaint
+/// via `queue_draw`.
+fn build_pie(size: i32, shares: Rc<RefCell<PieShares>>) -> gtk4::DrawingArea {
     let pie = gtk4::DrawingArea::new();
     pie.set_content_width(size);
     pie.set_content_height(size);
-    pie.set_draw_func(|_area, context, width, height| {
+    pie.set_draw_func(move |_area, context, width, height| {
         let (center_x, center_y) = (f64::from(width) / 2.0, f64::from(height) / 2.0);
         let radius = f64::from(width.min(height)) / 2.0 - 3.0;
-        let slices = [(0.40, (0.32, 0.62, 0.84)), (0.35, (0.24, 0.72, 0.48)), (0.25, (0.92, 0.66, 0.20))];
-        let mut angle = -std::f64::consts::FRAC_PI_2;
-        for (share, (r, g, b)) in slices {
+        let mut angle = -FRAC_PI_2;
+        for (slot, share) in shares.borrow().shares {
+            if share <= 0.0 {
+                continue;
+            }
             context.move_to(center_x, center_y);
             context.arc(center_x, center_y, radius, angle, angle + share * TAU);
             context.close_path();
-            context.set_source_rgb(r, g, b);
+            pie_color(slot).apply(context);
             let _ = context.fill();
             angle += share * TAU;
         }
     });
     pie
+}
+
+/// A slice satellite: a round dot in the slice's color that grows its
+/// slice by `amount` on click - `Red`'s first click seeds a
+/// `SLICE_FLOOR` share instead of stepping.
+fn slice_satellite(class: &str, face: &gtk4::DrawingArea, shares: &Rc<RefCell<PieShares>>, slot: PieColor) -> Button {
+    let button = Button::new();
+    button.add_css_class("pie-dot");
+    button.add_css_class(class);
+    let face = face.downgrade();
+    let shares = shares.clone();
+    button.connect_clicked(move |_| {
+        let amount = if slot == PieColor::Red && shares.borrow().share(slot) <= 0.0 {
+            // The first red click seeds a full floor share - a
+            // `SLICE_STEP` seed would undercut it.
+            SLICE_FLOOR
+        } else {
+            SLICE_STEP
+        };
+        shares.borrow_mut().grow(slot, amount);
+        if let Some(face) = face.upgrade() {
+            face.queue_draw();
+        }
+    });
+    button
 }
 
 fn main() {
@@ -247,6 +367,16 @@ fn build_ui(application: &gtk4::Application) {
     let window = gtk4::ApplicationWindow::new(application);
     window.set_title(Some("floating-board arc chrome"));
     window.set_default_size(1100, 800);
+
+    // Example-local styling: the pie's slice satellites are round
+    // dots in their slice's color.
+    let css = CssProvider::new();
+    css.load_from_string(
+        ".pie-dot { min-width: 34px; min-height: 34px; padding: 0; border-radius: 9999px; border-width: 2px; border-style: solid; }         .pie-blue { background: rgba(82, 158, 214, 0.55); border-color: rgba(82, 158, 214, 0.9); }         .pie-green { background: rgba(61, 184, 122, 0.55); border-color: rgba(61, 184, 122, 0.9); }         .pie-yellow { background: rgba(235, 168, 51, 0.55); border-color: rgba(235, 168, 51, 0.9); }         .pie-red { background: rgba(217, 64, 56, 0.55); border-color: rgba(217, 64, 56, 0.9); }",
+    );
+    if let Some(display) = gtk4::gdk::Display::default() {
+        gtk4::style_context_add_provider_for_display(&display, &css, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
 
     let content = gtk4::Box::new(Orientation::Vertical, 0);
     let filler = gtk4::DrawingArea::new();
@@ -349,10 +479,14 @@ fn build_ui(application: &gtk4::Application) {
     palette.insert(CardColor::Background, Color::<f64>::new(0.30, 0.26, 0.36));
     palette.insert(CardColor::Header, Color::<f64>::new(0.45, 0.38, 0.55));
     palette.insert(CardColor::Foreground, Color::<f64>::new(0.92, 0.90, 0.95));
+    // The face and its folded mini draw from the same shares - slice
+    // satellites grow (or seed) their color's slice on click.
+    let pie_shares = Rc::new(RefCell::new(PieShares::INITIAL));
+    let pie_face = build_pie(150, pie_shares.clone());
     board
         .add_card_with_id(
             "pie",
-            &build_pie(150),
+            &pie_face,
             CardConfig {
                 title: Some("Pie".to_string()),
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(550.0, 600.0))),
@@ -368,9 +502,22 @@ fn build_ui(application: &gtk4::Application) {
                     ChromeSlot::arc_bottom(ChromeElement::Minimize),
                     ChromeSlot::arc_bottom_end(ChromeElement::NextSeat),
                 ]),
-                folded_content: Some(build_pie(60).upcast()),
+                folded_content: Some(build_pie(60, pie_shares.clone()).upcast()),
                 unfold_on_click: true,
                 drag_handle: DragHandle::WholeCard,
+                // One dot per slice color, in draw order: blue, green
+                // and yellow step their slice by +5%, red seeds a
+                // 10% slice first and steps after.
+                satellites: Some(CardSatellites {
+                    layout: SatelliteLayout::Radial(Default::default()),
+                    satellites: vec![
+                        SatelliteConfig::custom("blue", slice_satellite("pie-blue", &pie_face, &pie_shares, PieColor::Blue)),
+                        SatelliteConfig::custom("green", slice_satellite("pie-green", &pie_face, &pie_shares, PieColor::Green)),
+                        SatelliteConfig::custom("yellow", slice_satellite("pie-yellow", &pie_face, &pie_shares, PieColor::Yellow)),
+                        SatelliteConfig::custom("red", slice_satellite("pie-red", &pie_face, &pie_shares, PieColor::Red)),
+                    ],
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
         )
