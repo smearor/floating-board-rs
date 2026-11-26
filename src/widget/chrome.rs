@@ -22,10 +22,13 @@ use crate::domain::TurnDirection;
 use crate::l10n::l10n;
 use crate::widget::card::Card;
 use crate::widget::card_config::CardConfig;
+use crate::widget::css::CLASS_ARC_BAND;
+use crate::widget::css::CLASS_ARC_CHROME;
 use crate::widget::css::CLASS_HANDLE;
 use crate::widget::css::CLASS_HEADER;
 use crate::widget::css::CLASS_RESIZE_GRIP;
 use crate::widget::css::CLASS_ROTATE_GRIP;
+use crate::widget::imp::card::ARC_CHROME_BAND;
 use glib::object::Cast;
 use glib::object::ObjectExt;
 use gtk4::Align;
@@ -42,6 +45,7 @@ use gtk4::prelude::DrawingAreaExt;
 use gtk4::prelude::DrawingAreaExtManual;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::RotationDirection;
 use std::f64::consts::FRAC_PI_2;
 use tracing::debug;
@@ -78,26 +82,17 @@ impl Card {
     pub(crate) fn mount_chrome(&self, config: &CardConfig) {
         let title = config.title.clone().unwrap_or_else(|| l10n().message("card-untitled"));
         *self.imp().title_text.borrow_mut() = title.clone();
-        // A circle card has no header strip and no corner grips: every
-        // chrome element mounts as a satellite (wired through
-        // `CardConfig::effective_satellites`); elements that cannot be
-        // satellites are dropped.
-        if config.shape == CardShape::Circle {
-            for slot in &config.effective_chrome_slots() {
-                if slot.placement != ChromePlacement::Satellite {
-                    if slot.element.supports_satellite() {
-                        warn!(element = ?slot.element, "inline chrome element has no mount on a circle card - mounted as satellite");
-                    } else {
-                        warn!(element = ?slot.element, "chrome element has no mount on a circle card - skipped");
-                    }
-                }
-            }
-            return;
-        }
         let slots = config.effective_chrome_slots();
         let style = config.chrome_style.resolved();
         if style != config.chrome_style {
             warn!("CardConfig::chrome_style is Adwaita but the `adwaita` feature is disabled - falling back to Builtin");
+        }
+        // A circle card has no header strip: its inline chrome mounts
+        // along the disc's top arc as an "arc header" instead;
+        // `Satellite` placements stay satellites.
+        if config.shape == CardShape::Circle {
+            self.mount_arc_chrome(config);
+            return;
         }
         match style {
             ChromeStyle::Builtin => self.mount_builtin_chrome(&title, &slots),
@@ -113,6 +108,84 @@ impl Card {
         // existence, not the flags: a grip exists iff its slot was mounted.
         imp.resizable.set(imp.resize_grip.get().is_some());
         imp.rotate_grip_enabled.set(imp.rotate_grip.get().is_some());
+    }
+
+    /// `Circle` renderer: inline chrome slots along the disc's top arc
+    /// (`CardConfig::arc_span`, default a quarter) as an "arc header" -
+    /// `CardImpl::circle_allocate` places them on the band's mid
+    /// radius, a `Title` pinned to the arc's center like a header
+    /// bar's. `Satellite` slots stay satellites; the edge grips have
+    /// no mount on a circle.
+    fn mount_arc_chrome(&self, config: &CardConfig) {
+        let imp = self.imp();
+        let span = config
+            .arc_span
+            .unwrap_or(Degrees::QUARTER_TURN)
+            .as_f64()
+            .clamp(Degrees::ZERO.as_f64(), Degrees::FULL_TURN.as_f64());
+        imp.arc_span.set(Degrees::new(span).to_radians());
+        let title = imp.title_text.borrow().clone();
+        let slots = config.effective_chrome_slots();
+        let style = config.chrome_style.resolved();
+        let mut items = Vec::new();
+        for slot in &slots {
+            if slot.placement == ChromePlacement::Satellite {
+                skip_satellite(slot.element);
+                continue;
+            }
+            let widget: Widget = match slot.element {
+                ChromeElement::DragHandle => {
+                    let handle = drag_handle_label();
+                    let _ = imp.handle_label.set(handle.clone());
+                    handle.upcast()
+                }
+                ChromeElement::Title => {
+                    let label = title_label(&title);
+                    // The arc's centered item reads like a header bar's
+                    // title - it must not claim inline space.
+                    label.set_hexpand(false);
+                    label.set_halign(Align::Center);
+                    let _ = imp.title_label.set(label.clone());
+                    label.upcast()
+                }
+                ChromeElement::Minimize => {
+                    let button = self.build_minimize_button(ICON_MINIMIZE_INLINE);
+                    let _ = imp.fold_button.set(button.clone());
+                    button.upcast()
+                }
+                ChromeElement::Close => {
+                    let button = self.build_close_button();
+                    let _ = imp.close_button.set(button.clone());
+                    button.upcast()
+                }
+                ChromeElement::RotateClockwise => self.build_rotate_button(RotationDirection::Clockwise).upcast(),
+                ChromeElement::RotateCounterClockwise => self.build_rotate_button(RotationDirection::CounterClockwise).upcast(),
+                ChromeElement::NextSeat => self.build_pass_button(TurnDirection::Clockwise).upcast(),
+                ChromeElement::PreviousSeat => self.build_pass_button(TurnDirection::CounterClockwise).upcast(),
+                ChromeElement::ResizeGrip | ChromeElement::RotateGrip => {
+                    warn!(element = ?slot.element, "edge grip has no mount on a circle card - skipped");
+                    continue;
+                }
+            };
+            widget.add_css_class(CLASS_ARC_CHROME);
+            if style == ChromeStyle::Adwaita {
+                // The themed look chrome satellites get: a raised round
+                // button instead of the builtin flat icon.
+                widget.remove_css_class("flat");
+                widget.add_css_class("circular");
+            }
+            self.append(&widget);
+            items.push((widget, slot.element));
+        }
+        // The painted band sits beneath the items (earlier children
+        // paint first) and is created only when items exist - an
+        // empty band would be a stray ring sector.
+        if !items.is_empty() {
+            let band = arc_band(self);
+            band.insert_before(self, items.first().map(|(first, _)| first));
+            let _ = imp.arc_band.set(band);
+        }
+        *imp.arc_items.borrow_mut() = items;
     }
 
     /// `Builtin` renderer: header strip as a `gtk4::Box` of inline
@@ -288,6 +361,40 @@ fn skip_satellite(element: ChromeElement) {
     } else {
         warn!("Chrome element {element:?} does not support satellite placement - slot ignored");
     }
+}
+
+/// The painted top-quarter annulus band behind a circle card's arc
+/// chrome (`ARC_CHROME_BAND` thick, ±45°): a `DrawingArea` stroking a
+/// round-capped arc on the band's mid radius in the card's header
+/// color - read through the CSS `color` property so palettes tint it.
+/// Input-transparent: the band is decoration, the ring stays a drag
+/// surface.
+fn arc_band(card: &Card) -> DrawingArea {
+    let band = DrawingArea::new();
+    band.add_css_class(CLASS_ARC_BAND);
+    band.set_can_target(false);
+    let card_weak = card.downgrade();
+    band.set_draw_func(move |area, cr, width, height| {
+        let radius = f64::from(width.min(height)) / 2.0 - ARC_CHROME_BAND / 2.0;
+        let Some(card) = card_weak.upgrade() else { return };
+        if radius <= 0.0 {
+            return;
+        }
+        let half_span = card.imp().arc_span.get().as_f64() / 2.0;
+        let color = area.color();
+        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
+        cr.set_line_width(ARC_CHROME_BAND);
+        cr.set_line_cap(LineCap::Round);
+        cr.arc(
+            f64::from(width) / 2.0,
+            f64::from(height) / 2.0,
+            radius,
+            -std::f64::consts::FRAC_PI_2 - half_span,
+            -std::f64::consts::FRAC_PI_2 + half_span,
+        );
+        let _ = cr.stroke();
+    });
+    band
 }
 
 /// The `≡` drag affordance shown in `DragHandle::Handle` mode.

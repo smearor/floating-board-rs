@@ -54,6 +54,13 @@ impl ChromeElement {
             Self::Minimize | Self::Close | Self::RotateClockwise | Self::RotateCounterClockwise | Self::NextSeat | Self::PreviousSeat
         )
     }
+
+    /// Whether the element can mount in a circle card's top-arc
+    /// chrome band: every element except the edge grips - they need a
+    /// straight card edge to drag on.
+    pub fn supports_arc(&self) -> bool {
+        !matches!(self, Self::ResizeGrip | Self::RotateGrip)
+    }
 }
 
 #[cfg(test)]
@@ -72,5 +79,10 @@ mod tests {
         assert!(ChromeElement::PreviousSeat.supports_satellite());
         assert!(!ChromeElement::ResizeGrip.supports_satellite());
         assert!(!ChromeElement::RotateGrip.supports_satellite());
+        assert!(ChromeElement::Title.supports_arc());
+        assert!(ChromeElement::DragHandle.supports_arc());
+        assert!(ChromeElement::Minimize.supports_arc());
+        assert!(!ChromeElement::ResizeGrip.supports_arc());
+        assert!(!ChromeElement::RotateGrip.supports_arc());
     }
 }

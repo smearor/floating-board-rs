@@ -1,5 +1,6 @@
 use crate::domain::CardId;
 use crate::domain::CardShape;
+use crate::domain::ChromeElement;
 use crate::domain::CircleContent;
 use crate::widget::FloatingBoard;
 use crate::widget::card::Card;
@@ -32,8 +33,11 @@ use gtk4::subclass::prelude::WidgetClassExt;
 use gtk4::subclass::prelude::WidgetImpl;
 use gtk4::subclass::prelude::WidgetImplExt;
 use smearor_commons_geometry::Circle;
+use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Radians;
 use smearor_commons_geometry::Vec2;
+use smearor_commons_geometry::WidgetSizeExt;
 use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
@@ -107,6 +111,19 @@ pub struct CardImpl {
     /// Content allocation mode for `CardShape::Circle`
     /// (`CardConfig::circle_content`).
     pub circle_content: Cell<CircleContent>,
+    /// Angular span of the arc-chrome band (`CardConfig::arc_span`,
+    /// default 90°) - read by `circle_allocate` and the band's draw
+    /// func.
+    pub arc_span: Cell<Radians>,
+    /// The painted top-quarter annulus band the arc-chrome items sit
+    /// on - allocated the full disc, drawn as a ring sector in the
+    /// header color (`Card::mount_arc_chrome` only creates it when
+    /// `arc_items` is non-empty).
+    pub arc_band: OnceCell<DrawingArea>,
+    /// Arc-chrome items on `CardShape::Circle` - `(widget, element)`
+    /// pairs in slot order, mounted by `Card::mount_arc_chrome` and
+    /// placed on the disc's top-quarter band by `circle_allocate`.
+    pub arc_items: RefCell<Vec<(gtk4::Widget, ChromeElement)>>,
 }
 
 impl Default for CardImpl {
@@ -135,6 +152,9 @@ impl Default for CardImpl {
             max_height: Cell::new(None),
             shape: Cell::new(CardShape::default()),
             circle_content: Cell::new(CircleContent::default()),
+            arc_span: Cell::new(Degrees::QUARTER_TURN.to_radians()),
+            arc_band: OnceCell::new(),
+            arc_items: RefCell::new(Vec::new()),
         }
     }
 }
@@ -210,6 +230,45 @@ impl ObjectImpl for CardImpl {
 /// The band is card chrome: it carries the card's background and stays
 /// a drag affordance; the content never reaches into it.
 const CIRCLE_RING_BAND: f64 = 8.0;
+/// Thickness of the arc-chrome band on `CardShape::Circle` (px): the
+/// chrome items' centers ride the band's mid radius.
+pub(crate) const ARC_CHROME_BAND: f64 = 36.0;
+/// Default arc-chrome band span - the disc's top quarter (±45°).
+const ARC_HALF_SPAN: f64 = std::f64::consts::FRAC_PI_4;
+/// Angular distance kept around a centered arc `Title` at the default
+/// span (rad); `arc_angle` scales the gap with the configured span.
+const ARC_TITLE_GAP: f64 = std::f64::consts::PI / 15.0;
+
+/// Evenly spreads `count` items over `[from, to]`; a lone item sits
+/// at `from` - groups pack from the band's outer edge inward, like a
+/// header bar's packed ends.
+fn spread(from: f64, to: f64, index: usize, count: usize) -> f64 {
+    if count <= 1 {
+        return from;
+    }
+    from + (to - from) * index as f64 / (count - 1) as f64
+}
+
+/// Angular position of arc-chrome item `index` of `count` (radians
+/// from the disc's top, positive clockwise), the band spanning
+/// `±half_span`: items before `title_index` pack the left half of the
+/// band from its outer edge inward, a `Title` item sits centered like
+/// a header bar's title, and items after pack the right half from its
+/// outer edge inward - the header bar's end-pack semantics. Without a
+/// title the whole set spreads evenly over the band.
+fn arc_angle(index: usize, count: usize, title_index: Option<usize>, half_span: f64) -> f64 {
+    let title_gap = half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
+    let Some(title) = title_index else {
+        return if count <= 1 { 0.0 } else { spread(-half_span, half_span, index, count) };
+    };
+    if index == title {
+        0.0
+    } else if index < title {
+        spread(-half_span, -title_gap, index, title)
+    } else {
+        spread(half_span, title_gap, index - title - 1, count - title - 1)
+    }
+}
 
 impl WidgetImpl for CardImpl {
     // `Circle`: only the disk inside the bounding square is pickable -
@@ -256,17 +315,39 @@ impl CardImpl {
 
     /// `Circle` allocate: every visible child gets the centered content
     /// square (`CircleContent::content_square_for` of the allocated
-    /// diameter); the margin around it renders as the ring. Called from
+    /// diameter); the margin around it renders as the ring. Arc-chrome
+    /// items instead keep their natural size and sit upright on the
+    /// top-quarter band's mid radius (`arc_angle`). Called from
     /// `CardShapeLayout`.
     pub(crate) fn circle_allocate(&self, width: i32, height: i32, baseline: i32) {
         let diameter = f64::from(width.min(height));
         let side = self.circle_content.get().content_square_for(diameter, CIRCLE_RING_BAND);
         let transform = Transform::new().translate(&Point::new(((f64::from(width) - side) / 2.0) as f32, ((f64::from(height) - side) / 2.0) as f32));
         let side = side.ceil() as i32;
+        let arc_items = self.arc_items.borrow();
+        let arc_count = arc_items.len();
+        let arc_band = self.arc_band.get();
+        let title_index = arc_items.iter().position(|(_, element)| *element == ChromeElement::Title);
+        let arc_radius = diameter / 2.0 - ARC_CHROME_BAND / 2.0;
         let mut child = self.obj().first_child();
         while let Some(widget) = child {
             if widget.is_visible() {
-                widget.allocate(side, side, baseline, Some(transform.clone()));
+                if arc_band.is_some_and(|band| band.upcast_ref::<Widget>() == &widget) {
+                    // The painted band covers the whole disc square -
+                    // its draw func clips itself to the top sector.
+                    widget.allocate(width, height, baseline, None);
+                } else if let Some(index) = arc_items.iter().position(|(item, _)| *item == widget) {
+                    let (_, natural) = widget.measure_size();
+                    let half_span = self.arc_span.get().as_f64() / 2.0;
+                    let angle = arc_angle(index, arc_count, title_index, half_span);
+                    let center_x = f64::from(width) / 2.0 + arc_radius * angle.sin();
+                    let center_y = f64::from(height) / 2.0 - arc_radius * angle.cos();
+                    let arc_transform =
+                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    widget.allocate(natural.x, natural.y, baseline, Some(arc_transform));
+                } else {
+                    widget.allocate(side, side, baseline, Some(transform.clone()));
+                }
             }
             child = widget.next_sibling();
         }
@@ -274,3 +355,42 @@ impl CardImpl {
 }
 
 impl BoxImpl for CardImpl {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Lerp-based angles compare bit-inexact - assert with epsilon.
+    fn assert_angle(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < 1e-12, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn arc_angle_single_item_centers() {
+        assert_angle(arc_angle(0, 1, None, ARC_HALF_SPAN), 0.0);
+    }
+
+    #[test]
+    fn arc_angle_spreads_over_band_without_title() {
+        assert_angle(arc_angle(0, 3, None, ARC_HALF_SPAN), -ARC_HALF_SPAN);
+        assert_angle(arc_angle(1, 3, None, ARC_HALF_SPAN), 0.0);
+        assert_angle(arc_angle(2, 3, None, ARC_HALF_SPAN), ARC_HALF_SPAN);
+    }
+
+    #[test]
+    fn arc_angle_title_pins_center() {
+        assert_angle(arc_angle(1, 3, Some(1), ARC_HALF_SPAN), 0.0);
+        assert_angle(arc_angle(0, 3, Some(1), ARC_HALF_SPAN), -ARC_HALF_SPAN);
+        assert_angle(arc_angle(2, 3, Some(1), ARC_HALF_SPAN), ARC_HALF_SPAN);
+    }
+
+    #[test]
+    fn arc_angle_groups_around_title() {
+        // [A, B, Title, C, D] - each side packs outer-edge inward, so
+        // the first slot of each group sits at the band's end.
+        assert_angle(arc_angle(0, 5, Some(2), ARC_HALF_SPAN), -ARC_HALF_SPAN);
+        assert_angle(arc_angle(1, 5, Some(2), ARC_HALF_SPAN), -ARC_TITLE_GAP);
+        assert_angle(arc_angle(3, 5, Some(2), ARC_HALF_SPAN), ARC_HALF_SPAN);
+        assert_angle(arc_angle(4, 5, Some(2), ARC_HALF_SPAN), ARC_TITLE_GAP);
+    }
+}

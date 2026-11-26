@@ -17,6 +17,7 @@ use crate::widget::card_close_action::CardCloseAction;
 use crate::widget::card_satellites::CardSatellites;
 use crate::widget::satellite_config::SatelliteConfig;
 use gtk4::Widget;
+use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_layout::Seat;
@@ -68,16 +69,24 @@ pub struct CardConfig {
     pub drag_handle: DragHandle,
     /// The card's outline shape - `Rectangle` (default) or `Circle`.
     ///
-    /// A circle card has no header strip and no corner grips: every
-    /// chrome element is promoted to a satellite (elements that cannot
-    /// be satellites are dropped with a warning at mount), and taps in
-    /// the bounding-box corners pass through to whatever is underneath.
+    /// A circle card has no header strip and no corner grips: inline
+    /// chrome mounts along the disc's top arc (`arc_span`), `Satellite`
+    /// placements stay satellites, the edge grips are dropped with a
+    /// warning at mount, and taps in the bounding-box corners pass
+    /// through to whatever is underneath.
     #[cfg_attr(feature = "serde", serde(default))]
     pub shape: CardShape,
     /// How a `Circle` card allocates its content inside the bounding
     /// square. Ignored for `Rectangle`.
     #[cfg_attr(feature = "serde", serde(default))]
     pub circle_content: CircleContent,
+    /// Angular span of the arc-chrome band on `CardShape::Circle` -
+    /// the top arc the inline chrome items ride on, centered on the
+    /// disc's top. `None` defaults to `Degrees::QUARTER_TURN` (90°);
+    /// values above a full turn are clamped. Ignored for `Rectangle`
+    /// and for circle cards without inline chrome.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub arc_span: Option<Degrees>,
     /// Margin in pixels an edge or corner anchor keeps between the card's
     /// footprint and the board edge; default `ANCHOR_MARGIN` (24 px).
     /// Ignored for `Center` and `Explicit` placements.
@@ -223,6 +232,7 @@ impl Default for CardConfig {
             drag_handle: DragHandle::Header,
             shape: CardShape::default(),
             circle_content: CircleContent::default(),
+            arc_span: None,
             anchor_margin: ANCHOR_MARGIN,
             scale_limits: ScaleBounds::default(),
             min_visible: MinVisible::default(),
@@ -305,33 +315,19 @@ impl CardConfig {
         slots
     }
 
-    /// The chrome slots as mounted for `shape`: on `Circle` every
-    /// element mounts as a `Satellite` (a circle card has no header
-    /// strip and no corner grips); elements that cannot be satellites
-    /// stay listed with `Satellite` placement and are filtered out by
-    /// [`Self::effective_satellites`]' `supports_satellite` check.
-    /// `Card::mount_chrome` logs the promoted/dropped elements once.
-    pub fn mounted_chrome_slots(&self) -> Vec<ChromeSlot> {
-        self.effective_chrome_slots()
-            .into_iter()
-            .map(|mut slot| {
-                if self.shape == CardShape::Circle && slot.placement != ChromePlacement::Satellite {
-                    slot.placement = ChromePlacement::Satellite;
-                }
-                slot
-            })
-            .collect()
-    }
-
     /// The effective satellite set: `ChromeSlot::satellite` entries in
     /// slot order (elements that cannot be satellites are warned about
     /// once at mount), then the explicit `CardSatellites::satellites`
     /// list. Layout, rotation and collision semantics come from
     /// `satellites`, defaulting to a `CoRotate` sidebar below the card.
+    ///
+    /// Non-satellite placements are never satellites: on `Rectangle`
+    /// they mount in the header strip, on `Circle` in the top-arc
+    /// chrome band (`Card::mount_chrome` owns both mounts).
     pub fn effective_satellites(&self) -> (CardSatellites, Vec<SatelliteConfig>) {
         let settings = self.satellites.clone().unwrap_or_default();
         let mut configs: Vec<SatelliteConfig> = self
-            .mounted_chrome_slots()
+            .effective_chrome_slots()
             .iter()
             .filter(|slot| slot.placement == ChromePlacement::Satellite && slot.element.supports_satellite())
             .map(|slot| SatelliteConfig::chrome(format!("chrome-{}", satellite_key(slot.element)), slot.element))
@@ -420,6 +416,7 @@ mod tests {
             drag_handle: DragHandle::Header,
             shape: CardShape::default(),
             circle_content: CircleContent::default(),
+            arc_span: None,
             ..Default::default()
         };
         assert!(!elements(&config).contains(&ChromeElement::DragHandle));
@@ -536,21 +533,23 @@ mod tests {
     /// `effective_satellites` keeps only the satellite-capable ones
     /// (header elements and grips are dropped).
     #[test]
-    fn circle_card_promotes_inline_chrome_to_satellites() {
+    fn circle_card_keeps_inline_chrome_out_of_satellites() {
+        // On `Circle`, inline slots mount in the disc's top-arc band
+        // (`mount_arc_chrome`) - only explicit `Satellite` placements
+        // orbit.
         let config = CardConfig {
             shape: CardShape::Circle,
             chrome: Some(vec![
                 ChromeSlot::inline(ChromeElement::Title),
                 ChromeSlot::inline(ChromeElement::Minimize),
                 ChromeSlot::inline(ChromeElement::Close),
-                ChromeSlot::inline(ChromeElement::RotateGrip),
-                ChromeSlot::inline(ChromeElement::RotateClockwise),
+                ChromeSlot::satellite(ChromeElement::RotateClockwise),
             ]),
             ..Default::default()
         };
         let (_, satellites) = config.effective_satellites();
         let ids: Vec<&str> = satellites.iter().map(|satellite| satellite.id.as_str()).collect();
-        assert_eq!(ids, vec!["chrome-minimize", "chrome-close", "chrome-rotate-clockwise"]);
+        assert_eq!(ids, vec!["chrome-rotate-clockwise"]);
     }
 
     #[test]

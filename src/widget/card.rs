@@ -425,6 +425,14 @@ impl Card {
             }
             holder.set_visible(!folded);
         }
+        // Arc chrome belongs to the circle card's full presentation -
+        // a folded disc shows its folded holder alone.
+        if let Some(band) = imp.arc_band.get() {
+            band.set_visible(!folded);
+        }
+        for (widget, _) in imp.arc_items.borrow().iter() {
+            widget.set_visible(!folded);
+        }
         // A custom folded widget replaces the header too; restore it on
         // unfold (the header is always visible while unfolded, also in
         // headerless mode where CSS slims it).

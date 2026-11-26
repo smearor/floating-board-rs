@@ -48,6 +48,12 @@ pub const CLASS_SATELLITE_CHROME: &str = "floating-card-satellite-chrome";
 pub const CLASS_SATELLITE_CUSTOM: &str = "floating-card-satellite-custom";
 /// Additional CSS class of a radial-layout satellite (circular look).
 pub const CLASS_SATELLITE_RADIAL: &str = "floating-card-satellite-radial";
+/// CSS class of an arc-chrome item on `CardShape::Circle`.
+pub const CLASS_ARC_CHROME: &str = "floating-card-arc-chrome";
+/// CSS class of the painted arc-chrome band on `CardShape::Circle` -
+/// its `color` is the band's fill (palettes tint it to the header
+/// color).
+pub const CLASS_ARC_BAND: &str = "floating-card-arc-band";
 /// CSS class of the bottom-right resize grip (`CardConfig::resizable`).
 pub const CLASS_RESIZE_GRIP: &str = "floating-card-resize-grip";
 /// CSS class of the bottom-left rotate grip (`CardConfig::rotate_grip`).
@@ -92,6 +98,7 @@ fn palette_stylesheet(palette: &CardPalette, class: &str) -> String {
     }
     if let Some(header) = palette.get(CardColor::Header) {
         stylesheet.push_str(&format!(".{class} .{CLASS_HEADER} {{ background-color: {header}; }}\n"));
+        stylesheet.push_str(&format!(".{class} .{CLASS_ARC_BAND} {{ color: {header}; }}\n"));
     }
     stylesheet
 }

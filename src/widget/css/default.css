@@ -60,3 +60,15 @@
     min-height: 34px;
     padding: 4px;
 }
+/* Arc chrome on a circle card: items ride the disc's top-quarter band
+   (placed by the card's circle allocation); icon sizing matches the
+   radial satellites. */
+.floating-card-arc-chrome {
+    min-width: 34px;
+    min-height: 34px;
+}
+/* The painted top-quarter annulus band behind the arc chrome - its
+   `color` is the stroke's fill, defaulting to the header tone. */
+.floating-card-arc-band {
+    color: #3b4252;
+}
