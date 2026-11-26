@@ -27,7 +27,6 @@ use gtk4::Accessible;
 use gtk4::Buildable;
 use gtk4::ConstraintTarget;
 use gtk4::Orientable;
-use gtk4::Orientation;
 use gtk4::Widget;
 use gtk4::cairo::Region;
 use gtk4::glib;
@@ -422,21 +421,11 @@ impl Card {
                 // button would end up outside the shrunken header. A
                 // collapsed card is meant to shrink instead.
                 let (_, natural) = self.measure_size();
-                match imp.shape.get() {
-                    // A folded circle collapses onto its ring: the
-                    // diameter stays pinned so the empty disc keeps
-                    // the card's size.
-                    CardShape::Circle => {
-                        let diameter = natural.x.max(natural.y);
-                        self.set_size_request(diameter, diameter);
-                    }
-                    // A folded dome keeps its 2r x r proportion.
-                    CardShape::Semicircle => {
-                        let diameter = natural.x.max(natural.y);
-                        self.set_size_request(diameter, diameter / 2);
-                    }
-                    _ => self.set_size_request(natural.x, -1),
-                }
+                // A folded card collapses onto its shape's silhouette:
+                // the circle keeps its ring, the dome its 2r x r
+                // proportion - `collapsed_extent` decides per shape.
+                let extent = imp.shape.get().collapsed_extent(natural);
+                self.set_size_request(extent.x, extent.y);
             }
             holder.set_visible(!folded);
         }
@@ -469,23 +458,11 @@ impl Card {
         // claims layout space - a collapsed card's size must be pinned
         // to the folded presentation's natural measure explicitly.
         if folded && collapsed {
-            match imp.shape.get() {
-                CardShape::Circle => {
-                    let (_, natural_width, _, natural_height) = imp.circle_measure();
-                    self.set_size_request(natural_width, natural_height);
-                }
-                CardShape::Semicircle => {
-                    let (_, natural_width, ..) = imp.semicircle_measure(Orientation::Horizontal);
-                    let (_, natural_height, ..) = imp.semicircle_measure(Orientation::Vertical);
-                    self.set_size_request(natural_width, natural_height);
-                }
-                _ => {
-                    if let Some(holder) = imp.folded_holder.get() {
-                        let (_, natural_width, _, _) = holder.measure(Orientation::Horizontal, -1);
-                        let (_, natural_height, _, _) = holder.measure(Orientation::Vertical, -1);
-                        self.set_size_request(natural_width, natural_height);
-                    }
-                }
+            // `folded_natural` decides per shape: the curved silhouettes
+            // measure through their shape measure, `Rectangle` through
+            // the folded pane itself.
+            if let Some(natural) = imp.folded_natural() {
+                self.set_size_request(natural.x, natural.y);
             }
         } else if !folded {
             self.set_size_request(-1, -1);

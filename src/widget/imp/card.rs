@@ -436,14 +436,42 @@ impl CardImpl {
     /// via `CircleContent::diameter_for` (the `folded_holder` while it
     /// carries a collapsed widget, else the `content_overlay`). Called
     /// from `CardShapeLayout`.
-    pub(crate) fn circle_measure(&self) -> (i32, i32, i32, i32) {
-        let content = self
-            .folded_holder
+    /// The widget whose natural size drives the shape measure: the
+    /// `folded_holder` while it carries a collapsed widget, else the
+    /// `content_overlay`.
+    fn visible_content_widget(&self) -> Option<Widget> {
+        self.folded_holder
             .get()
             .filter(|holder| holder.is_visible() && holder.first_child().is_some())
             .map(|holder| holder.clone().upcast::<Widget>())
-            .or_else(|| self.content_overlay.get().map(|overlay| overlay.clone().upcast()));
-        let Some(content) = content else {
+            .or_else(|| self.content_overlay.get().map(|overlay| overlay.clone().upcast()))
+    }
+
+    /// The natural size the folded card pins to when a custom folded
+    /// widget is installed: the shape measure for the curved shapes
+    /// (their silhouette decides the pin), the `folded_holder`'s own
+    /// measure for `Rectangle`. `None` without a folded widget.
+    pub(crate) fn folded_natural(&self) -> Option<Size<i32>> {
+        match self.shape.get() {
+            CardShape::Circle => {
+                let (_, natural_width, _, natural_height) = self.circle_measure();
+                Some(Size::new(natural_width, natural_height))
+            }
+            CardShape::Semicircle => {
+                let (_, natural_width, ..) = self.semicircle_measure(Orientation::Horizontal);
+                let (_, natural_height, ..) = self.semicircle_measure(Orientation::Vertical);
+                Some(Size::new(natural_width, natural_height))
+            }
+            CardShape::Rectangle => self.folded_holder.get().map(|holder| {
+                let (_, natural_width, _, _) = holder.measure(Orientation::Horizontal, -1);
+                let (_, natural_height, _, _) = holder.measure(Orientation::Vertical, -1);
+                Size::new(natural_width, natural_height)
+            }),
+        }
+    }
+
+    pub(crate) fn circle_measure(&self) -> (i32, i32, i32, i32) {
+        let Some(content) = self.visible_content_widget() else {
             return (0, 0, -1, -1);
         };
         let (_, natural_width, _, _) = content.measure(Orientation::Horizontal, -1);
@@ -505,13 +533,7 @@ impl CardImpl {
     /// `content_overlay`). The reported extent is `2r` horizontally
     /// and `r` vertically. Called from `CardShapeLayout`.
     pub(crate) fn semicircle_measure(&self, orientation: Orientation) -> (i32, i32, i32, i32) {
-        let content = self
-            .folded_holder
-            .get()
-            .filter(|holder| holder.is_visible() && holder.first_child().is_some())
-            .map(|holder| holder.clone().upcast::<Widget>())
-            .or_else(|| self.content_overlay.get().map(|overlay| overlay.clone().upcast()));
-        let Some(content) = content else {
+        let Some(content) = self.visible_content_widget() else {
             return (0, 0, -1, -1);
         };
         let (_, natural_width, _, _) = content.measure(Orientation::Horizontal, -1);

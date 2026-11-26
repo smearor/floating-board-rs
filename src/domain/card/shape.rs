@@ -1,6 +1,7 @@
 use smearor_commons_geometry::Distance;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::Size;
 use smearor_commons_geometry::Vec2;
 
 /// The geometric outline a card renders and hit-tests with.
@@ -70,6 +71,26 @@ impl CardShape {
             Self::Rectangle => Distance::new(footprint.magnitude_f64() / 2.0),
         }
     }
+
+    /// The extent a folded card of this shape pins to, derived from
+    /// the content's `natural` size: a `Circle` collapses onto its
+    /// ring, so the diameter (the larger natural axis) stays pinned
+    /// as a square; a `Semicircle` dome keeps its `2r × r`
+    /// proportion; a `Rectangle` pins the width only. A `-1` height
+    /// means the folded measure decides it.
+    pub fn collapsed_extent(&self, natural: Size<i32>) -> Size<i32> {
+        match self {
+            Self::Circle => {
+                let diameter = natural.x.max(natural.y);
+                Size::new(diameter, diameter)
+            }
+            Self::Semicircle => {
+                let diameter = natural.x.max(natural.y);
+                Size::new(diameter, diameter / 2)
+            }
+            Self::Rectangle => Size::new(natural.x, -1),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -114,5 +135,15 @@ mod tests {
     fn semicircle_support_matches_the_full_circle() {
         let footprint = Vec2::<Pixels>::new(200.0, 100.0);
         assert_eq!(CardShape::Semicircle.contour_support(RotationRad::QUARTER_TURN, footprint).as_f64(), 100.0);
+    }
+
+    #[test]
+    fn collapsed_extent_keeps_each_shape_silhouette() {
+        let natural = Size::new(200, 120);
+        // Circle: square pin on the larger axis; dome: 2r x r;
+        // rectangle: width only (-1 = the folded measure decides).
+        assert_eq!(CardShape::Circle.collapsed_extent(natural), Size::new(200, 200));
+        assert_eq!(CardShape::Semicircle.collapsed_extent(natural), Size::new(200, 100));
+        assert_eq!(CardShape::Rectangle.collapsed_extent(natural), Size::new(200, -1));
     }
 }
