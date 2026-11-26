@@ -1,3 +1,8 @@
+use smearor_commons_geometry::Distance;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::Vec2;
+
 /// The geometric outline a card renders and hit-tests with.
 ///
 /// The widget hierarchy always stays rectangular - the shape decides how
@@ -34,6 +39,26 @@ pub enum CardShape {
     Semicircle,
 }
 
+impl CardShape {
+    /// How far the shape's outline extends along `direction`, measured
+    /// from the bounding box's center: the disk radius for a `Circle`
+    /// card, the axis-aligned box support `(|cos| * w + |sin| * h) / 2`
+    /// for a `Rectangle` card (exact for the bbox - the visible
+    /// corners of a rotated card slightly overshoot, which is fine
+    /// for an emerge seed). A `Semicircle` card orbits like its full
+    /// circle - the bbox's inscribed radius, a uniform gap all
+    /// around.
+    pub fn contour_support(&self, direction: RotationRad, footprint: Vec2<Pixels>) -> Distance<Pixels> {
+        match self {
+            Self::Circle | Self::Semicircle => Distance::new(footprint.x / 2.0),
+            Self::Rectangle => {
+                let (sin, cos) = direction.sin_cos();
+                Distance::new((cos.abs() * footprint.x + sin.abs() * footprint.y) / 2.0)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -41,5 +66,29 @@ mod tests {
     #[test]
     fn default_shape_is_rectangle() {
         assert_eq!(CardShape::default(), CardShape::Rectangle);
+    }
+
+    #[test]
+    fn circle_support_is_the_disk_radius_everywhere() {
+        let footprint = Vec2::<Pixels>::new(200.0, 200.0);
+        for direction in [RotationRad::ZERO, RotationRad::QUARTER_TURN, RotationRad::new(1.1)] {
+            assert_eq!(CardShape::Circle.contour_support(direction, footprint).as_f64(), 100.0);
+        }
+    }
+
+    #[test]
+    fn rectangle_support_follows_the_box_contour() {
+        let footprint = Vec2::<Pixels>::new(200.0, 100.0);
+        // Straight down: the support reaches the bottom edge (h/2).
+        assert!((CardShape::Rectangle.contour_support(RotationRad::QUARTER_TURN, footprint).as_f64() - 50.0).abs() < 1e-9);
+        // Diagonal (cos=0.8, sin=0.6): (0.8*200 + 0.6*100) / 2 = 110.
+        let direction = RotationRad::new(0.6435);
+        assert!((CardShape::Rectangle.contour_support(direction, footprint).as_f64() - 110.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn semicircle_support_matches_the_full_circle() {
+        let footprint = Vec2::<Pixels>::new(200.0, 100.0);
+        assert_eq!(CardShape::Semicircle.contour_support(RotationRad::QUARTER_TURN, footprint).as_f64(), 100.0);
     }
 }

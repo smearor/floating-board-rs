@@ -27,26 +27,12 @@ pub(crate) fn collapsed_seed(
     let distance = offset.magnitude_f64();
     let edge = match (layout, distance > 1e-9) {
         (SatelliteLayout::Radial(_), _) | (_, false) => 0.0,
-        (SatelliteLayout::Sidebar { .. }, true) => contour_support(offset / distance, card_footprint, card_shape),
+        (SatelliteLayout::Sidebar { .. }, true) => card_shape.contour_support(offset.direction(), card_footprint).as_f64(),
     };
     CardGeometry {
         position: CardPosition::new(center + offset.normalized() * distance.min(edge)),
         rotation: resolved.rotation,
         scale: crate::domain::ScaleFactor::new(0.01),
-    }
-}
-
-/// How far the card's outline extends along unit direction `dir`,
-/// measured from its center: the disk radius for a `Circle` card, the
-/// axis-aligned box support `(|dx| * w + |dy| * h) / 2` for a
-/// `Rectangle` card (exact for the bbox - the visible corners of a
-/// rotated card slightly overshoot, which is fine for an emerge seed).
-fn contour_support(dir: Vec2<Pixels>, card_footprint: Vec2<Pixels>, card_shape: CardShape) -> f64 {
-    match card_shape {
-        // The dome orbits like its full circle - the bbox's inscribed
-        // radius, a uniform gap all around.
-        CardShape::Circle | CardShape::Semicircle => card_footprint.x / 2.0,
-        CardShape::Rectangle => (dir.x.abs() * card_footprint.x + dir.y.abs() * card_footprint.y) / 2.0,
     }
 }
 
