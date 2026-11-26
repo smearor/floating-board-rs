@@ -175,7 +175,7 @@ impl Card {
                 widget.add_css_class("circular");
             }
             self.append(&widget);
-            items.push((widget, slot.element));
+            items.push((widget, *slot));
         }
         // The painted band sits beneath the items (earlier children
         // paint first) and is created only when items exist - an
@@ -381,18 +381,22 @@ fn arc_band(card: &Card) -> DrawingArea {
             return;
         }
         let half_span = card.imp().arc_span.get().as_f64() / 2.0;
+        let items = card.imp().arc_items.borrow();
+        let has_top = items.iter().any(|(_, slot)| slot.placement.is_top_arc());
+        let has_bottom = items.iter().any(|(_, slot)| slot.placement.is_bottom_arc());
+        drop(items);
         let color = area.color();
         cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
         cr.set_line_width(ARC_CHROME_BAND);
         cr.set_line_cap(LineCap::Round);
-        cr.arc(
-            f64::from(width) / 2.0,
-            f64::from(height) / 2.0,
-            radius,
-            -std::f64::consts::FRAC_PI_2 - half_span,
-            -std::f64::consts::FRAC_PI_2 + half_span,
-        );
-        let _ = cr.stroke();
+        // Cairo measures angles from +x: the bands center on -90°
+        // (top) and +90° (bottom), each `arc_span` wide.
+        for (center, present) in [(-FRAC_PI_2, has_top), (FRAC_PI_2, has_bottom)] {
+            if present {
+                cr.arc(f64::from(width) / 2.0, f64::from(height) / 2.0, radius, center - half_span, center + half_span);
+                let _ = cr.stroke();
+            }
+        }
     });
     band
 }

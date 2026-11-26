@@ -1,6 +1,8 @@
 use crate::domain::CardId;
 use crate::domain::CardShape;
 use crate::domain::ChromeElement;
+use crate::domain::ChromePlacement;
+use crate::domain::ChromeSlot;
 use crate::domain::CircleContent;
 use crate::widget::FloatingBoard;
 use crate::widget::card::Card;
@@ -32,10 +34,13 @@ use gtk4::subclass::prelude::ObjectSubclassExt;
 use gtk4::subclass::prelude::WidgetClassExt;
 use gtk4::subclass::prelude::WidgetImpl;
 use gtk4::subclass::prelude::WidgetImplExt;
+use smearor_commons_geometry::Arc;
 use smearor_commons_geometry::Circle;
 use smearor_commons_geometry::Degrees;
+use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Radians;
+use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
 use std::cell::Cell;
@@ -120,10 +125,10 @@ pub struct CardImpl {
     /// header color (`Card::mount_arc_chrome` only creates it when
     /// `arc_items` is non-empty).
     pub arc_band: OnceCell<DrawingArea>,
-    /// Arc-chrome items on `CardShape::Circle` - `(widget, element)`
+    /// Arc-chrome items on `CardShape::Circle` - `(widget, slot)`
     /// pairs in slot order, mounted by `Card::mount_arc_chrome` and
-    /// placed on the disc's top-quarter band by `circle_allocate`.
-    pub arc_items: RefCell<Vec<(gtk4::Widget, ChromeElement)>>,
+    /// placed on the top/bottom arc bands by `circle_allocate`.
+    pub arc_items: RefCell<Vec<(gtk4::Widget, ChromeSlot)>>,
 }
 
 impl Default for CardImpl {
@@ -239,35 +244,107 @@ const ARC_HALF_SPAN: f64 = std::f64::consts::FRAC_PI_4;
 /// span (rad); `arc_angle` scales the gap with the configured span.
 const ARC_TITLE_GAP: f64 = std::f64::consts::PI / 15.0;
 
-/// Evenly spreads `count` items over `[from, to]`; a lone item sits
-/// at `from` - groups pack from the band's outer edge inward, like a
-/// header bar's packed ends.
-fn spread(from: f64, to: f64, index: usize, count: usize) -> f64 {
-    if count <= 1 {
-        return from;
-    }
-    from + (to - from) * index as f64 / (count - 1) as f64
+/// Evenly spreads `count` directions over `[from, to]` as an `Arc`;
+/// a lone item sits at `from` - groups pack from the band's outer
+/// edge inward, like a header bar's packed ends.
+fn spread(from: f64, to: f64, index: usize, count: usize) -> RotationRad {
+    let t = if count <= 1 {
+        Fraction::ZERO
+    } else {
+        Fraction::new(index as f64 / (count - 1) as f64)
+    };
+    Arc::new(RotationRad::new(from), RotationRad::new(to - from)).at(t)
 }
 
-/// Angular position of arc-chrome item `index` of `count` (radians
-/// from the disc's top, positive clockwise), the band spanning
-/// `±half_span`: items before `title_index` pack the left half of the
-/// band from its outer edge inward, a `Title` item sits centered like
-/// a header bar's title, and items after pack the right half from its
-/// outer edge inward - the header bar's end-pack semantics. Without a
-/// title the whole set spreads evenly over the band.
-fn arc_angle(index: usize, count: usize, title_index: Option<usize>, half_span: f64) -> f64 {
+/// Angular position of arc-chrome item `index` of `count` in the
+/// legacy all-`Inline` packing (the band spanning `±half_span`):
+/// items before `title_index` pack the left half of the band from its
+/// outer edge inward, a `Title` item sits centered like a header
+/// bar's title, and items after pack the right half from its outer
+/// edge inward - the header bar's end-pack semantics. Without a title
+/// the whole set spreads evenly over the band.
+fn arc_angle(index: usize, count: usize, title_index: Option<usize>, half_span: f64) -> RotationRad {
     let title_gap = half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
     let Some(title) = title_index else {
-        return if count <= 1 { 0.0 } else { spread(-half_span, half_span, index, count) };
+        return if count <= 1 {
+            RotationRad::ZERO
+        } else {
+            spread(-half_span, half_span, index, count)
+        };
     };
     if index == title {
-        0.0
+        RotationRad::ZERO
     } else if index < title {
         spread(-half_span, -title_gap, index, title)
     } else {
         spread(half_span, title_gap, index - title - 1, count - title - 1)
     }
+}
+
+/// Disc-direction per arc-chrome item (radians, 0 = the disc's top,
+/// positive clockwise): the top band packs items with `Start`
+/// placements edge-inward on its left end, spreads `ArcTop`/`Inline`
+/// items over the center zone and packs `End` items edge-inward on
+/// its right end - header-bar zones on an arc. `ArcBottom*` items
+/// land on the mirrored bottom band (offset π: its "start" edge sits
+/// on the screen's right, the user's left when facing the card's
+/// bottom). A top band of pure `Inline` slots keeps the legacy
+/// title-centered spread over the whole band.
+fn arc_angles(items: &[ChromeSlot], half_span: f64) -> Vec<RotationRad> {
+    let gap = half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
+    let mut zones: [Vec<usize>; 6] = Default::default();
+    for (index, slot) in items.iter().enumerate() {
+        match slot.placement {
+            ChromePlacement::InlineStart | ChromePlacement::ArcTopStart => zones[0].push(index),
+            ChromePlacement::Inline | ChromePlacement::ArcTop => zones[1].push(index),
+            ChromePlacement::InlineEnd | ChromePlacement::ArcTopEnd => zones[2].push(index),
+            ChromePlacement::ArcBottomStart => zones[3].push(index),
+            ChromePlacement::ArcBottom => zones[4].push(index),
+            ChromePlacement::ArcBottomEnd => zones[5].push(index),
+            ChromePlacement::Satellite => {}
+        }
+    }
+    let [top_start, top_center, top_end] = [zones[0].clone(), zones[1].clone(), zones[2].clone()];
+    let mut angles = vec![RotationRad::ZERO; items.len()];
+    // The legacy path: an unpinned top band of `Inline` items packs
+    // around a centered title over the whole band.
+    let legacy = top_start.is_empty() && top_end.is_empty() && top_center.iter().all(|&index| items[index].placement == ChromePlacement::Inline);
+    if legacy && !top_center.is_empty() {
+        let title_index = top_center.iter().position(|&index| items[index].element == ChromeElement::Title);
+        for (position, &item) in top_center.iter().enumerate() {
+            angles[item] = arc_angle(position, top_center.len(), title_index, half_span);
+        }
+    } else {
+        for (position, &item) in top_start.iter().enumerate() {
+            angles[item] = spread(-half_span, -gap, position, top_start.len());
+        }
+        for (position, &item) in top_center.iter().enumerate() {
+            angles[item] = if top_center.len() == 1 {
+                RotationRad::ZERO
+            } else {
+                spread(-gap, gap, position, top_center.len())
+            };
+        }
+        for (position, &item) in top_end.iter().enumerate() {
+            angles[item] = spread(half_span, gap, position, top_end.len());
+        }
+    }
+    let bottom = RotationRad::new(std::f64::consts::PI);
+    for (position, &item) in zones[3].iter().enumerate() {
+        angles[item] = bottom + spread(-half_span, -gap, position, zones[3].len());
+    }
+    for (position, &item) in zones[4].iter().enumerate() {
+        angles[item] = bottom
+            + if zones[4].len() == 1 {
+                RotationRad::ZERO
+            } else {
+                spread(-gap, gap, position, zones[4].len())
+            };
+    }
+    for (position, &item) in zones[5].iter().enumerate() {
+        angles[item] = bottom + spread(half_span, gap, position, zones[5].len());
+    }
+    angles
 }
 
 impl WidgetImpl for CardImpl {
@@ -325,23 +402,23 @@ impl CardImpl {
         let transform = Transform::new().translate(&Point::new(((f64::from(width) - side) / 2.0) as f32, ((f64::from(height) - side) / 2.0) as f32));
         let side = side.ceil() as i32;
         let arc_items = self.arc_items.borrow();
-        let arc_count = arc_items.len();
         let arc_band = self.arc_band.get();
-        let title_index = arc_items.iter().position(|(_, element)| *element == ChromeElement::Title);
+        let half_span = self.arc_span.get().as_f64() / 2.0;
+        let slots: Vec<ChromeSlot> = arc_items.iter().map(|(_, slot)| *slot).collect();
+        let angles = arc_angles(&slots, half_span);
         let arc_radius = diameter / 2.0 - ARC_CHROME_BAND / 2.0;
         let mut child = self.obj().first_child();
         while let Some(widget) = child {
             if widget.is_visible() {
                 if arc_band.is_some_and(|band| band.upcast_ref::<Widget>() == &widget) {
                     // The painted band covers the whole disc square -
-                    // its draw func clips itself to the top sector.
+                    // its draw func clips itself to the arc sectors.
                     widget.allocate(width, height, baseline, None);
                 } else if let Some(index) = arc_items.iter().position(|(item, _)| *item == widget) {
                     let (_, natural) = widget.measure_size();
-                    let half_span = self.arc_span.get().as_f64() / 2.0;
-                    let angle = arc_angle(index, arc_count, title_index, half_span);
-                    let center_x = f64::from(width) / 2.0 + arc_radius * angle.sin();
-                    let center_y = f64::from(height) / 2.0 - arc_radius * angle.cos();
+                    let (sin, cos) = angles[index].sin_cos();
+                    let center_x = f64::from(width) / 2.0 + arc_radius * sin;
+                    let center_y = f64::from(height) / 2.0 - arc_radius * cos;
                     let arc_transform =
                         Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
                     widget.allocate(natural.x, natural.y, baseline, Some(arc_transform));
@@ -360,9 +437,26 @@ impl BoxImpl for CardImpl {}
 mod tests {
     use super::*;
 
-    /// Lerp-based angles compare bit-inexact - assert with epsilon.
-    fn assert_angle(actual: f64, expected: f64) {
-        assert!((actual - expected).abs() < 1e-12, "{actual} != {expected}");
+    /// Direction comparisons go through `sin_cos` - the normalized
+    /// scalar wraps across the turn boundary.
+    fn assert_angle(actual: RotationRad, expected_degrees: f64) {
+        let (actual_sin, actual_cos) = actual.sin_cos();
+        let expected = RotationRad::new(expected_degrees.to_radians());
+        let (expected_sin, expected_cos) = expected.sin_cos();
+        assert!(
+            (actual_sin - expected_sin).abs() < 1e-9 && (actual_cos - expected_cos).abs() < 1e-9,
+            "{actual:?} != {expected_degrees}deg"
+        );
+    }
+
+    fn slots(placements: &[ChromePlacement]) -> Vec<ChromeSlot> {
+        placements
+            .iter()
+            .map(|placement| ChromeSlot {
+                element: ChromeElement::Minimize,
+                placement: *placement,
+            })
+            .collect()
     }
 
     #[test]
@@ -372,25 +466,63 @@ mod tests {
 
     #[test]
     fn arc_angle_spreads_over_band_without_title() {
-        assert_angle(arc_angle(0, 3, None, ARC_HALF_SPAN), -ARC_HALF_SPAN);
+        assert_angle(arc_angle(0, 3, None, ARC_HALF_SPAN), -45.0);
         assert_angle(arc_angle(1, 3, None, ARC_HALF_SPAN), 0.0);
-        assert_angle(arc_angle(2, 3, None, ARC_HALF_SPAN), ARC_HALF_SPAN);
+        assert_angle(arc_angle(2, 3, None, ARC_HALF_SPAN), 45.0);
     }
 
     #[test]
     fn arc_angle_title_pins_center() {
         assert_angle(arc_angle(1, 3, Some(1), ARC_HALF_SPAN), 0.0);
-        assert_angle(arc_angle(0, 3, Some(1), ARC_HALF_SPAN), -ARC_HALF_SPAN);
-        assert_angle(arc_angle(2, 3, Some(1), ARC_HALF_SPAN), ARC_HALF_SPAN);
+        assert_angle(arc_angle(0, 3, Some(1), ARC_HALF_SPAN), -45.0);
+        assert_angle(arc_angle(2, 3, Some(1), ARC_HALF_SPAN), 45.0);
     }
 
     #[test]
     fn arc_angle_groups_around_title() {
         // [A, B, Title, C, D] - each side packs outer-edge inward, so
         // the first slot of each group sits at the band's end.
-        assert_angle(arc_angle(0, 5, Some(2), ARC_HALF_SPAN), -ARC_HALF_SPAN);
-        assert_angle(arc_angle(1, 5, Some(2), ARC_HALF_SPAN), -ARC_TITLE_GAP);
-        assert_angle(arc_angle(3, 5, Some(2), ARC_HALF_SPAN), ARC_HALF_SPAN);
-        assert_angle(arc_angle(4, 5, Some(2), ARC_HALF_SPAN), ARC_TITLE_GAP);
+        assert_angle(arc_angle(0, 5, Some(2), ARC_HALF_SPAN), -45.0);
+        assert_angle(arc_angle(1, 5, Some(2), ARC_HALF_SPAN), -12.0);
+        assert_angle(arc_angle(3, 5, Some(2), ARC_HALF_SPAN), 45.0);
+        assert_angle(arc_angle(4, 5, Some(2), ARC_HALF_SPAN), 12.0);
+    }
+
+    #[test]
+    fn arc_angles_zones_pack_edges() {
+        let angles = arc_angles(&slots(&[ChromePlacement::ArcTopStart, ChromePlacement::ArcTop, ChromePlacement::ArcTopEnd]), ARC_HALF_SPAN);
+        assert_angle(angles[0], -45.0);
+        assert_angle(angles[1], 0.0);
+        assert_angle(angles[2], 45.0);
+    }
+
+    #[test]
+    fn arc_angles_inline_ends_map_to_zones() {
+        let angles = arc_angles(&slots(&[ChromePlacement::InlineStart, ChromePlacement::InlineEnd]), ARC_HALF_SPAN);
+        assert_angle(angles[0], -45.0);
+        assert_angle(angles[1], 45.0);
+    }
+
+    #[test]
+    fn arc_angles_bottom_band_is_mirrored() {
+        // Bottom band: the "start" edge sits on the screen's right -
+        // the user's left when facing the card's bottom.
+        let angles = arc_angles(
+            &slots(&[ChromePlacement::ArcBottomStart, ChromePlacement::ArcBottom, ChromePlacement::ArcBottomEnd]),
+            ARC_HALF_SPAN,
+        );
+        assert_angle(angles[0], 135.0);
+        assert_angle(angles[1], 180.0);
+        assert_angle(angles[2], 225.0);
+    }
+
+    #[test]
+    fn arc_angles_mixed_inline_plus_zone_uses_zones() {
+        // One pinned slot switches the whole top band to zone packing:
+        // remaining `Inline` items share the center zone.
+        let angles = arc_angles(&slots(&[ChromePlacement::Inline, ChromePlacement::Inline, ChromePlacement::InlineEnd]), ARC_HALF_SPAN);
+        assert_angle(angles[0], -12.0);
+        assert_angle(angles[1], 12.0);
+        assert_angle(angles[2], 45.0);
     }
 }

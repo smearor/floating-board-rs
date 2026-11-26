@@ -86,11 +86,6 @@ pub use domain::ScaleFactor;
 pub use domain::SeatAnchor;
 pub use domain::SequenceNumber;
 pub use domain::TurnDirection;
-/// Progress fraction (`0..=1`), re-exported because
-/// `CardFoldTiming::Overlap` and the fold pose expose it - consumers
-/// can build `Overlap(Fraction::new(0.35))` without depending on
-/// `smearor-commons-geometry` directly.
-pub use smearor_commons_geometry::Fraction;
 pub use widget::Card;
 pub use widget::CardAlignment;
 pub use widget::CardCloseAction;

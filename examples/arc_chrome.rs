@@ -7,13 +7,14 @@
 //! clock face fills the inner square, so the band's buttons float over
 //! the disc's rim. The card folds onto a small clock disc.
 //!
-//! Card "compass" runs the Adwaita style (with `--features adwaita`):
-//! the same band drawn as raised circular theme buttons over the
-//! inscribed content's chrome ring, while two seat-pass actions orbit
-//! as regular satellites - the arc/split in one picture.
+//! Card "compass" runs the Adwaita style (with `--features adwaita`)
+//! on a wider 135° span: the rotate steps pin to the band's ends via
+//! `InlineStart`/`InlineEnd` while title and actions share the center
+//! zone - the band drawn as raised circular theme buttons.
 //!
-//! Card "pie" carries a palette: its band paints in the palette's
-//! header color instead of the default chrome tone.
+//! Card "pie" carries a palette and a second band: its bottom arc
+//! mirrors the top one and hosts the seat-pass actions for a user
+//! facing the card's bottom edge.
 //!
 //! Run with `cargo run --example arc_chrome` (optionally
 //! `--features adwaita` for themed chrome).
@@ -234,12 +235,15 @@ fn build_ui(application: &gtk4::Application) {
                 // third of the disc's rim.
                 arc_span: Some(Degrees::new(135.0)),
                 chrome_style: ChromeStyle::Adwaita,
+                // `InlineStart`/`InlineEnd` pin to the band's ends like
+                // a header bar's packed ends; the `Inline` run shares
+                // the center zone around the centered title.
                 chrome: Some(vec![
+                    ChromeSlot::inline_start(ChromeElement::RotateCounterClockwise),
                     ChromeSlot::inline(ChromeElement::Minimize),
                     ChromeSlot::inline(ChromeElement::Title),
                     ChromeSlot::inline(ChromeElement::Close),
-                    ChromeSlot::satellite(ChromeElement::PreviousSeat),
-                    ChromeSlot::satellite(ChromeElement::NextSeat),
+                    ChromeSlot::inline_end(ChromeElement::RotateClockwise),
                 ]),
                 folded_content: Some(build_compass(80).upcast()),
                 unfold_on_click: true,
@@ -265,12 +269,15 @@ fn build_ui(application: &gtk4::Application) {
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(550.0, 600.0))),
                 shape: CardShape::Circle,
                 palette: Some(palette),
+                // The bottom band mirrors the top one - the seat-pass
+                // actions read correctly for a user facing the card's
+                // bottom edge (start = the user's left).
                 chrome: Some(vec![
-                    ChromeSlot::inline(ChromeElement::DragHandle),
-                    ChromeSlot::inline(ChromeElement::Minimize),
                     ChromeSlot::inline(ChromeElement::Title),
-                    ChromeSlot::inline(ChromeElement::Close),
-                    ChromeSlot::inline(ChromeElement::RotateClockwise),
+                    ChromeSlot::arc_top_end(ChromeElement::Close),
+                    ChromeSlot::arc_bottom_start(ChromeElement::PreviousSeat),
+                    ChromeSlot::arc_bottom(ChromeElement::Minimize),
+                    ChromeSlot::arc_bottom_end(ChromeElement::NextSeat),
                 ]),
                 folded_content: Some(build_pie(60).upcast()),
                 unfold_on_click: true,

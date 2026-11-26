@@ -19,6 +19,44 @@ pub enum ChromePlacement {
     /// with [`crate::domain::ChromeElement::supports_satellite`] may use
     /// this placement.
     Satellite,
+    /// In the center region of a circle card's top arc band - the
+    /// explicit counterpart to `Inline` once arc placements are used
+    /// (see `arc_span` on `CardConfig`). Ignored on `Rectangle`.
+    ArcTop,
+    /// At the leading end of a circle card's top arc band - the card's
+    /// left rim. `InlineStart` maps to the same zone. Ignored on
+    /// `Rectangle`.
+    ArcTopStart,
+    /// At the trailing end of a circle card's top arc band - the
+    /// card's right rim. `InlineEnd` maps to the same zone. Ignored
+    /// on `Rectangle`.
+    ArcTopEnd,
+    /// In the center region of a circle card's bottom arc band - a
+    /// second band mirrored at the disc's bottom. Ignored on
+    /// `Rectangle`.
+    ArcBottom,
+    /// At the leading end of a circle card's bottom arc band - the
+    /// band is mirrored, so the leading end sits on the screen's right
+    /// side: a user facing the card's bottom reads start-to-end
+    /// left-to-right. Ignored on `Rectangle`.
+    ArcBottomStart,
+    /// At the trailing end of a circle card's bottom arc band - the
+    /// mirrored counterpart of `ArcTopEnd`. Ignored on `Rectangle`.
+    ArcBottomEnd,
+}
+
+impl ChromePlacement {
+    /// Whether the placement mounts on a circle card's top arc band
+    /// (`Inline*` and `ArcTop*` placements).
+    pub fn is_top_arc(&self) -> bool {
+        matches!(self, Self::Inline | Self::InlineStart | Self::InlineEnd | Self::ArcTop | Self::ArcTopStart | Self::ArcTopEnd)
+    }
+
+    /// Whether the placement mounts on a circle card's bottom arc
+    /// band (`ArcBottom*` placements).
+    pub fn is_bottom_arc(&self) -> bool {
+        matches!(self, Self::ArcBottom | Self::ArcBottomStart | Self::ArcBottomEnd)
+    }
 }
 
 #[cfg(test)]

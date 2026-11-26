@@ -40,6 +40,60 @@ impl ChromeSlot {
         }
     }
 
+    /// The element mounted in the center of a circle card's top arc
+    /// band.
+    pub const fn arc_top(element: ChromeElement) -> Self {
+        Self {
+            element,
+            placement: ChromePlacement::ArcTop,
+        }
+    }
+
+    /// The element mounted at the leading end of a circle card's top
+    /// arc band.
+    pub const fn arc_top_start(element: ChromeElement) -> Self {
+        Self {
+            element,
+            placement: ChromePlacement::ArcTopStart,
+        }
+    }
+
+    /// The element mounted at the trailing end of a circle card's top
+    /// arc band.
+    pub const fn arc_top_end(element: ChromeElement) -> Self {
+        Self {
+            element,
+            placement: ChromePlacement::ArcTopEnd,
+        }
+    }
+
+    /// The element mounted in the center of a circle card's bottom
+    /// arc band.
+    pub const fn arc_bottom(element: ChromeElement) -> Self {
+        Self {
+            element,
+            placement: ChromePlacement::ArcBottom,
+        }
+    }
+
+    /// The element mounted at the leading end of a circle card's
+    /// bottom arc band.
+    pub const fn arc_bottom_start(element: ChromeElement) -> Self {
+        Self {
+            element,
+            placement: ChromePlacement::ArcBottomStart,
+        }
+    }
+
+    /// The element mounted at the trailing end of a circle card's
+    /// bottom arc band.
+    pub const fn arc_bottom_end(element: ChromeElement) -> Self {
+        Self {
+            element,
+            placement: ChromePlacement::ArcBottomEnd,
+        }
+    }
+
     /// The element mounted as a satellite.
     pub const fn satellite(element: ChromeElement) -> Self {
         Self {
