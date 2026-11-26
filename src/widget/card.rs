@@ -79,6 +79,11 @@ impl Card {
         }
         if config.shape == CardShape::Semicircle {
             card.add_css_class(CLASS_CARD_SEMICIRCLE);
+            // A dome's folded pane belongs on the flat edge, not the
+            // center like a circle's.
+            if let Some(holder) = imp.folded_holder.get() {
+                holder.set_valign(gtk4::Align::End);
+            }
         }
         if config.headerless {
             card.add_css_class(CLASS_HEADERLESS);

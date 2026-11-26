@@ -112,21 +112,21 @@ fn build_gauge(width: Pixels<i32>) -> gtk4::DrawingArea {
             let _ = context.stroke();
         }
         // The needle: a tapered pointer at a fixed mid-scale reading.
+        // No tail - the pivot sits on the flat edge, a tail would dip
+        // below the widget's bottom and clip.
         let (sin, cos) = RotationRad::new(PI - 2.0 * PI / 3.0).sin_cos();
         let direction = Vec2::<Pixels>::new(cos, -sin);
         let perpendicular = Vec2::<Pixels>::new(sin, cos);
         let tip = center + direction * (radius * 0.72).as_f64();
         let side_a = center + perpendicular * 6.0;
-        let tail = center - direction * (radius * 0.12).as_f64();
         let side_b = center - perpendicular * 6.0;
         context.move_to(tip.x, tip.y);
         context.line_to(side_a.x, side_a.y);
-        context.line_to(tail.x, tail.y);
         context.line_to(side_b.x, side_b.y);
         context.close_path();
         dome_color(DomeColor::Needle).apply(context);
         let _ = context.fill();
-        context.arc(center.x, center.y, 5.0, 0.0, 2.0 * PI);
+        context.arc(center.x, center.y, 3.0, 0.0, 2.0 * PI);
         dome_color(DomeColor::Line).apply(context);
         let _ = context.fill();
     });
@@ -142,7 +142,9 @@ fn build_sunrise(size: Pixels<i32>) -> gtk4::DrawingArea {
     sunrise.set_content_height(size.as_raw());
     sunrise.set_draw_func(|_area, context, width, height| {
         let size = Vec2::<Pixels>::new(f64::from(width), f64::from(height));
-        let center = Vec2::<Pixels>::new(size.x / 2.0, size.y * 0.78);
+        // The horizon sits on the dome's flat edge: the sun rises
+        // over the card's bottom line.
+        let center = Vec2::<Pixels>::new(size.x / 2.0, size.y - 4.0);
         let radius = Pixels::new(size.x.min(size.y) * 0.26);
         // The sun: a half-disc peeking over the horizon.
         context.arc(center.x, center.y, radius.as_f64(), PI, 0.0);

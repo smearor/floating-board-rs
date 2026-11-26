@@ -519,15 +519,32 @@ impl CardImpl {
         // A dome does not flex: minimum == natural keeps the bounding
         // box stable (the parent layer allocates at the minimum
         // width).
+        // The measure must reserve the same chrome insets the
+        // allocation applies - otherwise the content extent shrinks
+        // below the child's natural size and GTK clips it.
+        let (ring, bottom_inset) = self.dome_insets();
         let radius = self
             .circle_content
             .get()
-            .dome_radius_for(f64::from(natural_width), f64::from(natural_height), CIRCLE_RING_BAND);
+            .dome_radius_for(f64::from(natural_width), f64::from(natural_height), ring, bottom_inset);
         let extent = match orientation {
             Orientation::Horizontal => 2.0 * radius,
             _ => radius,
         };
         (extent.ceil() as i32, extent.ceil() as i32, -1, -1)
+    }
+
+    /// The dome's chrome insets `(ring, bottom_inset)`: `ring`
+    /// reserves the arc band's width inside the rim, `bottom_inset`
+    /// lifts the content onto the straight bar's top. While folded
+    /// both bands are hidden and reserve nothing.
+    fn dome_insets(&self) -> (f64, f64) {
+        if self.folded.get() {
+            return (CIRCLE_RING_BAND, 0.0);
+        }
+        let ring = CIRCLE_RING_BAND + if self.arc_items.borrow().is_empty() { 0.0 } else { ARC_CHROME_BAND };
+        let bottom_inset = if self.bar_items.borrow().is_empty() { 0.0 } else { ARC_CHROME_BAND };
+        (ring, bottom_inset)
     }
 
     /// `Semicircle` allocate: the dome's virtual circle centers at
@@ -544,9 +561,10 @@ impl CardImpl {
         // Each painted band pushes the content inward: the arc band
         // grows the ring (the band rides the dome's rim), the straight
         // bar lifts the content's bottom edge onto the bar's top.
-        let ring = CIRCLE_RING_BAND + if arc_items.is_empty() { 0.0 } else { ARC_CHROME_BAND };
-        let bottom_inset = if bar_items.is_empty() { 0.0 } else { ARC_CHROME_BAND };
-        let (content_width, content_height) = self.circle_content.get().dome_content_for(radius, ring);
+        // `dome_insets` mirrors `semicircle_measure` - folded cards
+        // keep their full dome for the folded pane.
+        let (ring, bottom_inset) = self.dome_insets();
+        let (content_width, content_height) = self.circle_content.get().dome_content_for(radius, ring, bottom_inset);
         let transform = Transform::new().translate(&Point::new((width / 2.0 - content_width / 2.0) as f32, (height - content_height - bottom_inset) as f32));
         let (content_width, content_height) = (content_width.ceil() as i32, content_height.ceil() as i32);
         let slots: Vec<ChromeSlot> = arc_items.iter().map(|(_, slot)| *slot).collect();
