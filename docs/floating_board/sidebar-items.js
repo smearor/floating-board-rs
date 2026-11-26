@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["domain","widget"],"struct":["Fraction"]};
+window.SIDEBAR_ITEMS = {"mod":["domain","widget"]};

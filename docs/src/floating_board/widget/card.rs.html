@@ -425,166 +425,174 @@
 <a href=#425 id=425 data-nosnippet>425</a>            }
 <a href=#426 id=426 data-nosnippet>426</a>            holder.set_visible(!folded);
 <a href=#427 id=427 data-nosnippet>427</a>        }
-<a href=#428 id=428 data-nosnippet>428</a>        <span class="comment">// A custom folded widget replaces the header too; restore it on
-<a href=#429 id=429 data-nosnippet>429</a>        // unfold (the header is always visible while unfolded, also in
-<a href=#430 id=430 data-nosnippet>430</a>        // headerless mode where CSS slims it).
-<a href=#431 id=431 data-nosnippet>431</a>        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(header) = imp.header.get()
-<a href=#432 id=432 data-nosnippet>432</a>            &amp;&amp; collapsed
-<a href=#433 id=433 data-nosnippet>433</a>        {
-<a href=#434 id=434 data-nosnippet>434</a>            header.set_visible(!folded &amp;&amp; imp.header_shown.get());
+<a href=#428 id=428 data-nosnippet>428</a>        <span class="comment">// Arc chrome belongs to the circle card's full presentation -
+<a href=#429 id=429 data-nosnippet>429</a>        // a folded disc shows its folded holder alone.
+<a href=#430 id=430 data-nosnippet>430</a>        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(band) = imp.arc_band.get() {
+<a href=#431 id=431 data-nosnippet>431</a>            band.set_visible(!folded);
+<a href=#432 id=432 data-nosnippet>432</a>        }
+<a href=#433 id=433 data-nosnippet>433</a>        <span class="kw">for </span>(widget, <span class="kw">_</span>) <span class="kw">in </span>imp.arc_items.borrow().iter() {
+<a href=#434 id=434 data-nosnippet>434</a>            widget.set_visible(!folded);
 <a href=#435 id=435 data-nosnippet>435</a>        }
-<a href=#436 id=436 data-nosnippet>436</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(holder) = imp.folded_holder.get() {
-<a href=#437 id=437 data-nosnippet>437</a>            holder.set_visible(folded &amp;&amp; collapsed);
-<a href=#438 id=438 data-nosnippet>438</a>        }
-<a href=#439 id=439 data-nosnippet>439</a>        <span class="comment">// The folded pane is an overlay child of the stage and never
-<a href=#440 id=440 data-nosnippet>440</a>        // claims layout space - a collapsed card's size must be pinned
-<a href=#441 id=441 data-nosnippet>441</a>        // to the folded presentation's natural measure explicitly.
-<a href=#442 id=442 data-nosnippet>442</a>        </span><span class="kw">if </span>folded &amp;&amp; collapsed {
-<a href=#443 id=443 data-nosnippet>443</a>            <span class="kw">if </span>imp.shape.get() == CardShape::Circle {
-<a href=#444 id=444 data-nosnippet>444</a>                <span class="kw">let </span>(<span class="kw">_</span>, natural_width, <span class="kw">_</span>, natural_height) = imp.circle_measure();
-<a href=#445 id=445 data-nosnippet>445</a>                <span class="self">self</span>.set_size_request(natural_width, natural_height);
-<a href=#446 id=446 data-nosnippet>446</a>            } <span class="kw">else if let </span><span class="prelude-val">Some</span>(holder) = imp.folded_holder.get() {
-<a href=#447 id=447 data-nosnippet>447</a>                <span class="kw">let </span>(<span class="kw">_</span>, natural_width, <span class="kw">_</span>, <span class="kw">_</span>) = holder.measure(Orientation::Horizontal, -<span class="number">1</span>);
-<a href=#448 id=448 data-nosnippet>448</a>                <span class="kw">let </span>(<span class="kw">_</span>, natural_height, <span class="kw">_</span>, <span class="kw">_</span>) = holder.measure(Orientation::Vertical, -<span class="number">1</span>);
-<a href=#449 id=449 data-nosnippet>449</a>                <span class="self">self</span>.set_size_request(natural_width, natural_height);
-<a href=#450 id=450 data-nosnippet>450</a>            }
-<a href=#451 id=451 data-nosnippet>451</a>        } <span class="kw">else if </span>!folded {
-<a href=#452 id=452 data-nosnippet>452</a>            <span class="self">self</span>.set_size_request(-<span class="number">1</span>, -<span class="number">1</span>);
-<a href=#453 id=453 data-nosnippet>453</a>        }
-<a href=#454 id=454 data-nosnippet>454</a>        <span class="comment">// The grips sit on the content overlay - hide them while folded.
-<a href=#455 id=455 data-nosnippet>455</a>        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(grip) = imp.resize_grip.get() {
-<a href=#456 id=456 data-nosnippet>456</a>            grip.set_visible(!folded &amp;&amp; imp.resizable.get());
-<a href=#457 id=457 data-nosnippet>457</a>        }
-<a href=#458 id=458 data-nosnippet>458</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(grip) = imp.rotate_grip.get() {
-<a href=#459 id=459 data-nosnippet>459</a>            grip.set_visible(!folded &amp;&amp; imp.rotate_grip_enabled.get());
-<a href=#460 id=460 data-nosnippet>460</a>        }
-<a href=#461 id=461 data-nosnippet>461</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(button) = imp.fold_button.get() {
-<a href=#462 id=462 data-nosnippet>462</a>            <span class="comment">// Only the builtin `go-*` icon pair toggles - adwaita and
-<a href=#463 id=463 data-nosnippet>463</a>            // satellite minimize buttons keep their symbolic icon.
-<a href=#464 id=464 data-nosnippet>464</a>            </span><span class="kw">if </span>button.icon_name().is_some_and(|icon| icon.starts_with(<span class="string">"go-"</span>)) {
-<a href=#465 id=465 data-nosnippet>465</a>                button.set_icon_name(<span class="kw">if </span>folded { <span class="string">"go-up-symbolic" </span>} <span class="kw">else </span>{ <span class="string">"go-down-symbolic" </span>});
-<a href=#466 id=466 data-nosnippet>466</a>            }
-<a href=#467 id=467 data-nosnippet>467</a>            button.set_tooltip_text(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>l10n().message(<span class="kw">if </span>folded { <span class="string">"card-unfold" </span>} <span class="kw">else </span>{ <span class="string">"card-fold" </span>})));
+<a href=#436 id=436 data-nosnippet>436</a>        <span class="comment">// A custom folded widget replaces the header too; restore it on
+<a href=#437 id=437 data-nosnippet>437</a>        // unfold (the header is always visible while unfolded, also in
+<a href=#438 id=438 data-nosnippet>438</a>        // headerless mode where CSS slims it).
+<a href=#439 id=439 data-nosnippet>439</a>        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(header) = imp.header.get()
+<a href=#440 id=440 data-nosnippet>440</a>            &amp;&amp; collapsed
+<a href=#441 id=441 data-nosnippet>441</a>        {
+<a href=#442 id=442 data-nosnippet>442</a>            header.set_visible(!folded &amp;&amp; imp.header_shown.get());
+<a href=#443 id=443 data-nosnippet>443</a>        }
+<a href=#444 id=444 data-nosnippet>444</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(holder) = imp.folded_holder.get() {
+<a href=#445 id=445 data-nosnippet>445</a>            holder.set_visible(folded &amp;&amp; collapsed);
+<a href=#446 id=446 data-nosnippet>446</a>        }
+<a href=#447 id=447 data-nosnippet>447</a>        <span class="comment">// The folded pane is an overlay child of the stage and never
+<a href=#448 id=448 data-nosnippet>448</a>        // claims layout space - a collapsed card's size must be pinned
+<a href=#449 id=449 data-nosnippet>449</a>        // to the folded presentation's natural measure explicitly.
+<a href=#450 id=450 data-nosnippet>450</a>        </span><span class="kw">if </span>folded &amp;&amp; collapsed {
+<a href=#451 id=451 data-nosnippet>451</a>            <span class="kw">if </span>imp.shape.get() == CardShape::Circle {
+<a href=#452 id=452 data-nosnippet>452</a>                <span class="kw">let </span>(<span class="kw">_</span>, natural_width, <span class="kw">_</span>, natural_height) = imp.circle_measure();
+<a href=#453 id=453 data-nosnippet>453</a>                <span class="self">self</span>.set_size_request(natural_width, natural_height);
+<a href=#454 id=454 data-nosnippet>454</a>            } <span class="kw">else if let </span><span class="prelude-val">Some</span>(holder) = imp.folded_holder.get() {
+<a href=#455 id=455 data-nosnippet>455</a>                <span class="kw">let </span>(<span class="kw">_</span>, natural_width, <span class="kw">_</span>, <span class="kw">_</span>) = holder.measure(Orientation::Horizontal, -<span class="number">1</span>);
+<a href=#456 id=456 data-nosnippet>456</a>                <span class="kw">let </span>(<span class="kw">_</span>, natural_height, <span class="kw">_</span>, <span class="kw">_</span>) = holder.measure(Orientation::Vertical, -<span class="number">1</span>);
+<a href=#457 id=457 data-nosnippet>457</a>                <span class="self">self</span>.set_size_request(natural_width, natural_height);
+<a href=#458 id=458 data-nosnippet>458</a>            }
+<a href=#459 id=459 data-nosnippet>459</a>        } <span class="kw">else if </span>!folded {
+<a href=#460 id=460 data-nosnippet>460</a>            <span class="self">self</span>.set_size_request(-<span class="number">1</span>, -<span class="number">1</span>);
+<a href=#461 id=461 data-nosnippet>461</a>        }
+<a href=#462 id=462 data-nosnippet>462</a>        <span class="comment">// The grips sit on the content overlay - hide them while folded.
+<a href=#463 id=463 data-nosnippet>463</a>        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(grip) = imp.resize_grip.get() {
+<a href=#464 id=464 data-nosnippet>464</a>            grip.set_visible(!folded &amp;&amp; imp.resizable.get());
+<a href=#465 id=465 data-nosnippet>465</a>        }
+<a href=#466 id=466 data-nosnippet>466</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(grip) = imp.rotate_grip.get() {
+<a href=#467 id=467 data-nosnippet>467</a>            grip.set_visible(!folded &amp;&amp; imp.rotate_grip_enabled.get());
 <a href=#468 id=468 data-nosnippet>468</a>        }
-<a href=#469 id=469 data-nosnippet>469</a>        <span class="kw">if </span>folded {
-<a href=#470 id=470 data-nosnippet>470</a>            <span class="self">self</span>.add_css_class(CLASS_FOLDED);
-<a href=#471 id=471 data-nosnippet>471</a>            <span class="kw">if </span>collapsed {
-<a href=#472 id=472 data-nosnippet>472</a>                <span class="self">self</span>.add_css_class(CLASS_COLLAPSED);
-<a href=#473 id=473 data-nosnippet>473</a>            }
-<a href=#474 id=474 data-nosnippet>474</a>        } <span class="kw">else </span>{
-<a href=#475 id=475 data-nosnippet>475</a>            <span class="self">self</span>.remove_css_class(CLASS_FOLDED);
-<a href=#476 id=476 data-nosnippet>476</a>            <span class="self">self</span>.remove_css_class(CLASS_COLLAPSED);
-<a href=#477 id=477 data-nosnippet>477</a>        }
-<a href=#478 id=478 data-nosnippet>478</a>        <span class="comment">// Fold-transition handoff: restore steady-state opacity and
-<a href=#479 id=479 data-nosnippet>479</a>        // targeting on both panes (a running transition animates them).
-<a href=#480 id=480 data-nosnippet>480</a>        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(pane) = imp.content_overlay.get() {
-<a href=#481 id=481 data-nosnippet>481</a>            pane.set_opacity(<span class="number">1.0</span>);
-<a href=#482 id=482 data-nosnippet>482</a>            pane.set_can_target(<span class="bool-val">true</span>);
-<a href=#483 id=483 data-nosnippet>483</a>        }
-<a href=#484 id=484 data-nosnippet>484</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(holder) = imp.folded_holder.get() {
-<a href=#485 id=485 data-nosnippet>485</a>            holder.set_opacity(<span class="number">1.0</span>);
-<a href=#486 id=486 data-nosnippet>486</a>            holder.set_can_target(<span class="bool-val">true</span>);
-<a href=#487 id=487 data-nosnippet>487</a>        }
-<a href=#488 id=488 data-nosnippet>488</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(holder) = imp.content_holder.get() {
-<a href=#489 id=489 data-nosnippet>489</a>            holder.set_can_target(<span class="bool-val">true</span>);
-<a href=#490 id=490 data-nosnippet>490</a>        }
-<a href=#491 id=491 data-nosnippet>491</a>    }
-<a href=#492 id=492 data-nosnippet>492</a>
-<a href=#493 id=493 data-nosnippet>493</a>    <span class="doccomment">/// Whether the card is folded to its header.
-<a href=#494 id=494 data-nosnippet>494</a>    </span><span class="kw">pub fn </span>folded(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
-<a href=#495 id=495 data-nosnippet>495</a>        <span class="self">self</span>.imp().folded.get()
-<a href=#496 id=496 data-nosnippet>496</a>    }
-<a href=#497 id=497 data-nosnippet>497</a>
-<a href=#498 id=498 data-nosnippet>498</a>    <span class="doccomment">/// The card's natural size in its folded presentation, measured by
-<a href=#499 id=499 data-nosnippet>499</a>    /// applying the folded state, measuring, and restoring - all
-<a href=#500 id=500 data-nosnippet>500</a>    /// synchronously within one frame, so nothing renders the
-<a href=#501 id=501 data-nosnippet>501</a>    /// intermediate state. The fold choreography needs the folded
-<a href=#502 id=502 data-nosnippet>502</a>    /// footprint *before* the real swap when an `Overlap` morph starts
-<a href=#503 id=503 data-nosnippet>503</a>    /// mid-close.
-<a href=#504 id=504 data-nosnippet>504</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>folded_natural_size(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec2&lt;Pixels&gt; {
-<a href=#505 id=505 data-nosnippet>505</a>        <span class="self">self</span>.apply_folded_presentation(<span class="bool-val">true</span>);
-<a href=#506 id=506 data-nosnippet>506</a>        <span class="kw">let </span>(<span class="kw">_</span>, folded_natural) = <span class="self">self</span>.measure_size();
-<a href=#507 id=507 data-nosnippet>507</a>        <span class="self">self</span>.apply_folded_presentation(<span class="bool-val">false</span>);
-<a href=#508 id=508 data-nosnippet>508</a>        folded_natural.to_f64().with_unit::&lt;Pixels&gt;()
-<a href=#509 id=509 data-nosnippet>509</a>    }
-<a href=#510 id=510 data-nosnippet>510</a>
-<a href=#511 id=511 data-nosnippet>511</a>    <span class="doccomment">/// Rotated footprint of the card in widget (rendered) coordinates.
-<a href=#512 id=512 data-nosnippet>512</a>    ///
-<a href=#513 id=513 data-nosnippet>513</a>    /// The union of all card footprints forms the dynamic safe-area of the
-<a href=#514 id=514 data-nosnippet>514</a>    /// board (used e.g. by robofigure to avoid drawing under cards).
-<a href=#515 id=515 data-nosnippet>515</a>    </span><span class="kw">pub fn </span>footprint(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Region {
-<a href=#516 id=516 data-nosnippet>516</a>        <span class="self">self</span>.board()
-<a href=#517 id=517 data-nosnippet>517</a>            .and_then(|board| board.card_footprint(<span class="kw-2">&amp;</span><span class="self">self</span>.id()).ok())
-<a href=#518 id=518 data-nosnippet>518</a>            .unwrap_or_else(Region::create)
-<a href=#519 id=519 data-nosnippet>519</a>    }
-<a href=#520 id=520 data-nosnippet>520</a>
-<a href=#521 id=521 data-nosnippet>521</a>    <span class="doccomment">/// The consumer content widget of this card.
-<a href=#522 id=522 data-nosnippet>522</a>    </span><span class="kw">pub fn </span>content(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;Widget&gt; {
-<a href=#523 id=523 data-nosnippet>523</a>        <span class="self">self</span>.imp().content_holder.get().and_then(|holder| holder.first_child())
-<a href=#524 id=524 data-nosnippet>524</a>    }
-<a href=#525 id=525 data-nosnippet>525</a>
-<a href=#526 id=526 data-nosnippet>526</a>    <span class="doccomment">/// Emits `card-moved` (called by the board at drag end).
-<a href=#527 id=527 data-nosnippet>527</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_card_moved(<span class="kw-2">&amp;</span><span class="self">self</span>) {
-<a href=#528 id=528 data-nosnippet>528</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(CardSignal::Moved.name(), <span class="kw-2">&amp;</span>[]);
-<a href=#529 id=529 data-nosnippet>529</a>    }
-<a href=#530 id=530 data-nosnippet>530</a>
-<a href=#531 id=531 data-nosnippet>531</a>    <span class="doccomment">/// Emits `card-rotated` (called by the board on rotation changes).
-<a href=#532 id=532 data-nosnippet>532</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_card_rotated(<span class="kw-2">&amp;</span><span class="self">self</span>) {
-<a href=#533 id=533 data-nosnippet>533</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(CardSignal::Rotated.name(), <span class="kw-2">&amp;</span>[]);
-<a href=#534 id=534 data-nosnippet>534</a>    }
-<a href=#535 id=535 data-nosnippet>535</a>
-<a href=#536 id=536 data-nosnippet>536</a>    <span class="doccomment">/// Emits `card-scaled` (called by the board at pinch end).
-<a href=#537 id=537 data-nosnippet>537</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_card_scaled(<span class="kw-2">&amp;</span><span class="self">self</span>) {
-<a href=#538 id=538 data-nosnippet>538</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(CardSignal::Scaled.name(), <span class="kw-2">&amp;</span>[]);
-<a href=#539 id=539 data-nosnippet>539</a>    }
-<a href=#540 id=540 data-nosnippet>540</a>
-<a href=#541 id=541 data-nosnippet>541</a>    <span class="doccomment">/// Emits `card-raised` (called by the board on raise).
-<a href=#542 id=542 data-nosnippet>542</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_card_raised(<span class="kw-2">&amp;</span><span class="self">self</span>) {
-<a href=#543 id=543 data-nosnippet>543</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(CardSignal::Raised.name(), <span class="kw-2">&amp;</span>[]);
-<a href=#544 id=544 data-nosnippet>544</a>    }
-<a href=#545 id=545 data-nosnippet>545</a>
-<a href=#546 id=546 data-nosnippet>546</a>    <span class="doccomment">/// Emits `card-seat-changed` (called by the board when the seat
-<a href=#547 id=547 data-nosnippet>547</a>    /// assignment changes).
-<a href=#548 id=548 data-nosnippet>548</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_card_seat_changed(<span class="kw-2">&amp;</span><span class="self">self</span>) {
-<a href=#549 id=549 data-nosnippet>549</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(CardSignal::SeatChanged.name(), <span class="kw-2">&amp;</span>[]);
-<a href=#550 id=550 data-nosnippet>550</a>    }
-<a href=#551 id=551 data-nosnippet>551</a>
-<a href=#552 id=552 data-nosnippet>552</a>    <span class="doccomment">/// Widget acting as the bottom-right resize affordance, if built.
-<a href=#553 id=553 data-nosnippet>553</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>resize_grip(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;Widget&gt; {
-<a href=#554 id=554 data-nosnippet>554</a>        <span class="self">self</span>.imp().resize_grip.get().cloned().map(|grip| grip.upcast())
-<a href=#555 id=555 data-nosnippet>555</a>    }
-<a href=#556 id=556 data-nosnippet>556</a>
-<a href=#557 id=557 data-nosnippet>557</a>    <span class="doccomment">/// Widget acting as the bottom-left rotate affordance, if built.
-<a href=#558 id=558 data-nosnippet>558</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>rotate_grip(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;Widget&gt; {
-<a href=#559 id=559 data-nosnippet>559</a>        <span class="self">self</span>.imp().rotate_grip.get().cloned().map(|grip| grip.upcast())
-<a href=#560 id=560 data-nosnippet>560</a>    }
-<a href=#561 id=561 data-nosnippet>561</a>
-<a href=#562 id=562 data-nosnippet>562</a>    <span class="doccomment">/// Widget acting as the drag affordance for the given handle mode
-<a href=#563 id=563 data-nosnippet>563</a>    /// and the card's current folded state. `WholeCardFolded` and
-<a href=#564 id=564 data-nosnippet>564</a>    /// `WholeCardUnfolded` drag the whole card in their named state and
-<a href=#565 id=565 data-nosnippet>565</a>    /// fall back to the header strip in the other - an unfolded
-<a href=#566 id=566 data-nosnippet>566</a>    /// `WholeCardFolded` card keeps its interactive content usable.
-<a href=#567 id=567 data-nosnippet>567</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>drag_source(<span class="kw-2">&amp;</span><span class="self">self</span>, drag_handle: DragHandle) -&gt; Widget {
-<a href=#568 id=568 data-nosnippet>568</a>        <span class="kw">let </span>folded = <span class="self">self</span>.imp().folded.get();
-<a href=#569 id=569 data-nosnippet>569</a>        <span class="kw">let </span>whole_card = <span class="kw">match </span>drag_handle {
-<a href=#570 id=570 data-nosnippet>570</a>            DragHandle::WholeCard =&gt; <span class="bool-val">true</span>,
-<a href=#571 id=571 data-nosnippet>571</a>            DragHandle::WholeCardFolded =&gt; folded,
-<a href=#572 id=572 data-nosnippet>572</a>            DragHandle::WholeCardUnfolded =&gt; !folded,
-<a href=#573 id=573 data-nosnippet>573</a>            DragHandle::Header | DragHandle::Handle =&gt; <span class="bool-val">false</span>,
-<a href=#574 id=574 data-nosnippet>574</a>        };
-<a href=#575 id=575 data-nosnippet>575</a>        <span class="kw">if </span>whole_card {
-<a href=#576 id=576 data-nosnippet>576</a>            <span class="kw">return </span><span class="self">self</span>.clone().upcast();
-<a href=#577 id=577 data-nosnippet>577</a>        }
-<a href=#578 id=578 data-nosnippet>578</a>        <span class="kw">match </span>drag_handle {
-<a href=#579 id=579 data-nosnippet>579</a>            DragHandle::Handle =&gt; <span class="self">self
-<a href=#580 id=580 data-nosnippet>580</a>                </span>.imp()
-<a href=#581 id=581 data-nosnippet>581</a>                .handle_label
-<a href=#582 id=582 data-nosnippet>582</a>                .get()
-<a href=#583 id=583 data-nosnippet>583</a>                .cloned()
-<a href=#584 id=584 data-nosnippet>584</a>                .map(|h| h.upcast())
-<a href=#585 id=585 data-nosnippet>585</a>                .unwrap_or_else(|| <span class="self">self</span>.clone().upcast()),
-<a href=#586 id=586 data-nosnippet>586</a>            <span class="kw">_ </span>=&gt; <span class="self">self</span>.imp().header.get().cloned().unwrap_or_else(|| <span class="self">self</span>.clone().upcast()),
-<a href=#587 id=587 data-nosnippet>587</a>        }
-<a href=#588 id=588 data-nosnippet>588</a>    }
-<a href=#589 id=589 data-nosnippet>589</a>}
+<a href=#469 id=469 data-nosnippet>469</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(button) = imp.fold_button.get() {
+<a href=#470 id=470 data-nosnippet>470</a>            <span class="comment">// Only the builtin `go-*` icon pair toggles - adwaita and
+<a href=#471 id=471 data-nosnippet>471</a>            // satellite minimize buttons keep their symbolic icon.
+<a href=#472 id=472 data-nosnippet>472</a>            </span><span class="kw">if </span>button.icon_name().is_some_and(|icon| icon.starts_with(<span class="string">"go-"</span>)) {
+<a href=#473 id=473 data-nosnippet>473</a>                button.set_icon_name(<span class="kw">if </span>folded { <span class="string">"go-up-symbolic" </span>} <span class="kw">else </span>{ <span class="string">"go-down-symbolic" </span>});
+<a href=#474 id=474 data-nosnippet>474</a>            }
+<a href=#475 id=475 data-nosnippet>475</a>            button.set_tooltip_text(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>l10n().message(<span class="kw">if </span>folded { <span class="string">"card-unfold" </span>} <span class="kw">else </span>{ <span class="string">"card-fold" </span>})));
+<a href=#476 id=476 data-nosnippet>476</a>        }
+<a href=#477 id=477 data-nosnippet>477</a>        <span class="kw">if </span>folded {
+<a href=#478 id=478 data-nosnippet>478</a>            <span class="self">self</span>.add_css_class(CLASS_FOLDED);
+<a href=#479 id=479 data-nosnippet>479</a>            <span class="kw">if </span>collapsed {
+<a href=#480 id=480 data-nosnippet>480</a>                <span class="self">self</span>.add_css_class(CLASS_COLLAPSED);
+<a href=#481 id=481 data-nosnippet>481</a>            }
+<a href=#482 id=482 data-nosnippet>482</a>        } <span class="kw">else </span>{
+<a href=#483 id=483 data-nosnippet>483</a>            <span class="self">self</span>.remove_css_class(CLASS_FOLDED);
+<a href=#484 id=484 data-nosnippet>484</a>            <span class="self">self</span>.remove_css_class(CLASS_COLLAPSED);
+<a href=#485 id=485 data-nosnippet>485</a>        }
+<a href=#486 id=486 data-nosnippet>486</a>        <span class="comment">// Fold-transition handoff: restore steady-state opacity and
+<a href=#487 id=487 data-nosnippet>487</a>        // targeting on both panes (a running transition animates them).
+<a href=#488 id=488 data-nosnippet>488</a>        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(pane) = imp.content_overlay.get() {
+<a href=#489 id=489 data-nosnippet>489</a>            pane.set_opacity(<span class="number">1.0</span>);
+<a href=#490 id=490 data-nosnippet>490</a>            pane.set_can_target(<span class="bool-val">true</span>);
+<a href=#491 id=491 data-nosnippet>491</a>        }
+<a href=#492 id=492 data-nosnippet>492</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(holder) = imp.folded_holder.get() {
+<a href=#493 id=493 data-nosnippet>493</a>            holder.set_opacity(<span class="number">1.0</span>);
+<a href=#494 id=494 data-nosnippet>494</a>            holder.set_can_target(<span class="bool-val">true</span>);
+<a href=#495 id=495 data-nosnippet>495</a>        }
+<a href=#496 id=496 data-nosnippet>496</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(holder) = imp.content_holder.get() {
+<a href=#497 id=497 data-nosnippet>497</a>            holder.set_can_target(<span class="bool-val">true</span>);
+<a href=#498 id=498 data-nosnippet>498</a>        }
+<a href=#499 id=499 data-nosnippet>499</a>    }
+<a href=#500 id=500 data-nosnippet>500</a>
+<a href=#501 id=501 data-nosnippet>501</a>    <span class="doccomment">/// Whether the card is folded to its header.
+<a href=#502 id=502 data-nosnippet>502</a>    </span><span class="kw">pub fn </span>folded(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+<a href=#503 id=503 data-nosnippet>503</a>        <span class="self">self</span>.imp().folded.get()
+<a href=#504 id=504 data-nosnippet>504</a>    }
+<a href=#505 id=505 data-nosnippet>505</a>
+<a href=#506 id=506 data-nosnippet>506</a>    <span class="doccomment">/// The card's natural size in its folded presentation, measured by
+<a href=#507 id=507 data-nosnippet>507</a>    /// applying the folded state, measuring, and restoring - all
+<a href=#508 id=508 data-nosnippet>508</a>    /// synchronously within one frame, so nothing renders the
+<a href=#509 id=509 data-nosnippet>509</a>    /// intermediate state. The fold choreography needs the folded
+<a href=#510 id=510 data-nosnippet>510</a>    /// footprint *before* the real swap when an `Overlap` morph starts
+<a href=#511 id=511 data-nosnippet>511</a>    /// mid-close.
+<a href=#512 id=512 data-nosnippet>512</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>folded_natural_size(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec2&lt;Pixels&gt; {
+<a href=#513 id=513 data-nosnippet>513</a>        <span class="self">self</span>.apply_folded_presentation(<span class="bool-val">true</span>);
+<a href=#514 id=514 data-nosnippet>514</a>        <span class="kw">let </span>(<span class="kw">_</span>, folded_natural) = <span class="self">self</span>.measure_size();
+<a href=#515 id=515 data-nosnippet>515</a>        <span class="self">self</span>.apply_folded_presentation(<span class="bool-val">false</span>);
+<a href=#516 id=516 data-nosnippet>516</a>        folded_natural.to_f64().with_unit::&lt;Pixels&gt;()
+<a href=#517 id=517 data-nosnippet>517</a>    }
+<a href=#518 id=518 data-nosnippet>518</a>
+<a href=#519 id=519 data-nosnippet>519</a>    <span class="doccomment">/// Rotated footprint of the card in widget (rendered) coordinates.
+<a href=#520 id=520 data-nosnippet>520</a>    ///
+<a href=#521 id=521 data-nosnippet>521</a>    /// The union of all card footprints forms the dynamic safe-area of the
+<a href=#522 id=522 data-nosnippet>522</a>    /// board (used e.g. by robofigure to avoid drawing under cards).
+<a href=#523 id=523 data-nosnippet>523</a>    </span><span class="kw">pub fn </span>footprint(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Region {
+<a href=#524 id=524 data-nosnippet>524</a>        <span class="self">self</span>.board()
+<a href=#525 id=525 data-nosnippet>525</a>            .and_then(|board| board.card_footprint(<span class="kw-2">&amp;</span><span class="self">self</span>.id()).ok())
+<a href=#526 id=526 data-nosnippet>526</a>            .unwrap_or_else(Region::create)
+<a href=#527 id=527 data-nosnippet>527</a>    }
+<a href=#528 id=528 data-nosnippet>528</a>
+<a href=#529 id=529 data-nosnippet>529</a>    <span class="doccomment">/// The consumer content widget of this card.
+<a href=#530 id=530 data-nosnippet>530</a>    </span><span class="kw">pub fn </span>content(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;Widget&gt; {
+<a href=#531 id=531 data-nosnippet>531</a>        <span class="self">self</span>.imp().content_holder.get().and_then(|holder| holder.first_child())
+<a href=#532 id=532 data-nosnippet>532</a>    }
+<a href=#533 id=533 data-nosnippet>533</a>
+<a href=#534 id=534 data-nosnippet>534</a>    <span class="doccomment">/// Emits `card-moved` (called by the board at drag end).
+<a href=#535 id=535 data-nosnippet>535</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_card_moved(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+<a href=#536 id=536 data-nosnippet>536</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(CardSignal::Moved.name(), <span class="kw-2">&amp;</span>[]);
+<a href=#537 id=537 data-nosnippet>537</a>    }
+<a href=#538 id=538 data-nosnippet>538</a>
+<a href=#539 id=539 data-nosnippet>539</a>    <span class="doccomment">/// Emits `card-rotated` (called by the board on rotation changes).
+<a href=#540 id=540 data-nosnippet>540</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_card_rotated(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+<a href=#541 id=541 data-nosnippet>541</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(CardSignal::Rotated.name(), <span class="kw-2">&amp;</span>[]);
+<a href=#542 id=542 data-nosnippet>542</a>    }
+<a href=#543 id=543 data-nosnippet>543</a>
+<a href=#544 id=544 data-nosnippet>544</a>    <span class="doccomment">/// Emits `card-scaled` (called by the board at pinch end).
+<a href=#545 id=545 data-nosnippet>545</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_card_scaled(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+<a href=#546 id=546 data-nosnippet>546</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(CardSignal::Scaled.name(), <span class="kw-2">&amp;</span>[]);
+<a href=#547 id=547 data-nosnippet>547</a>    }
+<a href=#548 id=548 data-nosnippet>548</a>
+<a href=#549 id=549 data-nosnippet>549</a>    <span class="doccomment">/// Emits `card-raised` (called by the board on raise).
+<a href=#550 id=550 data-nosnippet>550</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_card_raised(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+<a href=#551 id=551 data-nosnippet>551</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(CardSignal::Raised.name(), <span class="kw-2">&amp;</span>[]);
+<a href=#552 id=552 data-nosnippet>552</a>    }
+<a href=#553 id=553 data-nosnippet>553</a>
+<a href=#554 id=554 data-nosnippet>554</a>    <span class="doccomment">/// Emits `card-seat-changed` (called by the board when the seat
+<a href=#555 id=555 data-nosnippet>555</a>    /// assignment changes).
+<a href=#556 id=556 data-nosnippet>556</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>emit_card_seat_changed(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+<a href=#557 id=557 data-nosnippet>557</a>        <span class="self">self</span>.emit_by_name::&lt;()&gt;(CardSignal::SeatChanged.name(), <span class="kw-2">&amp;</span>[]);
+<a href=#558 id=558 data-nosnippet>558</a>    }
+<a href=#559 id=559 data-nosnippet>559</a>
+<a href=#560 id=560 data-nosnippet>560</a>    <span class="doccomment">/// Widget acting as the bottom-right resize affordance, if built.
+<a href=#561 id=561 data-nosnippet>561</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>resize_grip(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;Widget&gt; {
+<a href=#562 id=562 data-nosnippet>562</a>        <span class="self">self</span>.imp().resize_grip.get().cloned().map(|grip| grip.upcast())
+<a href=#563 id=563 data-nosnippet>563</a>    }
+<a href=#564 id=564 data-nosnippet>564</a>
+<a href=#565 id=565 data-nosnippet>565</a>    <span class="doccomment">/// Widget acting as the bottom-left rotate affordance, if built.
+<a href=#566 id=566 data-nosnippet>566</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>rotate_grip(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;Widget&gt; {
+<a href=#567 id=567 data-nosnippet>567</a>        <span class="self">self</span>.imp().rotate_grip.get().cloned().map(|grip| grip.upcast())
+<a href=#568 id=568 data-nosnippet>568</a>    }
+<a href=#569 id=569 data-nosnippet>569</a>
+<a href=#570 id=570 data-nosnippet>570</a>    <span class="doccomment">/// Widget acting as the drag affordance for the given handle mode
+<a href=#571 id=571 data-nosnippet>571</a>    /// and the card's current folded state. `WholeCardFolded` and
+<a href=#572 id=572 data-nosnippet>572</a>    /// `WholeCardUnfolded` drag the whole card in their named state and
+<a href=#573 id=573 data-nosnippet>573</a>    /// fall back to the header strip in the other - an unfolded
+<a href=#574 id=574 data-nosnippet>574</a>    /// `WholeCardFolded` card keeps its interactive content usable.
+<a href=#575 id=575 data-nosnippet>575</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>drag_source(<span class="kw-2">&amp;</span><span class="self">self</span>, drag_handle: DragHandle) -&gt; Widget {
+<a href=#576 id=576 data-nosnippet>576</a>        <span class="kw">let </span>folded = <span class="self">self</span>.imp().folded.get();
+<a href=#577 id=577 data-nosnippet>577</a>        <span class="kw">let </span>whole_card = <span class="kw">match </span>drag_handle {
+<a href=#578 id=578 data-nosnippet>578</a>            DragHandle::WholeCard =&gt; <span class="bool-val">true</span>,
+<a href=#579 id=579 data-nosnippet>579</a>            DragHandle::WholeCardFolded =&gt; folded,
+<a href=#580 id=580 data-nosnippet>580</a>            DragHandle::WholeCardUnfolded =&gt; !folded,
+<a href=#581 id=581 data-nosnippet>581</a>            DragHandle::Header | DragHandle::Handle =&gt; <span class="bool-val">false</span>,
+<a href=#582 id=582 data-nosnippet>582</a>        };
+<a href=#583 id=583 data-nosnippet>583</a>        <span class="kw">if </span>whole_card {
+<a href=#584 id=584 data-nosnippet>584</a>            <span class="kw">return </span><span class="self">self</span>.clone().upcast();
+<a href=#585 id=585 data-nosnippet>585</a>        }
+<a href=#586 id=586 data-nosnippet>586</a>        <span class="kw">match </span>drag_handle {
+<a href=#587 id=587 data-nosnippet>587</a>            DragHandle::Handle =&gt; <span class="self">self
+<a href=#588 id=588 data-nosnippet>588</a>                </span>.imp()
+<a href=#589 id=589 data-nosnippet>589</a>                .handle_label
+<a href=#590 id=590 data-nosnippet>590</a>                .get()
+<a href=#591 id=591 data-nosnippet>591</a>                .cloned()
+<a href=#592 id=592 data-nosnippet>592</a>                .map(|h| h.upcast())
+<a href=#593 id=593 data-nosnippet>593</a>                .unwrap_or_else(|| <span class="self">self</span>.clone().upcast()),
+<a href=#594 id=594 data-nosnippet>594</a>            <span class="kw">_ </span>=&gt; <span class="self">self</span>.imp().header.get().cloned().unwrap_or_else(|| <span class="self">self</span>.clone().upcast()),
+<a href=#595 id=595 data-nosnippet>595</a>        }
+<a href=#596 id=596 data-nosnippet>596</a>    }
+<a href=#597 id=597 data-nosnippet>597</a>}
 </code></pre></div></section></main></body></html>

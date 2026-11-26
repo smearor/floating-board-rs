@@ -18,7 +18,7 @@ its own rotation through the zoom dip - rotation starts and
 ends at the same angle but sweeps the transition.</p>
 </div></div><h2 id="implementations" class="section-header">Implementations<a href="#implementations" class="anchor">§</a></h2><div id="implementations-list"><details class="toggle implementors-toggle" open><summary><section id="impl-CardFoldAnimation" class="impl"><a class="src rightside" href="../../src/floating_board/domain/card/fold_animation/card_fold_animation.rs.html#32-52">Source</a><a href="#impl-CardFoldAnimation" class="anchor">§</a><h3 class="code-header">impl <a class="enum" href="enum.CardFoldAnimation.html" title="enum floating_board::domain::CardFoldAnimation">CardFoldAnimation</a></h3></section></summary><div class="impl-items"><details class="toggle method-toggle" open><summary><section id="method.pose" class="method"><a class="src rightside" href="../../src/floating_board/domain/card/fold_animation/card_fold_animation.rs.html#37-51">Source</a><h4 class="code-header">pub fn <a href="#method.pose" class="fn">pose</a>(
     &amp;self,
-    t: <a class="struct" href="../struct.Fraction.html" title="struct floating_board::Fraction">Fraction</a>,
+    t: Fraction,
     from: Vec2&lt;Pixels&gt;,
     to: Vec2&lt;Pixels&gt;,
 ) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.100.0/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="struct.FoldPose.html" title="struct floating_board::domain::FoldPose">FoldPose</a>&gt;</h4></section></summary><div class="docblock"><p>The animated pose at eased progress <code>t</code> (<code>Fraction::ZERO</code> =
