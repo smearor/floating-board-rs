@@ -24,6 +24,7 @@ use gtk4::subclass::prelude::LayoutManagerImpl;
 use gtk4::subclass::prelude::ObjectImpl;
 use gtk4::subclass::prelude::ObjectSubclass;
 use gtk4::subclass::prelude::OrientableImpl;
+use smearor_commons_geometry::Size;
 use std::cell::Cell;
 
 /// Implementation of [`CardShapeLayout`].
@@ -114,7 +115,7 @@ impl LayoutManagerImpl for CardShapeLayoutImpl {
             // allocated diameter); the margin around it renders the ring.
             Some(CardShape::Circle) => {
                 if let Some(card) = widget.downcast_ref::<Card>() {
-                    card.imp().circle_allocate(width, height, baseline);
+                    card.imp().circle_allocate(Size::new(width, height), baseline);
                 }
             }
             _ => self.box_layout.allocate(widget, width, height, baseline),

@@ -387,8 +387,8 @@ fn arc_band(card: &Card) -> DrawingArea {
         if radius <= 0.0 {
             return;
         }
-        let top_half_span = card.imp().arc_span.get().as_f64() / 2.0;
-        let bottom_half_span = card.imp().arc_bottom_span.get().as_f64() / 2.0;
+        let top_half_span = card.imp().arc_span.get() / 2.0;
+        let bottom_half_span = card.imp().arc_bottom_span.get() / 2.0;
         let items = card.imp().arc_items.borrow();
         let has_top = items.iter().any(|(_, slot)| slot.placement.is_top_arc());
         let has_bottom = items.iter().any(|(_, slot)| slot.placement.is_bottom_arc());
@@ -401,7 +401,13 @@ fn arc_band(card: &Card) -> DrawingArea {
         // (top) and +90° (bottom), each `arc_span`/`arc_bottom_span` wide.
         for (center, present, half_span) in [(-FRAC_PI_2, has_top, top_half_span), (FRAC_PI_2, has_bottom, bottom_half_span)] {
             if present {
-                cr.arc(f64::from(width) / 2.0, f64::from(height) / 2.0, radius, center - half_span, center + half_span);
+                cr.arc(
+                    f64::from(width) / 2.0,
+                    f64::from(height) / 2.0,
+                    radius,
+                    center - half_span.as_f64(),
+                    center + half_span.as_f64(),
+                );
                 let _ = cr.stroke();
             }
         }

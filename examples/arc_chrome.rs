@@ -41,8 +41,12 @@ use gtk4::Orientation;
 use gtk4::glib::closure_local;
 use gtk4::prelude::*;
 use smearor_commons_color::Color;
+use smearor_commons_color::StaticPalette;
+use smearor_commons_color::palette_definition;
+use smearor_commons_color::static_palette;
 use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
 use std::f64::consts::TAU;
 use std::time::Duration;
@@ -105,53 +109,84 @@ fn build_clock(size: i32) -> gtk4::DrawingArea {
     clock
 }
 
-/// A compass dial: tick ring, cardinal letters and a north needle.
-/// Draws its own disc - mounted as `CircleContent::Inscribed`, the
-/// surrounding ring stays card chrome and the arc band reads like a
-/// header strip.
+// A compass dial: tick ring, cardinal letters and a north needle.
+// Draws its own disc - mounted as `CircleContent::Inscribed`, the
+// surrounding ring stays card chrome and the arc band reads like a
+// header strip.
+palette_definition! {
+    /// The compass dial's named colors.
+    pub enum CompassColor {
+        /// The dial's dark face, painted at 95% opacity.
+        Face => "face",
+        /// The bright lines on the dial: ring, ticks, hub and needle tails.
+        Line => "line",
+        /// The card-fixed needle - always points to the card's own top edge.
+        CardNeedle => "card-needle",
+        /// The world-fixed needle - always points to the board's top edge.
+        WorldNeedle => "world-needle"
+    }
+}
+
+/// The sRGB values of the [`CompassColor`] slots.
+static COMPASS_PALETTE: StaticPalette<CompassColor, f64> = static_palette! {
+    CompassColor::Face => Color::<f64>::new(0.16, 0.24, 0.34),
+    CompassColor::Line => Color::<f64>::new(0.85, 0.88, 0.92),
+    CompassColor::CardNeedle => Color::<f64>::new(0.18, 0.72, 0.36),
+    CompassColor::WorldNeedle => Color::<f64>::new(0.87, 0.2, 0.25),
+};
+
+/// The color registered under `slot` in the compass palette - black
+/// on a miss, unreachable while the definition stays complete.
+fn compass_color(slot: CompassColor) -> Color<f64> {
+    COMPASS_PALETTE.get_or(&slot, Color::<f64>::BLACK)
+}
+
 /// A compass needle: a `length`-long triangle pointing `angle`
-/// radians clockwise off the face's "up", plus a shorter tail on the
-/// opposite side. `angle` 0 points to the widget's top edge.
-fn paint_needle(context: &gtk4::cairo::Context, center_x: f64, center_y: f64, angle: f64, length: f64, half_width: f64, rgb: (f64, f64, f64)) {
+/// clockwise off the face's "up", plus a shorter tail on the opposite
+/// side. `RotationRad::ZERO` points to the widget's top edge.
+fn paint_needle(context: &gtk4::cairo::Context, center: Vec2<Pixels>, angle: RotationRad, length: Pixels, half_width: Pixels, color: Color<f64>) {
     let (sin, cos) = angle.sin_cos();
-    let (direction_x, direction_y) = (sin, -cos);
-    let (perp_x, perp_y) = (cos, sin);
-    for (tip, (r, g, b)) in [(length, rgb), (-length * 0.5, (0.85, 0.88, 0.92))] {
-        context.move_to(center_x - perp_x * half_width, center_y - perp_y * half_width);
-        context.line_to(center_x + direction_x * tip, center_y + direction_y * tip);
-        context.line_to(center_x + perp_x * half_width, center_y + perp_y * half_width);
+    let direction = Vec2::<Pixels>::new(sin, -cos);
+    let perp = Vec2::<Pixels>::new(cos, sin);
+    for (tip, color) in [(length, color), (length * -0.5, compass_color(CompassColor::Line))] {
+        let tip = center + direction * tip.as_f64();
+        let left = center - perp * half_width.as_f64();
+        let right = center + perp * half_width.as_f64();
+        context.move_to(left.x, left.y);
+        context.line_to(tip.x, tip.y);
+        context.line_to(right.x, right.y);
         context.close_path();
-        context.set_source_rgb(r, g, b);
+        color.apply(context);
         let _ = context.fill();
     }
 }
 
 /// Paints the compass face (dial + ticks), the green needle fixed to
 /// the card's "up" and - when `world_up` is `Some` - the red needle,
-/// rotated `world_up` radians so it keeps pointing to the board's top
-/// edge no matter how the card is rotated.
-fn paint_compass(context: &gtk4::cairo::Context, width: f64, height: f64, world_up: Option<f64>) {
-    let (center_x, center_y) = (width / 2.0, height / 2.0);
-    let radius = width.min(height) / 2.0 - 3.0;
-    context.arc(center_x, center_y, radius, 0.0, TAU);
-    context.set_source_rgba(0.16, 0.24, 0.34, 0.95);
+/// pointing `world_up` so it keeps aiming at the board's top edge no
+/// matter how the card is rotated.
+fn paint_compass(context: &gtk4::cairo::Context, size: Vec2<Pixels>, world_up: Option<RotationRad>) {
+    let center = size * 0.5;
+    let radius = Pixels::new(size.x.min(size.y) / 2.0 - 3.0);
+    context.arc(center.x, center.y, radius.as_f64(), 0.0, TAU);
+    compass_color(CompassColor::Face).apply_alpha(context, 0.95);
     let _ = context.fill_preserve();
-    context.set_source_rgb(0.85, 0.88, 0.92);
+    compass_color(CompassColor::Line).apply(context);
     context.set_line_width(2.5);
     let _ = context.stroke();
     for tick in 0..24 {
         let angle = f64::from(tick) * TAU / 24.0;
-        let inner = radius - if tick % 6 == 0 { 14.0 } else { 7.0 };
-        context.move_to(center_x + inner * angle.sin(), center_y - inner * angle.cos());
-        context.line_to(center_x + (radius - 3.0) * angle.sin(), center_y - (radius - 3.0) * angle.cos());
+        let inner = radius.as_f64() - if tick % 6 == 0 { 14.0 } else { 7.0 };
+        context.move_to(center.x + inner * angle.sin(), center.y - inner * angle.cos());
+        context.line_to(center.x + (radius.as_f64() - 3.0) * angle.sin(), center.y - (radius.as_f64() - 3.0) * angle.cos());
         let _ = context.stroke();
     }
-    paint_needle(context, center_x, center_y, 0.0, radius * 0.52, 5.0, (0.18, 0.72, 0.36));
+    paint_needle(context, center, RotationRad::ZERO, radius * 0.52, Pixels::new(5.0), compass_color(CompassColor::CardNeedle));
     if let Some(angle) = world_up {
-        paint_needle(context, center_x, center_y, angle, radius * 0.62, 6.5, (0.87, 0.2, 0.25));
+        paint_needle(context, center, angle, radius * 0.62, Pixels::new(6.5), compass_color(CompassColor::WorldNeedle));
     }
-    context.arc(center_x, center_y, 4.0, 0.0, TAU);
-    context.set_source_rgb(0.85, 0.88, 0.92);
+    context.arc(center.x, center.y, 4.0, 0.0, TAU);
+    compass_color(CompassColor::Line).apply(context);
     let _ = context.fill();
 }
 
@@ -164,7 +199,7 @@ fn build_compass(size: i32) -> gtk4::DrawingArea {
     compass.set_content_width(size);
     compass.set_content_height(size);
     compass.set_draw_func(|_area, context, width, height| {
-        paint_compass(context, f64::from(width), f64::from(height), None);
+        paint_compass(context, Vec2::<Pixels>::new(f64::from(width), f64::from(height)), None);
     });
     compass
 }
@@ -292,8 +327,8 @@ fn build_ui(application: &gtk4::Application) {
     if let Ok(card) = board.card(&CardId::new("compass")) {
         let weak_card = card.downgrade();
         compass_face.set_draw_func(move |_area, context, width, height| {
-            let world_up = weak_card.upgrade().map(|card| -card.rotation().to_rotation_rad().as_f64());
-            paint_compass(context, f64::from(width), f64::from(height), world_up);
+            let world_up = weak_card.upgrade().map(|card| -card.rotation().to_rotation_rad());
+            paint_compass(context, Vec2::<Pixels>::new(f64::from(width), f64::from(height)), world_up);
         });
         let face = compass_face.downgrade();
         card.connect_closure(

@@ -41,6 +41,7 @@ use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Radians;
 use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::Size;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
 use std::cell::Cell;
@@ -243,21 +244,21 @@ const CIRCLE_RING_BAND: f64 = 8.0;
 /// chrome items' centers ride the band's mid radius.
 pub(crate) const ARC_CHROME_BAND: f64 = 36.0;
 /// Default arc-chrome band span - the disc's top quarter (±45°).
-const ARC_HALF_SPAN: f64 = std::f64::consts::FRAC_PI_4;
+const ARC_HALF_SPAN: Radians = Radians::new(std::f64::consts::FRAC_PI_4);
 /// Angular distance kept around a centered arc `Title` at the default
 /// span (rad); `arc_angle` scales the gap with the configured span.
-const ARC_TITLE_GAP: f64 = std::f64::consts::PI / 15.0;
+const ARC_TITLE_GAP: Radians = Radians::new(std::f64::consts::PI / 15.0);
 
 /// Evenly spreads `count` directions over `[from, to]` as an `Arc`;
 /// a lone item sits at `from` - groups pack from the band's outer
 /// edge inward, like a header bar's packed ends.
-fn spread(from: f64, to: f64, index: usize, count: usize) -> RotationRad {
+fn spread(from: RotationRad, to: RotationRad, index: usize, count: usize) -> RotationRad {
     let t = if count <= 1 {
         Fraction::ZERO
     } else {
         Fraction::new(index as f64 / (count - 1) as f64)
     };
-    Arc::new(RotationRad::new(from), RotationRad::new(to - from)).at(t)
+    Arc::new(from, to - from).at(t)
 }
 
 /// Angular position of arc-chrome item `index` of `count` in the
@@ -267,21 +268,21 @@ fn spread(from: f64, to: f64, index: usize, count: usize) -> RotationRad {
 /// bar's title, and items after pack the right half from its outer
 /// edge inward - the header bar's end-pack semantics. Without a title
 /// the whole set spreads evenly over the band.
-fn arc_angle(index: usize, count: usize, title_index: Option<usize>, half_span: f64) -> RotationRad {
+fn arc_angle(index: usize, count: usize, title_index: Option<usize>, half_span: Radians) -> RotationRad {
     let title_gap = half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
     let Some(title) = title_index else {
         return if count <= 1 {
             RotationRad::ZERO
         } else {
-            spread(-half_span, half_span, index, count)
+            spread(RotationRad::from(-half_span), RotationRad::from(half_span), index, count)
         };
     };
     if index == title {
         RotationRad::ZERO
     } else if index < title {
-        spread(-half_span, -title_gap, index, title)
+        spread(RotationRad::from(-half_span), RotationRad::from(-title_gap), index, title)
     } else {
-        spread(half_span, title_gap, index - title - 1, count - title - 1)
+        spread(RotationRad::from(half_span), RotationRad::from(title_gap), index - title - 1, count - title - 1)
     }
 }
 
@@ -295,7 +296,7 @@ fn arc_angle(index: usize, count: usize, title_index: Option<usize>, half_span: 
 /// bottom). Each band spans its configured `arc_span` /
 /// `arc_bottom_span`. A top band of pure `Inline` slots keeps the
 /// legacy title-centered spread over the whole band.
-fn arc_angles(items: &[ChromeSlot], top_half_span: f64, bottom_half_span: f64) -> Vec<RotationRad> {
+fn arc_angles(items: &[ChromeSlot], top_half_span: Radians, bottom_half_span: Radians) -> Vec<RotationRad> {
     let top_gap = top_half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
     let bottom_gap = bottom_half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
     let mut zones: [Vec<usize>; 6] = Default::default();
@@ -322,33 +323,33 @@ fn arc_angles(items: &[ChromeSlot], top_half_span: f64, bottom_half_span: f64) -
         }
     } else {
         for (position, &item) in top_start.iter().enumerate() {
-            angles[item] = spread(-top_half_span, -top_gap, position, top_start.len());
+            angles[item] = spread(RotationRad::from(-top_half_span), RotationRad::from(-top_gap), position, top_start.len());
         }
         for (position, &item) in top_center.iter().enumerate() {
             angles[item] = if top_center.len() == 1 {
                 RotationRad::ZERO
             } else {
-                spread(-top_gap, top_gap, position, top_center.len())
+                spread(RotationRad::from(-top_gap), RotationRad::from(top_gap), position, top_center.len())
             };
         }
         for (position, &item) in top_end.iter().enumerate() {
-            angles[item] = spread(top_half_span, top_gap, position, top_end.len());
+            angles[item] = spread(RotationRad::from(top_half_span), RotationRad::from(top_gap), position, top_end.len());
         }
     }
-    let bottom = RotationRad::new(std::f64::consts::PI);
+    let bottom = RotationRad::HALF_TURN;
     for (position, &item) in zones[3].iter().enumerate() {
-        angles[item] = bottom + spread(-bottom_half_span, -bottom_gap, position, zones[3].len());
+        angles[item] = bottom + spread(RotationRad::from(-bottom_half_span), RotationRad::from(-bottom_gap), position, zones[3].len());
     }
     for (position, &item) in zones[4].iter().enumerate() {
         angles[item] = bottom
             + if zones[4].len() == 1 {
                 RotationRad::ZERO
             } else {
-                spread(-bottom_gap, bottom_gap, position, zones[4].len())
+                spread(RotationRad::from(-bottom_gap), RotationRad::from(bottom_gap), position, zones[4].len())
             };
     }
     for (position, &item) in zones[5].iter().enumerate() {
-        angles[item] = bottom + spread(bottom_half_span, bottom_gap, position, zones[5].len());
+        angles[item] = bottom + spread(RotationRad::from(bottom_half_span), RotationRad::from(bottom_gap), position, zones[5].len());
     }
     angles
 }
@@ -402,15 +403,15 @@ impl CardImpl {
     /// items instead keep their natural size and sit upright on the
     /// top-quarter band's mid radius (`arc_angle`). Called from
     /// `CardShapeLayout`.
-    pub(crate) fn circle_allocate(&self, width: i32, height: i32, baseline: i32) {
-        let diameter = f64::from(width.min(height));
+    pub(crate) fn circle_allocate(&self, size: Size<i32>, baseline: i32) {
+        let diameter = f64::from(size.x.min(size.y));
         let side = self.circle_content.get().content_square_for(diameter, CIRCLE_RING_BAND);
-        let transform = Transform::new().translate(&Point::new(((f64::from(width) - side) / 2.0) as f32, ((f64::from(height) - side) / 2.0) as f32));
+        let transform = Transform::new().translate(&Point::new(((f64::from(size.x) - side) / 2.0) as f32, ((f64::from(size.y) - side) / 2.0) as f32));
         let side = side.ceil() as i32;
         let arc_items = self.arc_items.borrow();
         let arc_band = self.arc_band.get();
         let slots: Vec<ChromeSlot> = arc_items.iter().map(|(_, slot)| *slot).collect();
-        let angles = arc_angles(&slots, self.arc_span.get().as_f64() / 2.0, self.arc_bottom_span.get().as_f64() / 2.0);
+        let angles = arc_angles(&slots, self.arc_span.get() / 2.0, self.arc_bottom_span.get() / 2.0);
         let arc_radius = diameter / 2.0 - ARC_CHROME_BAND / 2.0;
         let mut child = self.obj().first_child();
         while let Some(widget) = child {
@@ -418,12 +419,12 @@ impl CardImpl {
                 if arc_band.is_some_and(|band| band.upcast_ref::<Widget>() == &widget) {
                     // The painted band covers the whole disc square -
                     // its draw func clips itself to the arc sectors.
-                    widget.allocate(width, height, baseline, None);
+                    widget.allocate(size.x, size.y, baseline, None);
                 } else if let Some(index) = arc_items.iter().position(|(item, _)| *item == widget) {
                     let (_, natural) = widget.measure_size();
                     let (sin, cos) = angles[index].sin_cos();
-                    let center_x = f64::from(width) / 2.0 + arc_radius * sin;
-                    let center_y = f64::from(height) / 2.0 - arc_radius * cos;
+                    let center_x = f64::from(size.x) / 2.0 + arc_radius * sin;
+                    let center_y = f64::from(size.y) / 2.0 - arc_radius * cos;
                     let arc_transform =
                         Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
                     widget.allocate(natural.x, natural.y, baseline, Some(arc_transform));
@@ -532,7 +533,7 @@ mod tests {
         let angles = arc_angles(
             &slots(&[ChromePlacement::ArcBottomStart, ChromePlacement::ArcBottomEnd]),
             ARC_HALF_SPAN,
-            std::f64::consts::PI / 12.0,
+            Radians::new(std::f64::consts::PI / 12.0),
         );
         assert_angle(angles[0], 165.0);
         assert_angle(angles[1], 195.0);
