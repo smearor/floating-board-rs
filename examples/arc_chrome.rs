@@ -65,10 +65,10 @@ use tracing_subscriber::EnvFilter;
 /// A `DrawingArea` rendering an analog clock face, ticking once per
 /// second. Two instances exist: the dial's content and its
 /// `folded_content` (a widget has exactly one parent).
-fn build_clock(size: i32) -> gtk4::DrawingArea {
+fn build_clock(size: Pixels<i32>) -> gtk4::DrawingArea {
     let clock = gtk4::DrawingArea::new();
-    clock.set_content_width(size);
-    clock.set_content_height(size);
+    clock.set_content_width(size.as_raw());
+    clock.set_content_height(size.as_raw());
     clock.set_draw_func(|_area, context, width, height| {
         let (width, height) = (f64::from(width), f64::from(height));
         let (center_x, center_y) = (width / 2.0, height / 2.0);
@@ -285,10 +285,10 @@ fn paint_compass(context: &gtk4::cairo::Context, size: Vec2<Pixels>, world_up: O
 /// red world-fixed needle is installed by `main` once the card exists
 /// (its draw func reads `card.rotation()`). `CircleContent::Inscribed`
 /// keeps the surrounding rim chrome.
-fn build_compass(size: i32) -> gtk4::DrawingArea {
+fn build_compass(size: Pixels<i32>) -> gtk4::DrawingArea {
     let compass = gtk4::DrawingArea::new();
-    compass.set_content_width(size);
-    compass.set_content_height(size);
+    compass.set_content_width(size.as_raw());
+    compass.set_content_height(size.as_raw());
     compass.set_draw_func(|_area, context, width, height| {
         paint_compass(context, Vec2::<Pixels>::new(f64::from(width), f64::from(height)), None);
     });
@@ -299,10 +299,10 @@ fn build_compass(size: i32) -> gtk4::DrawingArea {
 /// `CircleContent::Inscribed` so the surrounding ring stays chrome.
 /// The draw func reads the shared state, so satellite clicks repaint
 /// via `queue_draw`.
-fn build_pie(size: i32, shares: Rc<RefCell<PieShares>>) -> gtk4::DrawingArea {
+fn build_pie(size: Pixels<i32>, shares: Rc<RefCell<PieShares>>) -> gtk4::DrawingArea {
     let pie = gtk4::DrawingArea::new();
-    pie.set_content_width(size);
-    pie.set_content_height(size);
+    pie.set_content_width(size.as_raw());
+    pie.set_content_height(size.as_raw());
     pie.set_draw_func(move |_area, context, width, height| {
         let (center_x, center_y) = (f64::from(width) / 2.0, f64::from(height) / 2.0);
         let radius = f64::from(width.min(height)) / 2.0 - 3.0;
@@ -390,7 +390,7 @@ fn build_ui(application: &gtk4::Application) {
     board
         .add_card_with_id(
             "dial",
-            &build_clock(280),
+            &build_clock(Pixels::new(280)),
             CardConfig {
                 title: Some("Dial".to_string()),
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(300.0, 400.0))),
@@ -403,7 +403,7 @@ fn build_ui(application: &gtk4::Application) {
                     ChromeSlot::inline(ChromeElement::RotateClockwise),
                     ChromeSlot::inline(ChromeElement::Close),
                 ]),
-                folded_content: Some(build_clock(90).upcast()),
+                folded_content: Some(build_clock(Pixels::new(90)).upcast()),
                 unfold_on_click: true,
                 drag_handle: DragHandle::WholeCard,
                 fold_animation: CardFoldAnimation::Shrink,
@@ -415,7 +415,7 @@ fn build_ui(application: &gtk4::Application) {
     // The Adwaita arc: raised circular theme buttons over the chrome
     // ring; the compass face gains its world-fixed red needle once the
     // card exists.
-    let compass_face = build_compass(200);
+    let compass_face = build_compass(Pixels::new(200));
     board
         .add_card_with_id(
             "compass",
@@ -441,7 +441,7 @@ fn build_ui(application: &gtk4::Application) {
                     ChromeSlot::bar_start(ChromeElement::Minimize),
                     ChromeSlot::bar_end(ChromeElement::Close),
                 ]),
-                folded_content: Some(build_compass(80).upcast()),
+                folded_content: Some(build_compass(Pixels::new(80)).upcast()),
                 unfold_on_click: true,
                 drag_handle: DragHandle::WholeCard,
                 ..Default::default()
@@ -482,7 +482,7 @@ fn build_ui(application: &gtk4::Application) {
     // The face and its folded mini draw from the same shares - slice
     // satellites grow (or seed) their color's slice on click.
     let pie_shares = Rc::new(RefCell::new(PieShares::INITIAL));
-    let pie_face = build_pie(150, pie_shares.clone());
+    let pie_face = build_pie(Pixels::new(150), pie_shares.clone());
     board
         .add_card_with_id(
             "pie",
@@ -502,7 +502,7 @@ fn build_ui(application: &gtk4::Application) {
                     ChromeSlot::bar(ChromeElement::Minimize),
                     ChromeSlot::bar_end(ChromeElement::NextSeat),
                 ]),
-                folded_content: Some(build_pie(60, pie_shares.clone()).upcast()),
+                folded_content: Some(build_pie(Pixels::new(60), pie_shares.clone()).upcast()),
                 unfold_on_click: true,
                 drag_handle: DragHandle::WholeCard,
                 // One dot per slice color, in draw order: blue, green

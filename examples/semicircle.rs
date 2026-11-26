@@ -43,7 +43,9 @@ use smearor_commons_color::palette_definition;
 use smearor_commons_color::static_palette;
 use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
+use std::f64::consts::FRAC_PI_2;
 use std::f64::consts::PI;
 use tracing_subscriber::EnvFilter;
 
@@ -77,19 +79,19 @@ fn dome_color(slot: DomeColor) -> Color<f64> {
 /// A `DrawingArea` rendering a speedometer face sized to the dome's
 /// bounding box (`2r x r`): the dial's virtual circle centers on the
 /// box's bottom middle, ticks fan across the rim, and the needle
-/// holds a fixed reading. `angle` is the needle's rotation clockwise
-/// off the dial's left end (-90°) - a static 40° reads mid-scale.
-fn build_gauge(width: i32) -> gtk4::DrawingArea {
+/// holds a fixed reading at mid-scale.
+fn build_gauge(width: Pixels<i32>) -> gtk4::DrawingArea {
     let gauge = gtk4::DrawingArea::new();
-    gauge.set_content_width(width);
-    gauge.set_content_height(width / 2);
+    gauge.set_content_width(width.as_raw());
+    gauge.set_content_height(width.as_raw() / 2);
     gauge.set_draw_func(|_area, context, width, height| {
-        let (width, height) = (f64::from(width), f64::from(height));
-        let radius = (width / 2.0).min(height) - 4.0;
-        let (center_x, center_y) = (width / 2.0, height - 4.0);
+        let size = Vec2::<Pixels>::new(f64::from(width), f64::from(height));
+        let radius = Pixels::new((size.x / 2.0).min(size.y) - 4.0);
+        // The dial's virtual circle centers on the box's bottom middle.
+        let center = Vec2::<Pixels>::new(size.x / 2.0, size.y - 4.0);
         // The dome face: a half-disc arc from the left end over the
         // top to the right end, closed along the flat edge.
-        context.arc(center_x, center_y, radius, PI, 0.0);
+        context.arc(center.x, center.y, radius.as_f64(), PI, 0.0);
         context.close_path();
         dome_color(DomeColor::Face).apply_alpha(context, 0.95);
         let _ = context.fill_preserve();
@@ -98,30 +100,33 @@ fn build_gauge(width: i32) -> gtk4::DrawingArea {
         let _ = context.stroke();
         // Tick marks fan across the rim: 13 ticks, long ones at the
         // quarter marks.
+        let rim = radius - Pixels::new(4.0);
         for tick in 0..=12 {
-            let angle = PI - f64::from(tick) * PI / 12.0;
-            let inner = radius - if tick % 3 == 0 { 16.0 } else { 9.0 };
-            context.move_to(center_x + inner * angle.cos(), center_y - inner * angle.sin());
-            context.line_to(center_x + (radius - 4.0) * angle.cos(), center_y - (radius - 4.0) * angle.sin());
+            let (sin, cos) = RotationRad::new(PI - f64::from(tick) * PI / 12.0).sin_cos();
+            let inner = radius - Pixels::new(if tick % 3 == 0 { 16.0 } else { 9.0 });
+            let direction = Vec2::<Pixels>::new(cos, -sin);
+            let from = center + direction * inner.as_f64();
+            let to = center + direction * rim.as_f64();
+            context.move_to(from.x, from.y);
+            context.line_to(to.x, to.y);
             let _ = context.stroke();
         }
         // The needle: a tapered pointer at a fixed mid-scale reading.
-        let needle_angle = PI - (2.0 * PI / 3.0);
-        let tail_angle = needle_angle + PI;
-        context.move_to(center_x + radius * 0.72 * needle_angle.cos(), center_y - radius * 0.72 * needle_angle.sin());
-        context.line_to(
-            center_x + 12.0 * (needle_angle - PI / 2.0).cos() * 0.5,
-            center_y - 12.0 * (needle_angle - PI / 2.0).sin() * 0.5,
-        );
-        context.line_to(center_x + radius * 0.12 * tail_angle.cos(), center_y - radius * 0.12 * tail_angle.sin());
-        context.line_to(
-            center_x + 12.0 * (needle_angle + PI / 2.0).cos() * 0.5,
-            center_y - 12.0 * (needle_angle + PI / 2.0).sin() * 0.5,
-        );
+        let (sin, cos) = RotationRad::new(PI - 2.0 * PI / 3.0).sin_cos();
+        let direction = Vec2::<Pixels>::new(cos, -sin);
+        let perpendicular = Vec2::<Pixels>::new(sin, cos);
+        let tip = center + direction * (radius * 0.72).as_f64();
+        let side_a = center + perpendicular * 6.0;
+        let tail = center - direction * (radius * 0.12).as_f64();
+        let side_b = center - perpendicular * 6.0;
+        context.move_to(tip.x, tip.y);
+        context.line_to(side_a.x, side_a.y);
+        context.line_to(tail.x, tail.y);
+        context.line_to(side_b.x, side_b.y);
         context.close_path();
         dome_color(DomeColor::Needle).apply(context);
         let _ = context.fill();
-        context.arc(center_x, center_y, 5.0, 0.0, 2.0 * PI);
+        context.arc(center.x, center.y, 5.0, 0.0, 2.0 * PI);
         dome_color(DomeColor::Line).apply(context);
         let _ = context.fill();
     });
@@ -131,16 +136,16 @@ fn build_gauge(width: i32) -> gtk4::DrawingArea {
 /// A `DrawingArea` rendering a sunrise for the awning card - a
 /// bottom-aligned square (`CircleContent::Inscribed` on a dome): a
 /// sun rising over a horizon line with three rays above.
-fn build_sunrise(size: i32) -> gtk4::DrawingArea {
+fn build_sunrise(size: Pixels<i32>) -> gtk4::DrawingArea {
     let sunrise = gtk4::DrawingArea::new();
-    sunrise.set_content_width(size);
-    sunrise.set_content_height(size);
+    sunrise.set_content_width(size.as_raw());
+    sunrise.set_content_height(size.as_raw());
     sunrise.set_draw_func(|_area, context, width, height| {
-        let (width, height) = (f64::from(width), f64::from(height));
-        let (center_x, horizon_y) = (width / 2.0, height * 0.78);
-        let radius = width.min(height) * 0.26;
+        let size = Vec2::<Pixels>::new(f64::from(width), f64::from(height));
+        let center = Vec2::<Pixels>::new(size.x / 2.0, size.y * 0.78);
+        let radius = Pixels::new(size.x.min(size.y) * 0.26);
         // The sun: a half-disc peeking over the horizon.
-        context.arc(center_x, horizon_y, radius, PI, 0.0);
+        context.arc(center.x, center.y, radius.as_f64(), PI, 0.0);
         context.close_path();
         context.set_source_rgba(0.98, 0.78, 0.30, 0.95);
         let _ = context.fill();
@@ -149,16 +154,19 @@ fn build_sunrise(size: i32) -> gtk4::DrawingArea {
         context.set_line_width(4.0);
         context.set_line_cap(gtk4::cairo::LineCap::Round);
         for ray in [-0.6, 0.0, 0.6] {
-            let angle = -PI / 2.0 + ray;
-            context.move_to(center_x + (radius + 8.0) * angle.cos(), horizon_y + (radius + 8.0) * angle.sin());
-            context.line_to(center_x + (radius + 22.0) * angle.cos(), horizon_y + (radius + 22.0) * angle.sin());
+            let (sin, cos) = RotationRad::new(-FRAC_PI_2 + ray).sin_cos();
+            let direction = Vec2::<Pixels>::new(cos, sin);
+            let from = center + direction * (radius + Pixels::new(8.0)).as_f64();
+            let to = center + direction * (radius + Pixels::new(22.0)).as_f64();
+            context.move_to(from.x, from.y);
+            context.line_to(to.x, to.y);
             let _ = context.stroke();
         }
         // The horizon line.
         context.set_source_rgba(0.45, 0.38, 0.55, 0.9);
         context.set_line_width(3.0);
-        context.move_to(width * 0.08, horizon_y);
-        context.line_to(width * 0.92, horizon_y);
+        context.move_to(size.x * 0.08, center.y);
+        context.line_to(size.x * 0.92, center.y);
         let _ = context.stroke();
     });
     sunrise
@@ -197,7 +205,7 @@ fn build_ui(application: &gtk4::Application) {
     board
         .add_card_with_id(
             "gauge",
-            &build_gauge(280),
+            &build_gauge(Pixels::new(280)),
             CardConfig {
                 title: Some("Gauge".to_string()),
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(300.0, 360.0))),
@@ -208,7 +216,7 @@ fn build_ui(application: &gtk4::Application) {
                     ChromeSlot::inline(ChromeElement::Title),
                     ChromeSlot::inline(ChromeElement::Close),
                 ]),
-                folded_content: Some(build_gauge(100).upcast()),
+                folded_content: Some(build_gauge(Pixels::new(100)).upcast()),
                 unfold_on_click: true,
                 drag_handle: DragHandle::WholeCard,
                 fold_animation: CardFoldAnimation::Shrink,
@@ -228,7 +236,7 @@ fn build_ui(application: &gtk4::Application) {
     board
         .add_card_with_id(
             "awning",
-            &build_sunrise(150),
+            &build_sunrise(Pixels::new(150)),
             CardConfig {
                 title: Some("Awning".to_string()),
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(640.0, 380.0))),
@@ -239,7 +247,7 @@ fn build_ui(application: &gtk4::Application) {
                     ChromeSlot::bar(ChromeElement::Title),
                     ChromeSlot::bar_end(ChromeElement::Close),
                 ]),
-                folded_content: Some(build_sunrise(56).upcast()),
+                folded_content: Some(build_sunrise(Pixels::new(56)).upcast()),
                 unfold_on_click: true,
                 drag_handle: DragHandle::WholeCard,
                 fold_animation: CardFoldAnimation::Crossfade,
@@ -255,7 +263,7 @@ fn build_ui(application: &gtk4::Application) {
     board
         .add_card_with_id(
             "meter",
-            &build_gauge(220),
+            &build_gauge(Pixels::new(220)),
             CardConfig {
                 title: Some("Meter".to_string()),
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(480.0, 620.0))),
@@ -269,7 +277,7 @@ fn build_ui(application: &gtk4::Application) {
                     ChromeSlot::bar_start(ChromeElement::Minimize),
                     ChromeSlot::bar_end(ChromeElement::Close),
                 ]),
-                folded_content: Some(build_gauge(90).upcast()),
+                folded_content: Some(build_gauge(Pixels::new(90)).upcast()),
                 unfold_on_click: true,
                 drag_handle: DragHandle::WholeCard,
                 ..Default::default()
