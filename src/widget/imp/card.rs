@@ -420,10 +420,14 @@ impl WidgetImpl for CardImpl {
         match self.shape.get() {
             CardShape::Circle => Circle::<()>::new(Vec2::new(width / 2.0, height / 2.0), width.min(height) / 2.0).contains(&Vec2::new(x, y)),
             // The dome: inside the virtual circle (center at the
-            // bottom middle) and above the flat edge.
+            // bottom middle) and above the flat edge. `y <= height`
+            // cuts the circle's lower half: the rotation wrapper
+            // probes points beyond the allocation, and without the
+            // flat edge the phantom disc below the card stays
+            // pickable and swallows sibling cards' clicks.
             CardShape::Semicircle => {
                 let radius = (width / 2.0).min(height);
-                Circle::<()>::new(Vec2::new(width / 2.0, height), radius).contains(&Vec2::new(x, y)) && y >= height - radius
+                Circle::<()>::new(Vec2::new(width / 2.0, height), radius).contains(&Vec2::new(x, y)) && y <= height
             }
             CardShape::Rectangle => self.parent_contains(x, y),
         }
