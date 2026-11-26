@@ -129,10 +129,19 @@ pub struct CardImpl {
     /// header color (`Card::mount_arc_chrome` only creates it when
     /// `arc_items` is non-empty).
     pub arc_band: OnceCell<DrawingArea>,
-    /// Arc-chrome items on `CardShape::Circle` - `(widget, slot)`
-    /// pairs in slot order, mounted by `Card::mount_arc_chrome` and
-    /// placed on the top/bottom arc bands by `circle_allocate`.
+    /// Arc-chrome items on `CardShape::Circle`/`Semicircle` -
+    /// `(widget, slot)` pairs in slot order, mounted by
+    /// `Card::mount_arc_chrome` and placed on the arc bands by
+    /// `circle_allocate`/`semicircle_allocate`.
     pub arc_items: RefCell<Vec<(gtk4::Widget, ChromeSlot)>>,
+    /// The painted straight bar along the flat bottom edge of a
+    /// `Semicircle` card (`Card::mount_arc_chrome` only creates it
+    /// when `bar_items` is non-empty).
+    pub bar_band: OnceCell<DrawingArea>,
+    /// Bar-chrome items on `CardShape::Semicircle` - `Bar*`
+    /// slots placed on the straight bottom bar's mid line by
+    /// `semicircle_allocate`.
+    pub bar_items: RefCell<Vec<(gtk4::Widget, ChromeSlot)>>,
 }
 
 impl Default for CardImpl {
@@ -165,6 +174,8 @@ impl Default for CardImpl {
             arc_bottom_span: Cell::new(Degrees::QUARTER_TURN.to_radians()),
             arc_band: OnceCell::new(),
             arc_items: RefCell::new(Vec::new()),
+            bar_band: OnceCell::new(),
+            bar_items: RefCell::new(Vec::new()),
         }
     }
 }
@@ -290,7 +301,7 @@ fn arc_angle(index: usize, count: usize, title_index: Option<usize>, half_span: 
 /// positive clockwise): the top band packs items with `Start`
 /// placements edge-inward on its left end, spreads `ArcTop`/`Inline`
 /// items over the center zone and packs `End` items edge-inward on
-/// its right end - header-bar zones on an arc. `ArcBottom*` items
+/// its right end - header-bar zones on an arc. `Bar*` items
 /// land on the mirrored bottom band (offset π: its "start" edge sits
 /// on the screen's right, the user's left when facing the card's
 /// bottom). Each band spans its configured `arc_span` /
@@ -305,9 +316,9 @@ fn arc_angles(items: &[ChromeSlot], top_half_span: Radians, bottom_half_span: Ra
             ChromePlacement::InlineStart | ChromePlacement::ArcTopStart => zones[0].push(index),
             ChromePlacement::Inline | ChromePlacement::ArcTop => zones[1].push(index),
             ChromePlacement::InlineEnd | ChromePlacement::ArcTopEnd => zones[2].push(index),
-            ChromePlacement::ArcBottomStart => zones[3].push(index),
-            ChromePlacement::ArcBottom => zones[4].push(index),
-            ChromePlacement::ArcBottomEnd => zones[5].push(index),
+            ChromePlacement::BarStart => zones[3].push(index),
+            ChromePlacement::Bar => zones[4].push(index),
+            ChromePlacement::BarEnd => zones[5].push(index),
             ChromePlacement::Satellite => {}
         }
     }
@@ -354,17 +365,68 @@ fn arc_angles(items: &[ChromeSlot], top_half_span: Radians, bottom_half_span: Ra
     angles
 }
 
+/// X-offsets (px, relative to the dome's bottom middle) per item on a
+/// `Semicircle` card's straight bottom bar: `BarStart` packs
+/// from the bar's "start" edge inward - screen-right, the user's left
+/// when facing the card's bottom edge, the same convention the bottom
+/// arc uses - `Bar` spreads over the center span and
+/// `BarEnd` packs from the left. `half_width` is the safe
+/// half-extent of the bar (the dome's chord at the bar's top edge).
+fn bar_offsets(items: &[ChromeSlot], half_width: f64) -> Vec<f64> {
+    let gap = half_width * (ARC_TITLE_GAP / ARC_HALF_SPAN);
+    let mut zones: [Vec<usize>; 3] = Default::default();
+    for (index, slot) in items.iter().enumerate() {
+        match slot.placement {
+            ChromePlacement::BarStart => zones[0].push(index),
+            ChromePlacement::Bar => zones[1].push(index),
+            ChromePlacement::BarEnd => zones[2].push(index),
+            _ => {}
+        }
+    }
+    let mut offsets = vec![0.0; items.len()];
+    for (position, &item) in zones[0].iter().enumerate() {
+        offsets[item] = spread_line(half_width, gap, position, zones[0].len());
+    }
+    for (position, &item) in zones[1].iter().enumerate() {
+        offsets[item] = if zones[1].len() == 1 {
+            0.0
+        } else {
+            spread_line(-gap, gap, position, zones[1].len())
+        };
+    }
+    for (position, &item) in zones[2].iter().enumerate() {
+        offsets[item] = spread_line(-half_width, -gap, position, zones[2].len());
+    }
+    offsets
+}
+
+/// Evenly spreads `count` positions over `[from, to]`; a lone item
+/// sits at `from` - groups pack from the bar's outer edge inward,
+/// matching the arc bands' header-bar semantics.
+fn spread_line(from: f64, to: f64, index: usize, count: usize) -> f64 {
+    if count <= 1 {
+        return from;
+    }
+    from + (to - from) * index as f64 / (count - 1) as f64
+}
+
 impl WidgetImpl for CardImpl {
     // `Circle`: only the disk inside the bounding square is pickable -
     // taps in the corners pass through to whatever is underneath
     // (through the board layers' `contains` chain, same as the rotated
     // corners of a rectangle card).
     fn contains(&self, x: f64, y: f64) -> bool {
-        if self.shape.get() == CardShape::Circle {
-            let (width, height) = (f64::from(self.obj().width()), f64::from(self.obj().height()));
-            return Circle::<()>::new(Vec2::new(width / 2.0, height / 2.0), width.min(height) / 2.0).contains(&Vec2::new(x, y));
+        let (width, height) = (f64::from(self.obj().width()), f64::from(self.obj().height()));
+        match self.shape.get() {
+            CardShape::Circle => Circle::<()>::new(Vec2::new(width / 2.0, height / 2.0), width.min(height) / 2.0).contains(&Vec2::new(x, y)),
+            // The dome: inside the virtual circle (center at the
+            // bottom middle) and above the flat edge.
+            CardShape::Semicircle => {
+                let radius = (width / 2.0).min(height);
+                Circle::<()>::new(Vec2::new(width / 2.0, height), radius).contains(&Vec2::new(x, y)) && y >= height - radius
+            }
+            CardShape::Rectangle => self.parent_contains(x, y),
         }
-        self.parent_contains(x, y)
     }
 }
 
@@ -430,6 +492,101 @@ impl CardImpl {
                     widget.allocate(natural.x, natural.y, baseline, Some(arc_transform));
                 } else {
                     widget.allocate(side, side, baseline, Some(transform.clone()));
+                }
+            }
+            child = widget.next_sibling();
+        }
+    }
+
+    /// `Semicircle` measure: the card reports its bounding dome - a
+    /// `2r × r` box where `r` derives from the visible content
+    /// child's natural size via `CircleContent::dome_radius_for` (the
+    /// `folded_holder` while it carries a collapsed widget, else the
+    /// `content_overlay`). The reported extent is `2r` horizontally
+    /// and `r` vertically. Called from `CardShapeLayout`.
+    pub(crate) fn semicircle_measure(&self, orientation: Orientation) -> (i32, i32, i32, i32) {
+        let content = self
+            .folded_holder
+            .get()
+            .filter(|holder| holder.is_visible() && holder.first_child().is_some())
+            .map(|holder| holder.clone().upcast::<Widget>())
+            .or_else(|| self.content_overlay.get().map(|overlay| overlay.clone().upcast()));
+        let Some(content) = content else {
+            return (0, 0, -1, -1);
+        };
+        let (_, natural_width, _, _) = content.measure(Orientation::Horizontal, -1);
+        let (_, natural_height, _, _) = content.measure(Orientation::Vertical, -1);
+        // A dome does not flex: minimum == natural keeps the bounding
+        // box stable (the parent layer allocates at the minimum
+        // width).
+        let radius = self
+            .circle_content
+            .get()
+            .dome_radius_for(f64::from(natural_width), f64::from(natural_height), CIRCLE_RING_BAND);
+        let extent = match orientation {
+            Orientation::Horizontal => 2.0 * radius,
+            _ => radius,
+        };
+        (extent.ceil() as i32, extent.ceil() as i32, -1, -1)
+    }
+
+    /// `Semicircle` allocate: the dome's virtual circle centers at
+    /// the bounding box's bottom middle with radius `min(w/2, h)`.
+    /// Every visible child gets the bottom-aligned content extent
+    /// (`CircleContent::dome_content_for`); arc items sit upright on
+    /// the top band's mid radius and bar items upright on the bottom
+    /// bar's mid line (`bar_offsets`). Called from `CardShapeLayout`.
+    pub(crate) fn semicircle_allocate(&self, size: Size<i32>, baseline: i32) {
+        let (width, height) = (f64::from(size.x), f64::from(size.y));
+        let radius = (width / 2.0).min(height);
+        let arc_items = self.arc_items.borrow();
+        let bar_items = self.bar_items.borrow();
+        // Each painted band pushes the content inward: the arc band
+        // grows the ring (the band rides the dome's rim), the straight
+        // bar lifts the content's bottom edge onto the bar's top.
+        let ring = CIRCLE_RING_BAND + if arc_items.is_empty() { 0.0 } else { ARC_CHROME_BAND };
+        let bottom_inset = if bar_items.is_empty() { 0.0 } else { ARC_CHROME_BAND };
+        let (content_width, content_height) = self.circle_content.get().dome_content_for(radius, ring);
+        let transform = Transform::new().translate(&Point::new((width / 2.0 - content_width / 2.0) as f32, (height - content_height - bottom_inset) as f32));
+        let (content_width, content_height) = (content_width.ceil() as i32, content_height.ceil() as i32);
+        let slots: Vec<ChromeSlot> = arc_items.iter().map(|(_, slot)| *slot).collect();
+        // A dome has no bottom arc - `arc_items` holds top-zone slots
+        // only; the bottom span is unused.
+        let half_span = self.arc_span.get() / 2.0;
+        let angles = arc_angles(&slots, half_span, half_span);
+        // The bar's safe half-extent at its mid line - item centers
+        // are additionally clamped so an item's edge stays inside the
+        // dome's chord.
+        let bar_half_width = (radius.powi(2) - (ARC_CHROME_BAND / 2.0).powi(2)).max(0.0).sqrt();
+        let bar_offsets = bar_offsets(&bar_items.iter().map(|(_, slot)| *slot).collect::<Vec<_>>(), bar_half_width);
+        let arc_radius = radius - ARC_CHROME_BAND / 2.0;
+        let mut child = self.obj().first_child();
+        while let Some(widget) = child {
+            if widget.is_visible() {
+                if self.arc_band.get().is_some_and(|band| band.upcast_ref::<Widget>() == &widget)
+                    || self.bar_band.get().is_some_and(|band| band.upcast_ref::<Widget>() == &widget)
+                {
+                    // The painted bands cover the whole dome box -
+                    // their draw funcs clip themselves to the shape.
+                    widget.allocate(size.x, size.y, baseline, None);
+                } else if let Some(index) = arc_items.iter().position(|(item, _)| *item == widget) {
+                    let (_, natural) = widget.measure_size();
+                    let (sin, cos) = angles[index].sin_cos();
+                    let center_x = width / 2.0 + arc_radius * sin;
+                    let center_y = height - arc_radius * cos;
+                    let arc_transform =
+                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    widget.allocate(natural.x, natural.y, baseline, Some(arc_transform));
+                } else if let Some(index) = bar_items.iter().position(|(item, _)| *item == widget) {
+                    let (_, natural) = widget.measure_size();
+                    let max_offset = (bar_half_width - f64::from(natural.x) / 2.0).max(0.0);
+                    let center_x = width / 2.0 + bar_offsets[index].clamp(-max_offset, max_offset);
+                    let center_y = height - ARC_CHROME_BAND / 2.0;
+                    let bar_transform =
+                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    widget.allocate(natural.x, natural.y, baseline, Some(bar_transform));
+                } else {
+                    widget.allocate(content_width, content_height, baseline, Some(transform.clone()));
                 }
             }
             child = widget.next_sibling();
@@ -518,7 +675,7 @@ mod tests {
         // Bottom band: the "start" edge sits on the screen's right -
         // the user's left when facing the card's bottom.
         let angles = arc_angles(
-            &slots(&[ChromePlacement::ArcBottomStart, ChromePlacement::ArcBottom, ChromePlacement::ArcBottomEnd]),
+            &slots(&[ChromePlacement::BarStart, ChromePlacement::Bar, ChromePlacement::BarEnd]),
             ARC_HALF_SPAN,
             ARC_HALF_SPAN,
         );
@@ -531,7 +688,7 @@ mod tests {
     fn arc_angles_bottom_band_uses_own_span() {
         // A narrow bottom band: start/end pack its 15deg half-span.
         let angles = arc_angles(
-            &slots(&[ChromePlacement::ArcBottomStart, ChromePlacement::ArcBottomEnd]),
+            &slots(&[ChromePlacement::BarStart, ChromePlacement::BarEnd]),
             ARC_HALF_SPAN,
             Radians::new(std::f64::consts::PI / 12.0),
         );

@@ -67,30 +67,32 @@ impl ChromeSlot {
         }
     }
 
-    /// The element mounted in the center of a circle card's bottom
-    /// arc band.
-    pub const fn arc_bottom(element: ChromeElement) -> Self {
+    /// The element mounted in the center of a curved card's bottom
+    /// bar - an arc band on `Circle`, a straight strip on
+    /// `Semicircle`.
+    pub const fn bar(element: ChromeElement) -> Self {
         Self {
             element,
-            placement: ChromePlacement::ArcBottom,
+            placement: ChromePlacement::Bar,
         }
     }
 
-    /// The element mounted at the leading end of a circle card's
-    /// bottom arc band.
-    pub const fn arc_bottom_start(element: ChromeElement) -> Self {
+    /// The element mounted at the leading end of a curved card's
+    /// bottom bar - the mirrored start (screen-right, the user's
+    /// left when facing the card's bottom edge).
+    pub const fn bar_start(element: ChromeElement) -> Self {
         Self {
             element,
-            placement: ChromePlacement::ArcBottomStart,
+            placement: ChromePlacement::BarStart,
         }
     }
 
-    /// The element mounted at the trailing end of a circle card's
-    /// bottom arc band.
-    pub const fn arc_bottom_end(element: ChromeElement) -> Self {
+    /// The element mounted at the trailing end of a curved card's
+    /// bottom bar - the mirrored end.
+    pub const fn bar_end(element: ChromeElement) -> Self {
         Self {
             element,
-            placement: ChromePlacement::ArcBottomEnd,
+            placement: ChromePlacement::BarEnd,
         }
     }
 

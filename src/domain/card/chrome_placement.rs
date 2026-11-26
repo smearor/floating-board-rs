@@ -31,18 +31,19 @@ pub enum ChromePlacement {
     /// card's right rim. `InlineEnd` maps to the same zone. Ignored
     /// on `Rectangle`.
     ArcTopEnd,
-    /// In the center region of a circle card's bottom arc band - a
-    /// second band mirrored at the disc's bottom. Ignored on
+    /// In the center region of a curved card's bottom header bar - a
+    /// second band mirrored at the bottom: an arc band on a `Circle`,
+    /// a straight strip on the flat edge of a `Semicircle`. Ignored on
     /// `Rectangle`.
-    ArcBottom,
-    /// At the leading end of a circle card's bottom arc band - the
-    /// band is mirrored, so the leading end sits on the screen's right
-    /// side: a user facing the card's bottom reads start-to-end
+    Bar,
+    /// At the leading end of a curved card's bottom bar - the bar is
+    /// mirrored, so the leading end sits on the screen's right side:
+    /// a user facing the card's bottom reads start-to-end
     /// left-to-right. Ignored on `Rectangle`.
-    ArcBottomStart,
-    /// At the trailing end of a circle card's bottom arc band - the
+    BarStart,
+    /// At the trailing end of a curved card's bottom bar - the
     /// mirrored counterpart of `ArcTopEnd`. Ignored on `Rectangle`.
-    ArcBottomEnd,
+    BarEnd,
 }
 
 impl ChromePlacement {
@@ -52,10 +53,10 @@ impl ChromePlacement {
         matches!(self, Self::Inline | Self::InlineStart | Self::InlineEnd | Self::ArcTop | Self::ArcTopStart | Self::ArcTopEnd)
     }
 
-    /// Whether the placement mounts on a circle card's bottom arc
-    /// band (`ArcBottom*` placements).
-    pub fn is_bottom_arc(&self) -> bool {
-        matches!(self, Self::ArcBottom | Self::ArcBottomStart | Self::ArcBottomEnd)
+    /// Whether the placement mounts on a curved card's bottom bar
+    /// (`Bar*` placements) - the geometry follows the shape.
+    pub fn is_bar(&self) -> bool {
+        matches!(self, Self::Bar | Self::BarStart | Self::BarEnd)
     }
 }
 

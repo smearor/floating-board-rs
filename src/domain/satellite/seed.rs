@@ -43,7 +43,9 @@ pub(crate) fn collapsed_seed(
 /// rotated card slightly overshoot, which is fine for an emerge seed).
 fn contour_support(dir: Vec2<Pixels>, card_footprint: Vec2<Pixels>, card_shape: CardShape) -> f64 {
     match card_shape {
-        CardShape::Circle => card_footprint.x / 2.0,
+        // The dome orbits like its full circle - the bbox's inscribed
+        // radius, a uniform gap all around.
+        CardShape::Circle | CardShape::Semicircle => card_footprint.x / 2.0,
         CardShape::Rectangle => (dir.x.abs() * card_footprint.x + dir.y.abs() * card_footprint.y) / 2.0,
     }
 }

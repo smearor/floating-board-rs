@@ -15,6 +15,7 @@ use crate::widget::card_layer::CardLayer;
 use crate::widget::card_signal::CardSignal;
 use crate::widget::circular_clip::CircularClip;
 use crate::widget::css::CLASS_CARD_CIRCLE;
+use crate::widget::css::CLASS_CARD_SEMICIRCLE;
 use crate::widget::css::CLASS_COLLAPSED;
 use crate::widget::css::CLASS_FOLDED;
 use crate::widget::css::CLASS_HEADERLESS;
@@ -75,6 +76,9 @@ impl Card {
         imp.circle_content.set(config.circle_content);
         if config.shape == CardShape::Circle {
             card.add_css_class(CLASS_CARD_CIRCLE);
+        }
+        if config.shape == CardShape::Semicircle {
+            card.add_css_class(CLASS_CARD_SEMICIRCLE);
         }
         if config.headerless {
             card.add_css_class(CLASS_HEADERLESS);
@@ -413,24 +417,36 @@ impl Card {
                 // button would end up outside the shrunken header. A
                 // collapsed card is meant to shrink instead.
                 let (_, natural) = self.measure_size();
-                if imp.shape.get() == CardShape::Circle {
+                match imp.shape.get() {
                     // A folded circle collapses onto its ring: the
                     // diameter stays pinned so the empty disc keeps
                     // the card's size.
-                    let diameter = natural.x.max(natural.y);
-                    self.set_size_request(diameter, diameter);
-                } else {
-                    self.set_size_request(natural.x, -1);
+                    CardShape::Circle => {
+                        let diameter = natural.x.max(natural.y);
+                        self.set_size_request(diameter, diameter);
+                    }
+                    // A folded dome keeps its 2r x r proportion.
+                    CardShape::Semicircle => {
+                        let diameter = natural.x.max(natural.y);
+                        self.set_size_request(diameter, diameter / 2);
+                    }
+                    _ => self.set_size_request(natural.x, -1),
                 }
             }
             holder.set_visible(!folded);
         }
-        // Arc chrome belongs to the circle card's full presentation -
-        // a folded disc shows its folded holder alone.
+        // Arc and bar chrome belong to the curved card's full
+        // presentation - a folded dome shows its folded holder alone.
         if let Some(band) = imp.arc_band.get() {
             band.set_visible(!folded);
         }
+        if let Some(band) = imp.bar_band.get() {
+            band.set_visible(!folded);
+        }
         for (widget, _) in imp.arc_items.borrow().iter() {
+            widget.set_visible(!folded);
+        }
+        for (widget, _) in imp.bar_items.borrow().iter() {
             widget.set_visible(!folded);
         }
         // A custom folded widget replaces the header too; restore it on
@@ -448,13 +464,23 @@ impl Card {
         // claims layout space - a collapsed card's size must be pinned
         // to the folded presentation's natural measure explicitly.
         if folded && collapsed {
-            if imp.shape.get() == CardShape::Circle {
-                let (_, natural_width, _, natural_height) = imp.circle_measure();
-                self.set_size_request(natural_width, natural_height);
-            } else if let Some(holder) = imp.folded_holder.get() {
-                let (_, natural_width, _, _) = holder.measure(Orientation::Horizontal, -1);
-                let (_, natural_height, _, _) = holder.measure(Orientation::Vertical, -1);
-                self.set_size_request(natural_width, natural_height);
+            match imp.shape.get() {
+                CardShape::Circle => {
+                    let (_, natural_width, _, natural_height) = imp.circle_measure();
+                    self.set_size_request(natural_width, natural_height);
+                }
+                CardShape::Semicircle => {
+                    let (_, natural_width, ..) = imp.semicircle_measure(Orientation::Horizontal);
+                    let (_, natural_height, ..) = imp.semicircle_measure(Orientation::Vertical);
+                    self.set_size_request(natural_width, natural_height);
+                }
+                _ => {
+                    if let Some(holder) = imp.folded_holder.get() {
+                        let (_, natural_width, _, _) = holder.measure(Orientation::Horizontal, -1);
+                        let (_, natural_height, _, _) = holder.measure(Orientation::Vertical, -1);
+                        self.set_size_request(natural_width, natural_height);
+                    }
+                }
             }
         } else if !folded {
             self.set_size_request(-1, -1);

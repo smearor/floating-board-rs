@@ -1,9 +1,14 @@
 use std::f64::consts::SQRT_2;
 
-/// How a [`CardShape::Circle`] card allocates its content inside the
-/// circle's bounding square.
+/// √5 - the semicircle's inscribed-square factor (`s = 2r/√5` for a
+/// square bottom-aligned on the dome's flat edge).
+const SQRT_5: f64 = 2.23606797749979;
+
+/// How a [`CardShape::Circle`]/[`CardShape::Semicircle`] card
+/// allocates its content inside the shape's bounding box.
 ///
 /// [`CardShape::Circle`]: crate::CardShape
+/// [`CardShape::Semicircle`]: crate::CardShape
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(rename_all = "kebab-case"))]
 pub enum CircleContent {
@@ -49,6 +54,39 @@ impl CircleContent {
         match self {
             Self::Inscribed => inner / SQRT_2,
             Self::Fill | Self::Clipped => inner,
+        }
+    }
+
+    /// The dome's radius for a `Semicircle` card, given the content's
+    /// natural `(width, height)` and a `ring` band width (px) inside
+    /// the dome's edge.
+    ///
+    /// For `Inscribed` the inner dome circumscribes a square that is
+    /// bottom-aligned on the flat edge (`r_inner = side·√5/2`); for
+    /// `Fill`/`Clipped` the inner dome bounds a 2:1 content rect
+    /// (`r_inner = max(width/2, height)`).
+    pub fn dome_radius_for(&self, natural_width: f64, natural_height: f64, ring: f64) -> f64 {
+        let inner = match self {
+            Self::Inscribed => natural_width.max(natural_height) * SQRT_5 / 2.0,
+            Self::Fill | Self::Clipped => (natural_width / 2.0).max(natural_height),
+        };
+        inner + ring
+    }
+
+    /// The content extent `(width, height)` inside a `Semicircle` card
+    /// of `radius` with a ring band of `ring` (px). Inverse of
+    /// [`Self::dome_radius_for`]. The content rect is bottom-aligned
+    /// on the dome's flat edge: `Inscribed` gives the inscribed square
+    /// (`side = 2·r_inner/√5`), `Fill`/`Clipped` the inner dome's
+    /// bounding box (`2·r_inner × r_inner`).
+    pub fn dome_content_for(&self, radius: f64, ring: f64) -> (f64, f64) {
+        let inner = (radius - ring).max(0.0);
+        match self {
+            Self::Inscribed => {
+                let side = 2.0 * inner / SQRT_5;
+                (side, side)
+            }
+            Self::Fill | Self::Clipped => (2.0 * inner, inner),
         }
     }
 }

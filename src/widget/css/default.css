@@ -10,6 +10,12 @@
 .floating-card-circle {
     border-radius: 9999px;
 }
+
+/* A semicircle card's dome silhouette: the 2r x r box with both top
+   corners fully rounded is the top half of a circle. */
+.floating-card-semicircle {
+    border-radius: 9999px 9999px 0 0;
+}
 .floating-card-header {
     background-color: #3b4252;
     border-radius: 12px 12px 0 0;
@@ -70,5 +76,11 @@
 /* The painted top-quarter annulus band behind the arc chrome - its
    `color` is the stroke's fill, defaulting to the header tone. */
 .floating-card-arc-band {
+    color: #3b4252;
+}
+
+/* The painted straight bar behind the bar chrome on a semicircle
+   card - same header tone as the arc band. */
+.floating-card-bar-band {
     color: #3b4252;
 }

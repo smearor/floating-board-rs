@@ -88,6 +88,7 @@ impl LayoutManagerImpl for CardShapeLayoutImpl {
             },
             None => match imp.shape.get() {
                 CardShape::Circle => imp.circle_measure(),
+                CardShape::Semicircle => imp.semicircle_measure(orientation),
                 CardShape::Rectangle => self.box_layout.measure(widget, orientation, for_size),
             },
         };
@@ -116,6 +117,13 @@ impl LayoutManagerImpl for CardShapeLayoutImpl {
             Some(CardShape::Circle) => {
                 if let Some(card) = widget.downcast_ref::<Card>() {
                     card.imp().circle_allocate(Size::new(width, height), baseline);
+                }
+            }
+            // `Semicircle`: the dome allocates arc/bar chrome and the
+            // bottom-aligned content extent itself.
+            Some(CardShape::Semicircle) => {
+                if let Some(card) = widget.downcast_ref::<Card>() {
+                    card.imp().semicircle_allocate(Size::new(width, height), baseline);
                 }
             }
             _ => self.box_layout.allocate(widget, width, height, baseline),

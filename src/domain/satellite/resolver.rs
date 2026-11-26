@@ -114,7 +114,7 @@ fn resolve_radial(
     // circle; a circle card's square footprint bounds it exactly, so
     // the orbit follows the contour at `footprint/2 + gap`.
     let orbit_radius = match card_shape {
-        CardShape::Circle => Distance::new(card_footprint.x / 2.0 + config.radius.as_f64()),
+        CardShape::Circle | CardShape::Semicircle => Distance::new(card_footprint.x / 2.0 + config.radius.as_f64()),
         CardShape::Rectangle => orbit_radius_for(bounds, config.radius),
     };
     let layout = OrbitLayout::new(orbit_radius, config.span);

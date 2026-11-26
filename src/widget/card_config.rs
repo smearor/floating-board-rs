@@ -92,7 +92,7 @@ pub struct CardConfig {
     /// `CardShape::Circle`. `None` mirrors `arc_span`; set it when the
     /// bottom band should wrap a different share of the rim than the
     /// top band. Ignored for `Rectangle` and for circle cards without
-    /// `ArcBottom*` chrome.
+    /// `Bar*` chrome.
     #[cfg_attr(feature = "serde", serde(default))]
     pub arc_bottom_span: Option<Degrees>,
     /// Margin in pixels an edge or corner anchor keeps between the card's

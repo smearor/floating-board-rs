@@ -24,6 +24,7 @@ use crate::widget::card::Card;
 use crate::widget::card_config::CardConfig;
 use crate::widget::css::CLASS_ARC_BAND;
 use crate::widget::css::CLASS_ARC_CHROME;
+use crate::widget::css::CLASS_BAR_BAND;
 use crate::widget::css::CLASS_HANDLE;
 use crate::widget::css::CLASS_HEADER;
 use crate::widget::css::CLASS_RESIZE_GRIP;
@@ -87,10 +88,11 @@ impl Card {
         if style != config.chrome_style {
             warn!("CardConfig::chrome_style is Adwaita but the `adwaita` feature is disabled - falling back to Builtin");
         }
-        // A circle card has no header strip: its inline chrome mounts
-        // along the disc's top arc as an "arc header" instead;
-        // `Satellite` placements stay satellites.
-        if config.shape == CardShape::Circle {
+        // Curved cards have no header strip: a circle's inline chrome
+        // mounts along the disc's arc bands as an "arc header", a
+        // semicircle's on the top arc plus a straight bottom bar;
+        // `Satellite` placements stay satellites either way.
+        if matches!(config.shape, CardShape::Circle | CardShape::Semicircle) {
             self.mount_arc_chrome(config);
             return;
         }
@@ -110,13 +112,16 @@ impl Card {
         imp.rotate_grip_enabled.set(imp.rotate_grip.get().is_some());
     }
 
-    /// `Circle` renderer: inline chrome slots along the disc's arc
+    /// Curved-card renderer: inline chrome slots along the disc's arc
     /// bands (`CardConfig::arc_span` on top, `arc_bottom_span` on the
     /// bottom - both default a quarter) as an "arc header" -
     /// `CardImpl::circle_allocate` places them on the band's mid
     /// radius, a `Title` pinned to the arc's center like a header
-    /// bar's. `Satellite` slots stay satellites; the edge grips have
-    /// no mount on a circle.
+    /// bar's. On `CardShape::Semicircle` the top slots ride the same
+    /// arc while `Bar*` slots mount the straight bottom bar
+    /// (`CardImpl::bar_items`, placed by `semicircle_allocate`).
+    /// `Satellite` slots stay satellites; the edge grips have no
+    /// mount on a curve.
     fn mount_arc_chrome(&self, config: &CardConfig) {
         let imp = self.imp();
         let span = config
@@ -134,7 +139,10 @@ impl Card {
         let title = imp.title_text.borrow().clone();
         let slots = config.effective_chrome_slots();
         let style = config.chrome_style.resolved();
+        // `Bar*` slots route by shape: an arc zone on `Circle`,
+        // the straight bottom bar on `Semicircle`.
         let mut items = Vec::new();
+        let mut bar_items = Vec::new();
         for slot in &slots {
             if slot.placement == ChromePlacement::Satellite {
                 skip_satellite(slot.element);
@@ -182,17 +190,27 @@ impl Card {
                 widget.add_css_class("circular");
             }
             self.append(&widget);
-            items.push((widget, *slot));
+            if config.shape == CardShape::Semicircle && slot.placement.is_bar() {
+                bar_items.push((widget, *slot));
+            } else {
+                items.push((widget, *slot));
+            }
         }
-        // The painted band sits beneath the items (earlier children
-        // paint first) and is created only when items exist - an
-        // empty band would be a stray ring sector.
+        // The painted bands sit beneath the items (earlier children
+        // paint first) and are created only when items exist - an
+        // empty band would be a stray sector.
         if !items.is_empty() {
             let band = arc_band(self);
             band.insert_before(self, items.first().map(|(first, _)| first));
             let _ = imp.arc_band.set(band);
         }
+        if !bar_items.is_empty() {
+            let band = bar_band(self);
+            band.insert_before(self, bar_items.first().map(|(first, _)| first));
+            let _ = imp.bar_band.set(band);
+        }
         *imp.arc_items.borrow_mut() = items;
+        *imp.bar_items.borrow_mut() = bar_items;
     }
 
     /// `Builtin` renderer: header strip as a `gtk4::Box` of inline
@@ -382,8 +400,18 @@ fn arc_band(card: &Card) -> DrawingArea {
     band.set_can_target(false);
     let card_weak = card.downgrade();
     band.set_draw_func(move |area, cr, width, height| {
-        let radius = f64::from(width.min(height)) / 2.0 - ARC_CHROME_BAND / 2.0;
         let Some(card) = card_weak.upgrade() else { return };
+        // The virtual circle's center and mid-band radius follow the
+        // shape: the disc's own center on `Circle`, the dome's bottom
+        // middle on `Semicircle` (the dome has no bottom arc).
+        let (center_x, center_y, radius) = match card.imp().shape.get() {
+            CardShape::Semicircle => (
+                f64::from(width) / 2.0,
+                f64::from(height),
+                (f64::from(width) / 2.0).min(f64::from(height)) - ARC_CHROME_BAND / 2.0,
+            ),
+            _ => (f64::from(width) / 2.0, f64::from(height) / 2.0, f64::from(width.min(height)) / 2.0 - ARC_CHROME_BAND / 2.0),
+        };
         if radius <= 0.0 {
             return;
         }
@@ -391,7 +419,7 @@ fn arc_band(card: &Card) -> DrawingArea {
         let bottom_half_span = card.imp().arc_bottom_span.get() / 2.0;
         let items = card.imp().arc_items.borrow();
         let has_top = items.iter().any(|(_, slot)| slot.placement.is_top_arc());
-        let has_bottom = items.iter().any(|(_, slot)| slot.placement.is_bottom_arc());
+        let has_bottom = items.iter().any(|(_, slot)| slot.placement.is_bar());
         drop(items);
         let color = area.color();
         cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
@@ -401,16 +429,42 @@ fn arc_band(card: &Card) -> DrawingArea {
         // (top) and +90° (bottom), each `arc_span`/`arc_bottom_span` wide.
         for (center, present, half_span) in [(-FRAC_PI_2, has_top, top_half_span), (FRAC_PI_2, has_bottom, bottom_half_span)] {
             if present {
-                cr.arc(
-                    f64::from(width) / 2.0,
-                    f64::from(height) / 2.0,
-                    radius,
-                    center - half_span.as_f64(),
-                    center + half_span.as_f64(),
-                );
+                cr.arc(center_x, center_y, radius, center - half_span.as_f64(), center + half_span.as_f64());
                 let _ = cr.stroke();
             }
         }
+    });
+    band
+}
+
+/// The straight bar painted along the flat bottom edge of a
+/// `Semicircle` card: a trapezoid strip (`ARC_CHROME_BAND` tall, the
+/// dome's full width at the flat edge, the chord at its top edge) in
+/// `CLASS_BAR_BAND`'s `color` - the palette's header color like the
+/// arc band. Non-interactive (`set_can_target(false)`); reads the
+/// dome's radius from the card's allocation per frame.
+fn bar_band(card: &Card) -> DrawingArea {
+    let band = DrawingArea::new();
+    band.add_css_class(CLASS_BAR_BAND);
+    band.set_can_target(false);
+    let card_weak = card.downgrade();
+    band.set_draw_func(move |area, cr, width, height| {
+        if card_weak.upgrade().is_none() {
+            return;
+        }
+        let (width, height) = (f64::from(width), f64::from(height));
+        let radius = (width / 2.0).min(height);
+        let center_x = width / 2.0;
+        // The chord where the bar's top edge crosses the dome rim.
+        let chord = (radius * radius - ARC_CHROME_BAND * ARC_CHROME_BAND).max(0.0).sqrt();
+        cr.move_to(center_x - radius, height);
+        cr.line_to(center_x - chord, height - ARC_CHROME_BAND);
+        cr.line_to(center_x + chord, height - ARC_CHROME_BAND);
+        cr.line_to(center_x + radius, height);
+        cr.close_path();
+        let color = area.color();
+        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
+        let _ = cr.fill();
     });
     band
 }

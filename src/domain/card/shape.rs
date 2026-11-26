@@ -19,6 +19,19 @@ pub enum CardShape {
     ///
     /// [`CircleContent`]: crate::CircleContent
     Circle,
+    /// A dome: the upper half of a circle - an arc on top, a flat
+    /// diameter edge at the bottom. The bounding box is 2r wide and r
+    /// tall; the content is allocated inside the dome (see
+    /// [`CircleContent`], which also drives the dome's content
+    /// region). Taps outside the dome pass through to whatever is
+    /// underneath.
+    ///
+    /// Arc chrome mounts only on the top band (`Inline*`/`ArcTop*`
+    /// placements); `Bar*` placements mount a straight bar along
+    /// the flat bottom edge instead of an arc.
+    ///
+    /// [`CircleContent`]: crate::CircleContent
+    Semicircle,
 }
 
 #[cfg(test)]

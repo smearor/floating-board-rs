@@ -20,6 +20,9 @@ pub const CLASS_CARD: &str = "floating-card";
 /// and border into the disc; the ring between content and edge is the
 /// card's own surface.
 pub const CLASS_CARD_CIRCLE: &str = "floating-card-circle";
+/// CSS class of a `CardShape::Semicircle` card (dome silhouette: the
+/// top half of a circle, flat bottom edge).
+pub const CLASS_CARD_SEMICIRCLE: &str = "floating-card-semicircle";
 /// CSS class of a card's header strip (drag affordance).
 pub const CLASS_HEADER: &str = "floating-card-header";
 /// CSS class applied to cards configured `headerless`.
@@ -54,6 +57,10 @@ pub const CLASS_ARC_CHROME: &str = "floating-card-arc-chrome";
 /// its `color` is the band's fill (palettes tint it to the header
 /// color).
 pub const CLASS_ARC_BAND: &str = "floating-card-arc-band";
+/// CSS class of the straight bottom bar behind the bar chrome on
+/// `CardShape::Semicircle` (painted trapezoid on the flat edge, same
+/// header color).
+pub const CLASS_BAR_BAND: &str = "floating-card-bar-band";
 /// CSS class of the bottom-right resize grip (`CardConfig::resizable`).
 pub const CLASS_RESIZE_GRIP: &str = "floating-card-resize-grip";
 /// CSS class of the bottom-left rotate grip (`CardConfig::rotate_grip`).
@@ -99,6 +106,7 @@ fn palette_stylesheet(palette: &CardPalette, class: &str) -> String {
     if let Some(header) = palette.get(CardColor::Header) {
         stylesheet.push_str(&format!(".{class} .{CLASS_HEADER} {{ background-color: {header}; }}\n"));
         stylesheet.push_str(&format!(".{class} .{CLASS_ARC_BAND} {{ color: {header}; }}\n"));
+        stylesheet.push_str(&format!(".{class} .{CLASS_BAR_BAND} {{ color: {header}; }}\n"));
     }
     stylesheet
 }
