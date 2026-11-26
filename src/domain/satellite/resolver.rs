@@ -7,7 +7,6 @@ use crate::domain::SatelliteItem;
 use crate::domain::SatelliteLayout;
 use crate::domain::SatellitePlacement;
 use crate::domain::SatelliteRotationMode;
-use smearor_commons_geometry::Distance;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
@@ -19,7 +18,6 @@ use smearor_commons_layout::LayoutStrategy;
 use smearor_commons_layout::OrbitItem;
 use smearor_commons_layout::OrbitLayout;
 use smearor_commons_layout::SideSet;
-use smearor_commons_layout::orbit_radius_for;
 
 /// Pure placement resolution: card geometry + footprint + layout +
 /// measured items -> one [`SatellitePlacement`] per item, in workspace
@@ -109,14 +107,11 @@ fn resolve_radial(
         min: card_footprint * -0.5,
         size: card_footprint,
     };
-    // `radius` reads as the gap outward from the card's outline. For a
-    // rectangle card `orbit_radius_for` maps it onto the bounding
-    // circle; a circle card's square footprint bounds it exactly, so
-    // the orbit follows the contour at `footprint/2 + gap`.
-    let orbit_radius = match card_shape {
-        CardShape::Circle | CardShape::Semicircle => Distance::new(card_footprint.x / 2.0 + config.radius.as_f64()),
-        CardShape::Rectangle => orbit_radius_for(bounds, config.radius),
-    };
+    // `radius` reads as the gap outward from the card's outline,
+    // added onto the shape's bounding radius (`CardShape::bounding_radius`
+    // - the bounding circle for a rectangle, the disk radius for
+    // round shapes).
+    let orbit_radius = card_shape.bounding_radius(card_footprint) + config.radius;
     let layout = OrbitLayout::new(orbit_radius, config.span);
     let anchored = config.distribution == SatelliteDistribution::Anchored;
     let orbit_items: Vec<OrbitItem<Pixels>> = items

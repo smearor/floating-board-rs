@@ -57,6 +57,19 @@ impl CardShape {
             }
         }
     }
+
+    /// The radius of the centered circle the shape's outline fits
+    /// into: the disk radius for `Circle`, the bounding box's
+    /// circumscribed circle (`magnitude / 2`) for `Rectangle`, and
+    /// the dome's virtual-circle radius for `Semicircle` (the flat
+    /// edge's corners overshoot it by ~12% - the same uniform
+    /// approximation [`Self::contour_support`] documents).
+    pub fn bounding_radius(&self, footprint: Vec2<Pixels>) -> Distance<Pixels> {
+        match self {
+            Self::Circle | Self::Semicircle => Distance::new(footprint.x / 2.0),
+            Self::Rectangle => Distance::new(footprint.magnitude_f64() / 2.0),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -84,6 +97,17 @@ mod tests {
         // Diagonal (cos=0.8, sin=0.6): (0.8*200 + 0.6*100) / 2 = 110.
         let direction = RotationRad::new(0.6435);
         assert!((CardShape::Rectangle.contour_support(direction, footprint).as_f64() - 110.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn bounding_radius_circumscribes_the_shape() {
+        // Circle/dome: the disk's own radius. Rectangle: the
+        // circumscribed circle sqrt(200^2 + 100^2) / 2.
+        let square = Vec2::<Pixels>::new(200.0, 200.0);
+        let rect = Vec2::<Pixels>::new(200.0, 100.0);
+        assert_eq!(CardShape::Circle.bounding_radius(square).as_f64(), 100.0);
+        assert_eq!(CardShape::Semicircle.bounding_radius(rect).as_f64(), 100.0);
+        assert!((CardShape::Rectangle.bounding_radius(rect).as_f64() - 111.803).abs() < 0.001);
     }
 
     #[test]
