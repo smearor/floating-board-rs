@@ -70,7 +70,8 @@ pub struct CardConfig {
     /// The card's outline shape - `Rectangle` (default) or `Circle`.
     ///
     /// A circle card has no header strip and no corner grips: inline
-    /// chrome mounts along the disc's top arc (`arc_span`), `Satellite`
+    /// chrome mounts along the disc's arc bands (`arc_span` on top,
+    /// `arc_bottom_span` on the bottom), `Satellite`
     /// placements stay satellites, the edge grips are dropped with a
     /// warning at mount, and taps in the bounding-box corners pass
     /// through to whatever is underneath.
@@ -87,6 +88,13 @@ pub struct CardConfig {
     /// and for circle cards without inline chrome.
     #[cfg_attr(feature = "serde", serde(default))]
     pub arc_span: Option<Degrees>,
+    /// Angular span of the bottom arc-chrome band on
+    /// `CardShape::Circle`. `None` mirrors `arc_span`; set it when the
+    /// bottom band should wrap a different share of the rim than the
+    /// top band. Ignored for `Rectangle` and for circle cards without
+    /// `ArcBottom*` chrome.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub arc_bottom_span: Option<Degrees>,
     /// Margin in pixels an edge or corner anchor keeps between the card's
     /// footprint and the board edge; default `ANCHOR_MARGIN` (24 px).
     /// Ignored for `Center` and `Explicit` placements.
@@ -233,6 +241,7 @@ impl Default for CardConfig {
             shape: CardShape::default(),
             circle_content: CircleContent::default(),
             arc_span: None,
+            arc_bottom_span: None,
             anchor_margin: ANCHOR_MARGIN,
             scale_limits: ScaleBounds::default(),
             min_visible: MinVisible::default(),
@@ -417,6 +426,7 @@ mod tests {
             shape: CardShape::default(),
             circle_content: CircleContent::default(),
             arc_span: None,
+            arc_bottom_span: None,
             ..Default::default()
         };
         assert!(!elements(&config).contains(&ChromeElement::DragHandle));

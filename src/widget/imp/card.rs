@@ -120,6 +120,9 @@ pub struct CardImpl {
     /// default 90°) - read by `circle_allocate` and the band's draw
     /// func.
     pub arc_span: Cell<Radians>,
+    /// Angular span of the bottom arc-chrome band
+    /// (`CardConfig::arc_bottom_span`, `None` mirrors `arc_span`).
+    pub arc_bottom_span: Cell<Radians>,
     /// The painted top-quarter annulus band the arc-chrome items sit
     /// on - allocated the full disc, drawn as a ring sector in the
     /// header color (`Card::mount_arc_chrome` only creates it when
@@ -158,6 +161,7 @@ impl Default for CardImpl {
             shape: Cell::new(CardShape::default()),
             circle_content: Cell::new(CircleContent::default()),
             arc_span: Cell::new(Degrees::QUARTER_TURN.to_radians()),
+            arc_bottom_span: Cell::new(Degrees::QUARTER_TURN.to_radians()),
             arc_band: OnceCell::new(),
             arc_items: RefCell::new(Vec::new()),
         }
@@ -288,10 +292,12 @@ fn arc_angle(index: usize, count: usize, title_index: Option<usize>, half_span: 
 /// its right end - header-bar zones on an arc. `ArcBottom*` items
 /// land on the mirrored bottom band (offset π: its "start" edge sits
 /// on the screen's right, the user's left when facing the card's
-/// bottom). A top band of pure `Inline` slots keeps the legacy
-/// title-centered spread over the whole band.
-fn arc_angles(items: &[ChromeSlot], half_span: f64) -> Vec<RotationRad> {
-    let gap = half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
+/// bottom). Each band spans its configured `arc_span` /
+/// `arc_bottom_span`. A top band of pure `Inline` slots keeps the
+/// legacy title-centered spread over the whole band.
+fn arc_angles(items: &[ChromeSlot], top_half_span: f64, bottom_half_span: f64) -> Vec<RotationRad> {
+    let top_gap = top_half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
+    let bottom_gap = bottom_half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
     let mut zones: [Vec<usize>; 6] = Default::default();
     for (index, slot) in items.iter().enumerate() {
         match slot.placement {
@@ -312,37 +318,37 @@ fn arc_angles(items: &[ChromeSlot], half_span: f64) -> Vec<RotationRad> {
     if legacy && !top_center.is_empty() {
         let title_index = top_center.iter().position(|&index| items[index].element == ChromeElement::Title);
         for (position, &item) in top_center.iter().enumerate() {
-            angles[item] = arc_angle(position, top_center.len(), title_index, half_span);
+            angles[item] = arc_angle(position, top_center.len(), title_index, top_half_span);
         }
     } else {
         for (position, &item) in top_start.iter().enumerate() {
-            angles[item] = spread(-half_span, -gap, position, top_start.len());
+            angles[item] = spread(-top_half_span, -top_gap, position, top_start.len());
         }
         for (position, &item) in top_center.iter().enumerate() {
             angles[item] = if top_center.len() == 1 {
                 RotationRad::ZERO
             } else {
-                spread(-gap, gap, position, top_center.len())
+                spread(-top_gap, top_gap, position, top_center.len())
             };
         }
         for (position, &item) in top_end.iter().enumerate() {
-            angles[item] = spread(half_span, gap, position, top_end.len());
+            angles[item] = spread(top_half_span, top_gap, position, top_end.len());
         }
     }
     let bottom = RotationRad::new(std::f64::consts::PI);
     for (position, &item) in zones[3].iter().enumerate() {
-        angles[item] = bottom + spread(-half_span, -gap, position, zones[3].len());
+        angles[item] = bottom + spread(-bottom_half_span, -bottom_gap, position, zones[3].len());
     }
     for (position, &item) in zones[4].iter().enumerate() {
         angles[item] = bottom
             + if zones[4].len() == 1 {
                 RotationRad::ZERO
             } else {
-                spread(-gap, gap, position, zones[4].len())
+                spread(-bottom_gap, bottom_gap, position, zones[4].len())
             };
     }
     for (position, &item) in zones[5].iter().enumerate() {
-        angles[item] = bottom + spread(half_span, gap, position, zones[5].len());
+        angles[item] = bottom + spread(bottom_half_span, bottom_gap, position, zones[5].len());
     }
     angles
 }
@@ -403,9 +409,8 @@ impl CardImpl {
         let side = side.ceil() as i32;
         let arc_items = self.arc_items.borrow();
         let arc_band = self.arc_band.get();
-        let half_span = self.arc_span.get().as_f64() / 2.0;
         let slots: Vec<ChromeSlot> = arc_items.iter().map(|(_, slot)| *slot).collect();
-        let angles = arc_angles(&slots, half_span);
+        let angles = arc_angles(&slots, self.arc_span.get().as_f64() / 2.0, self.arc_bottom_span.get().as_f64() / 2.0);
         let arc_radius = diameter / 2.0 - ARC_CHROME_BAND / 2.0;
         let mut child = self.obj().first_child();
         while let Some(widget) = child {
@@ -490,7 +495,11 @@ mod tests {
 
     #[test]
     fn arc_angles_zones_pack_edges() {
-        let angles = arc_angles(&slots(&[ChromePlacement::ArcTopStart, ChromePlacement::ArcTop, ChromePlacement::ArcTopEnd]), ARC_HALF_SPAN);
+        let angles = arc_angles(
+            &slots(&[ChromePlacement::ArcTopStart, ChromePlacement::ArcTop, ChromePlacement::ArcTopEnd]),
+            ARC_HALF_SPAN,
+            ARC_HALF_SPAN,
+        );
         assert_angle(angles[0], -45.0);
         assert_angle(angles[1], 0.0);
         assert_angle(angles[2], 45.0);
@@ -498,7 +507,7 @@ mod tests {
 
     #[test]
     fn arc_angles_inline_ends_map_to_zones() {
-        let angles = arc_angles(&slots(&[ChromePlacement::InlineStart, ChromePlacement::InlineEnd]), ARC_HALF_SPAN);
+        let angles = arc_angles(&slots(&[ChromePlacement::InlineStart, ChromePlacement::InlineEnd]), ARC_HALF_SPAN, ARC_HALF_SPAN);
         assert_angle(angles[0], -45.0);
         assert_angle(angles[1], 45.0);
     }
@@ -510,6 +519,7 @@ mod tests {
         let angles = arc_angles(
             &slots(&[ChromePlacement::ArcBottomStart, ChromePlacement::ArcBottom, ChromePlacement::ArcBottomEnd]),
             ARC_HALF_SPAN,
+            ARC_HALF_SPAN,
         );
         assert_angle(angles[0], 135.0);
         assert_angle(angles[1], 180.0);
@@ -517,10 +527,26 @@ mod tests {
     }
 
     #[test]
+    fn arc_angles_bottom_band_uses_own_span() {
+        // A narrow bottom band: start/end pack its 15deg half-span.
+        let angles = arc_angles(
+            &slots(&[ChromePlacement::ArcBottomStart, ChromePlacement::ArcBottomEnd]),
+            ARC_HALF_SPAN,
+            std::f64::consts::PI / 12.0,
+        );
+        assert_angle(angles[0], 165.0);
+        assert_angle(angles[1], 195.0);
+    }
+
+    #[test]
     fn arc_angles_mixed_inline_plus_zone_uses_zones() {
         // One pinned slot switches the whole top band to zone packing:
         // remaining `Inline` items share the center zone.
-        let angles = arc_angles(&slots(&[ChromePlacement::Inline, ChromePlacement::Inline, ChromePlacement::InlineEnd]), ARC_HALF_SPAN);
+        let angles = arc_angles(
+            &slots(&[ChromePlacement::Inline, ChromePlacement::Inline, ChromePlacement::InlineEnd]),
+            ARC_HALF_SPAN,
+            ARC_HALF_SPAN,
+        );
         assert_angle(angles[0], -12.0);
         assert_angle(angles[1], 12.0);
         assert_angle(angles[2], 45.0);

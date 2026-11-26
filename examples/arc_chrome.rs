@@ -9,8 +9,12 @@
 //!
 //! Card "compass" runs the Adwaita style (with `--features adwaita`)
 //! on a wider 135° span: the rotate steps pin to the band's ends via
-//! `InlineStart`/`InlineEnd` while title and actions share the center
-//! zone - the band drawn as raised circular theme buttons.
+//! `InlineStart`/`InlineEnd` while the title rides the center zone -
+//! the band drawn as raised circular theme buttons. A narrow 30°
+//! bottom band mirrors it and hosts `Minimize`/`Close` on its
+//! start/end slots. Its dial carries two needles: a green one fixed
+//! to the card's "up" and a red one that keeps pointing to the
+//! board's top edge no matter how the card is rotated.
 //!
 //! Card "pie" carries a palette and a second band: its bottom arc
 //! mirrors the top one and hosts the seat-pass actions for a user
@@ -34,6 +38,7 @@ use floating_board::CircleContent;
 use floating_board::DragHandle;
 use floating_board::FloatingBoard;
 use gtk4::Orientation;
+use gtk4::glib::closure_local;
 use gtk4::prelude::*;
 use smearor_commons_color::Color;
 use smearor_commons_geometry::Degrees;
@@ -104,40 +109,62 @@ fn build_clock(size: i32) -> gtk4::DrawingArea {
 /// Draws its own disc - mounted as `CircleContent::Inscribed`, the
 /// surrounding ring stays card chrome and the arc band reads like a
 /// header strip.
+/// A compass needle: a `length`-long triangle pointing `angle`
+/// radians clockwise off the face's "up", plus a shorter tail on the
+/// opposite side. `angle` 0 points to the widget's top edge.
+fn paint_needle(context: &gtk4::cairo::Context, center_x: f64, center_y: f64, angle: f64, length: f64, half_width: f64, rgb: (f64, f64, f64)) {
+    let (sin, cos) = angle.sin_cos();
+    let (direction_x, direction_y) = (sin, -cos);
+    let (perp_x, perp_y) = (cos, sin);
+    for (tip, (r, g, b)) in [(length, rgb), (-length * 0.5, (0.85, 0.88, 0.92))] {
+        context.move_to(center_x - perp_x * half_width, center_y - perp_y * half_width);
+        context.line_to(center_x + direction_x * tip, center_y + direction_y * tip);
+        context.line_to(center_x + perp_x * half_width, center_y + perp_y * half_width);
+        context.close_path();
+        context.set_source_rgb(r, g, b);
+        let _ = context.fill();
+    }
+}
+
+/// Paints the compass face (dial + ticks), the green needle fixed to
+/// the card's "up" and - when `world_up` is `Some` - the red needle,
+/// rotated `world_up` radians so it keeps pointing to the board's top
+/// edge no matter how the card is rotated.
+fn paint_compass(context: &gtk4::cairo::Context, width: f64, height: f64, world_up: Option<f64>) {
+    let (center_x, center_y) = (width / 2.0, height / 2.0);
+    let radius = width.min(height) / 2.0 - 3.0;
+    context.arc(center_x, center_y, radius, 0.0, TAU);
+    context.set_source_rgba(0.16, 0.24, 0.34, 0.95);
+    let _ = context.fill_preserve();
+    context.set_source_rgb(0.85, 0.88, 0.92);
+    context.set_line_width(2.5);
+    let _ = context.stroke();
+    for tick in 0..24 {
+        let angle = f64::from(tick) * TAU / 24.0;
+        let inner = radius - if tick % 6 == 0 { 14.0 } else { 7.0 };
+        context.move_to(center_x + inner * angle.sin(), center_y - inner * angle.cos());
+        context.line_to(center_x + (radius - 3.0) * angle.sin(), center_y - (radius - 3.0) * angle.cos());
+        let _ = context.stroke();
+    }
+    paint_needle(context, center_x, center_y, 0.0, radius * 0.52, 5.0, (0.18, 0.72, 0.36));
+    if let Some(angle) = world_up {
+        paint_needle(context, center_x, center_y, angle, radius * 0.62, 6.5, (0.87, 0.2, 0.25));
+    }
+    context.arc(center_x, center_y, 4.0, 0.0, TAU);
+    context.set_source_rgb(0.85, 0.88, 0.92);
+    let _ = context.fill();
+}
+
+/// A compass disc - the face plus the green card-fixed needle. The
+/// red world-fixed needle is installed by `main` once the card exists
+/// (its draw func reads `card.rotation()`). `CircleContent::Inscribed`
+/// keeps the surrounding rim chrome.
 fn build_compass(size: i32) -> gtk4::DrawingArea {
     let compass = gtk4::DrawingArea::new();
     compass.set_content_width(size);
     compass.set_content_height(size);
     compass.set_draw_func(|_area, context, width, height| {
-        let (width, height) = (f64::from(width), f64::from(height));
-        let (center_x, center_y) = (width / 2.0, height / 2.0);
-        let radius = width.min(height) / 2.0 - 3.0;
-        context.arc(center_x, center_y, radius, 0.0, TAU);
-        context.set_source_rgba(0.16, 0.24, 0.34, 0.95);
-        let _ = context.fill_preserve();
-        context.set_source_rgb(0.85, 0.88, 0.92);
-        context.set_line_width(2.5);
-        let _ = context.stroke();
-        for tick in 0..24 {
-            let angle = f64::from(tick) * TAU / 24.0;
-            let inner = radius - if tick % 6 == 0 { 14.0 } else { 7.0 };
-            context.move_to(center_x + inner * angle.sin(), center_y - inner * angle.cos());
-            context.line_to(center_x + (radius - 3.0) * angle.sin(), center_y - (radius - 3.0) * angle.cos());
-            let _ = context.stroke();
-        }
-        // North needle: a long red triangle + its white tail.
-        let needle = radius * 0.62;
-        for (length, half_width, (r, g, b)) in [(needle, 7.0, (0.87, 0.2, 0.25)), (-needle * 0.5, 7.0, (0.85, 0.88, 0.92))] {
-            context.move_to(center_x - half_width, center_y);
-            context.line_to(center_x + length, center_y);
-            context.line_to(center_x + half_width, center_y);
-            context.close_path();
-            context.set_source_rgb(r, g, b);
-            let _ = context.fill();
-        }
-        context.arc(center_x, center_y, 4.0, 0.0, TAU);
-        context.set_source_rgb(0.85, 0.88, 0.92);
-        let _ = context.fill();
+        paint_compass(context, f64::from(width), f64::from(height), None);
     });
     compass
 }
@@ -221,29 +248,33 @@ fn build_ui(application: &gtk4::Application) {
         .unwrap_or_else(|_| CardId::new("dial"));
 
     // The Adwaita arc: raised circular theme buttons over the chrome
-    // ring; the seat-pass actions stay `Satellite` placements and keep
-    // orbiting below the card.
+    // ring; the compass face gains its world-fixed red needle once the
+    // card exists.
+    let compass_face = build_compass(200);
     board
         .add_card_with_id(
             "compass",
-            &build_compass(200),
+            &compass_face,
             CardConfig {
                 title: Some("Compass".to_string()),
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(750.0, 380.0))),
                 shape: CardShape::Circle,
                 // A wider arc than the 90° default: the band wraps a
-                // third of the disc's rim.
+                // third of the disc's rim. The narrow bottom band
+                // mirrors it as a second header strip.
                 arc_span: Some(Degrees::new(135.0)),
+                arc_bottom_span: Some(Degrees::new(30.0)),
                 chrome_style: ChromeStyle::Adwaita,
                 // `InlineStart`/`InlineEnd` pin to the band's ends like
-                // a header bar's packed ends; the `Inline` run shares
-                // the center zone around the centered title.
+                // a header bar's packed ends; the title rides the
+                // center zone. `Minimize`/`Close` pack the narrow
+                // bottom band's start/end.
                 chrome: Some(vec![
                     ChromeSlot::inline_start(ChromeElement::RotateCounterClockwise),
-                    ChromeSlot::inline(ChromeElement::Minimize),
                     ChromeSlot::inline(ChromeElement::Title),
-                    ChromeSlot::inline(ChromeElement::Close),
                     ChromeSlot::inline_end(ChromeElement::RotateClockwise),
+                    ChromeSlot::arc_bottom_start(ChromeElement::Minimize),
+                    ChromeSlot::arc_bottom_end(ChromeElement::Close),
                 ]),
                 folded_content: Some(build_compass(80).upcast()),
                 unfold_on_click: true,
@@ -252,6 +283,29 @@ fn build_ui(application: &gtk4::Application) {
             },
         )
         .unwrap_or_else(|_| CardId::new("compass"));
+
+    // The red needle counter-rotates against the card's rotation so it
+    // always points to the board's top edge; the green one is drawn
+    // card-fixed and rotates along. The card's `RotatedLayout` paints
+    // the rotation without invalidating the face, so `card-rotated`
+    // (emitted per `notify::rotation`) queues the redraw.
+    if let Ok(card) = board.card(&CardId::new("compass")) {
+        let weak_card = card.downgrade();
+        compass_face.set_draw_func(move |_area, context, width, height| {
+            let world_up = weak_card.upgrade().map(|card| -card.rotation().to_rotation_rad().as_f64());
+            paint_compass(context, f64::from(width), f64::from(height), world_up);
+        });
+        let face = compass_face.downgrade();
+        card.connect_closure(
+            "card-rotated",
+            false,
+            closure_local!(move |_card: floating_board::Card| {
+                if let Some(face) = face.upgrade() {
+                    face.queue_draw();
+                }
+            }),
+        );
+    }
 
     // A small disc with a palette: the band takes the palette's
     // header color. The slot order mirrors a header bar - handle and

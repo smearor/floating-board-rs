@@ -110,8 +110,9 @@ impl Card {
         imp.rotate_grip_enabled.set(imp.rotate_grip.get().is_some());
     }
 
-    /// `Circle` renderer: inline chrome slots along the disc's top arc
-    /// (`CardConfig::arc_span`, default a quarter) as an "arc header" -
+    /// `Circle` renderer: inline chrome slots along the disc's arc
+    /// bands (`CardConfig::arc_span` on top, `arc_bottom_span` on the
+    /// bottom - both default a quarter) as an "arc header" -
     /// `CardImpl::circle_allocate` places them on the band's mid
     /// radius, a `Title` pinned to the arc's center like a header
     /// bar's. `Satellite` slots stay satellites; the edge grips have
@@ -124,6 +125,12 @@ impl Card {
             .as_f64()
             .clamp(Degrees::ZERO.as_f64(), Degrees::FULL_TURN.as_f64());
         imp.arc_span.set(Degrees::new(span).to_radians());
+        let bottom_span = config
+            .arc_bottom_span
+            .unwrap_or(Degrees::new(span))
+            .as_f64()
+            .clamp(Degrees::ZERO.as_f64(), Degrees::FULL_TURN.as_f64());
+        imp.arc_bottom_span.set(Degrees::new(bottom_span).to_radians());
         let title = imp.title_text.borrow().clone();
         let slots = config.effective_chrome_slots();
         let style = config.chrome_style.resolved();
@@ -380,7 +387,8 @@ fn arc_band(card: &Card) -> DrawingArea {
         if radius <= 0.0 {
             return;
         }
-        let half_span = card.imp().arc_span.get().as_f64() / 2.0;
+        let top_half_span = card.imp().arc_span.get().as_f64() / 2.0;
+        let bottom_half_span = card.imp().arc_bottom_span.get().as_f64() / 2.0;
         let items = card.imp().arc_items.borrow();
         let has_top = items.iter().any(|(_, slot)| slot.placement.is_top_arc());
         let has_bottom = items.iter().any(|(_, slot)| slot.placement.is_bottom_arc());
@@ -390,8 +398,8 @@ fn arc_band(card: &Card) -> DrawingArea {
         cr.set_line_width(ARC_CHROME_BAND);
         cr.set_line_cap(LineCap::Round);
         // Cairo measures angles from +x: the bands center on -90°
-        // (top) and +90° (bottom), each `arc_span` wide.
-        for (center, present) in [(-FRAC_PI_2, has_top), (FRAC_PI_2, has_bottom)] {
+        // (top) and +90° (bottom), each `arc_span`/`arc_bottom_span` wide.
+        for (center, present, half_span) in [(-FRAC_PI_2, has_top, top_half_span), (FRAC_PI_2, has_bottom, bottom_half_span)] {
             if present {
                 cr.arc(f64::from(width) / 2.0, f64::from(height) / 2.0, radius, center - half_span, center + half_span);
                 let _ = cr.stroke();
