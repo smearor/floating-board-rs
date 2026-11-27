@@ -3,7 +3,7 @@
 //! header bar's order: leading slots left of the centered title,
 //! trailing slots right of it.
 //!
-//! Card "dial" runs the builtin style with `CircleContent::Fill`: the
+//! Card "dial" runs the builtin style with `CardContent::Fill`: the
 //! clock face fills the inner square, so the band's buttons float over
 //! the disc's rim. The card folds onto a small clock disc.
 //!
@@ -22,12 +22,19 @@
 //! orbits the disc - a click grows the matching slice by 5% (red's
 //! first click seeds a 10% slice); no slice drops below 10%.
 //!
+//! Card "gauge" runs `CardContent::Cover`: its dial paints
+//! edge-to-edge, bounded only by the card's silhouette clip. A single
+//! bottom band hosts `Minimize`/`Title`/`Close` - there is no top
+//! arc. The cover content is display-only (non-targetable), so the
+//! interaction rides the `+`/`-` satellites trimming the shared level.
+//!
 //! Run with `cargo run --example arc_chrome` (optionally
 //! `--features adwaita` for themed chrome).
 
 use floating_board::CardAnchor;
 use floating_board::CardColor;
 use floating_board::CardConfig;
+use floating_board::CardContent;
 use floating_board::CardFoldAnimation;
 use floating_board::CardId;
 use floating_board::CardPalette;
@@ -37,12 +44,11 @@ use floating_board::CardShape;
 use floating_board::ChromeElement;
 use floating_board::ChromeSlot;
 use floating_board::ChromeStyle;
-use floating_board::CircleContent;
 use floating_board::DragHandle;
 use floating_board::FloatingBoard;
 use floating_board::SatelliteConfig;
 use floating_board::SatelliteLayout;
-use gtk4::Button;
+use gtk4::{Button, DrawingArea};
 use gtk4::CssProvider;
 use gtk4::Orientation;
 use gtk4::glib::closure_local;
@@ -55,11 +61,13 @@ use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Vec2;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::f64::consts::FRAC_PI_2;
 use std::f64::consts::TAU;
 use std::rc::Rc;
 use std::time::Duration;
+use gtk4::cairo::{Context, LineCap};
 use tracing_subscriber::EnvFilter;
 
 /// A `DrawingArea` rendering an analog clock face, ticking once per
@@ -120,7 +128,7 @@ fn build_clock(size: Pixels<i32>) -> gtk4::DrawingArea {
 }
 
 // A compass dial: tick ring, cardinal letters and a north needle.
-// Draws its own disc - mounted as `CircleContent::Inscribed`, the
+// Draws its own disc - mounted as `CardContent::Inscribed`, the
 // surrounding ring stays card chrome and the arc band reads like a
 // header strip.
 palette_definition! {
@@ -235,7 +243,7 @@ impl PieShares {
 /// A compass needle: a `length`-long triangle pointing `angle`
 /// clockwise off the face's "up", plus a shorter tail on the opposite
 /// side. `RotationRad::ZERO` points to the widget's top edge.
-fn paint_needle(context: &gtk4::cairo::Context, center: Vec2<Pixels>, angle: RotationRad, length: Pixels, half_width: Pixels, color: Color<f64>) {
+fn paint_needle(context: &Context, center: Vec2<Pixels>, angle: RotationRad, length: Pixels, half_width: Pixels, color: Color<f64>) {
     let (sin, cos) = angle.sin_cos();
     let direction = Vec2::<Pixels>::new(sin, -cos);
     let perp = Vec2::<Pixels>::new(cos, sin);
@@ -256,7 +264,7 @@ fn paint_needle(context: &gtk4::cairo::Context, center: Vec2<Pixels>, angle: Rot
 /// the card's "up" and - when `world_up` is `Some` - the red needle,
 /// pointing `world_up` so it keeps aiming at the board's top edge no
 /// matter how the card is rotated.
-fn paint_compass(context: &gtk4::cairo::Context, size: Vec2<Pixels>, world_up: Option<RotationRad>) {
+fn paint_compass(context: &Context, size: Vec2<Pixels>, world_up: Option<RotationRad>) {
     let center = size * 0.5;
     let radius = Pixels::new(size.x.min(size.y) / 2.0 - 3.0);
     context.arc(center.x, center.y, radius.as_f64(), 0.0, TAU);
@@ -283,7 +291,7 @@ fn paint_compass(context: &gtk4::cairo::Context, size: Vec2<Pixels>, world_up: O
 
 /// A compass disc - the face plus the green card-fixed needle. The
 /// red world-fixed needle is installed by `main` once the card exists
-/// (its draw func reads `card.rotation()`). `CircleContent::Inscribed`
+/// (its draw func reads `card.rotation()`). `CardContent::Inscribed`
 /// keeps the surrounding rim chrome.
 fn build_compass(size: Pixels<i32>) -> gtk4::DrawingArea {
     let compass = gtk4::DrawingArea::new();
@@ -296,7 +304,7 @@ fn build_compass(size: Pixels<i32>) -> gtk4::DrawingArea {
 }
 
 /// A pie chart drawing `shares` - mounted as
-/// `CircleContent::Inscribed` so the surrounding ring stays chrome.
+/// `CardContent::Inscribed` so the surrounding ring stays chrome.
 /// The draw func reads the shared state, so satellite clicks repaint
 /// via `queue_draw`.
 fn build_pie(size: Pixels<i32>, shares: Rc<RefCell<PieShares>>) -> gtk4::DrawingArea {
@@ -325,7 +333,7 @@ fn build_pie(size: Pixels<i32>, shares: Rc<RefCell<PieShares>>) -> gtk4::Drawing
 /// A slice satellite: a round dot in the slice's color that grows its
 /// slice by `amount` on click - `Red`'s first click seeds a
 /// `SLICE_FLOOR` share instead of stepping.
-fn slice_satellite(class: &str, face: &gtk4::DrawingArea, shares: &Rc<RefCell<PieShares>>, slot: PieColor) -> Button {
+fn slice_satellite(class: &str, face: &DrawingArea, shares: &Rc<RefCell<PieShares>>, slot: PieColor) -> Button {
     let button = Button::new();
     button.add_css_class("pie-dot");
     button.add_css_class(class);
@@ -340,6 +348,76 @@ fn slice_satellite(class: &str, face: &gtk4::DrawingArea, shares: &Rc<RefCell<Pi
             SLICE_STEP
         };
         shares.borrow_mut().grow(slot, amount);
+        if let Some(face) = face.upgrade() {
+            face.queue_draw();
+        }
+    });
+    button
+}
+
+/// A gauge dial painted edge-to-edge for `CardContent::Cover`: the
+/// level ring rides the very rim of the disc, so only the card's
+/// silhouette clip bounds it - no ring stays card chrome. `level`
+/// (0.0..=1.0) is shared state, so the satellites can repaint the
+/// dial via `queue_draw`.
+fn build_gauge(size: Pixels<i32>, level: Rc<Cell<f64>>) -> gtk4::DrawingArea {
+    let gauge = DrawingArea::new();
+    gauge.set_content_width(size.as_raw());
+    gauge.set_content_height(size.as_raw());
+    gauge.set_draw_func(move |_area, context, width, height| {
+        let (width, height) = (f64::from(width), f64::from(height));
+        let (center_x, center_y) = (width / 2.0, height / 2.0);
+        let radius = width.min(height) / 2.0;
+        context.arc(center_x, center_y, radius, 0.0, TAU);
+        context.set_source_rgb(0.12, 0.14, 0.18);
+        let _ = context.fill();
+        // Level ring on the rim: dim track + bright fill from the top.
+        let track = radius - 9.0;
+        context.arc(center_x, center_y, track, 0.0, TAU);
+        context.set_source_rgba(0.42, 0.48, 0.60, 0.35);
+        context.set_line_width(9.0);
+        let _ = context.stroke();
+        let value = level.get().clamp(0.0, 1.0);
+        context.arc(center_x, center_y, track, -FRAC_PI_2, -FRAC_PI_2 + value * TAU);
+        context.set_source_rgb(0.35, 0.78, 0.56);
+        context.set_line_cap(LineCap::Round);
+        let _ = context.stroke();
+        // Tick ring inside the level ring.
+        context.set_line_width(1.5);
+        context.set_source_rgba(0.85, 0.88, 0.95, 0.55);
+        for tick in 0..24 {
+            let angle = f64::from(tick) * TAU / 24.0;
+            let inner = track - if tick % 6 == 0 { 16.0 } else { 9.0 };
+            context.move_to(center_x + inner * angle.sin(), center_y - inner * angle.cos());
+            context.line_to(center_x + (track - 4.0) * angle.sin(), center_y - (track - 4.0) * angle.cos());
+            let _ = context.stroke();
+        }
+        // Needle pointing at the level on the dial.
+        let angle = -FRAC_PI_2 + value * TAU;
+        let (sin, cos) = angle.sin_cos();
+        context.move_to(center_x, center_y);
+        context.line_to(center_x + (radius - 30.0) * -sin, center_y + (radius - 30.0) * cos);
+        context.set_source_rgb(0.92, 0.93, 0.96);
+        context.set_line_width(4.0);
+        let _ = context.stroke();
+        context.arc(center_x, center_y, 5.0, 0.0, TAU);
+        let _ = context.fill();
+    });
+    gauge
+}
+
+/// A level satellite: a round `+`/`-` button stepping the shared
+/// `level` by `delta` on click - the gauge face repaints via
+/// `queue_draw`. The cover content itself is display-only
+/// (non-targetable), so satellites carry the interaction.
+fn level_satellite(label: &str, class: &str, delta: f64, face: &DrawingArea, level: &Rc<Cell<f64>>) -> Button {
+    let button = Button::with_label(label);
+    button.add_css_class("gauge-btn");
+    button.add_css_class(class);
+    let face = face.downgrade();
+    let level = level.clone();
+    button.connect_clicked(move |_| {
+        level.set((level.get() + delta).clamp(0.0, 1.0));
         if let Some(face) = face.upgrade() {
             face.queue_draw();
         }
@@ -372,7 +450,7 @@ fn build_ui(application: &gtk4::Application) {
     // dots in their slice's color.
     let css = CssProvider::new();
     css.load_from_string(
-        ".pie-dot { min-width: 34px; min-height: 34px; padding: 0; border-radius: 9999px; border-width: 2px; border-style: solid; }         .pie-blue { background: rgba(82, 158, 214, 0.55); border-color: rgba(82, 158, 214, 0.9); }         .pie-green { background: rgba(61, 184, 122, 0.55); border-color: rgba(61, 184, 122, 0.9); }         .pie-yellow { background: rgba(235, 168, 51, 0.55); border-color: rgba(235, 168, 51, 0.9); }         .pie-red { background: rgba(217, 64, 56, 0.55); border-color: rgba(217, 64, 56, 0.9); }",
+        ".pie-dot { min-width: 34px; min-height: 34px; padding: 0; border-radius: 9999px; border-width: 2px; border-style: solid; }         .pie-blue { background: rgba(82, 158, 214, 0.55); border-color: rgba(82, 158, 214, 0.9); }         .pie-green { background: rgba(61, 184, 122, 0.55); border-color: rgba(61, 184, 122, 0.9); }         .pie-yellow { background: rgba(235, 168, 51, 0.55); border-color: rgba(235, 168, 51, 0.9); }         .pie-red { background: rgba(217, 64, 56, 0.55); border-color: rgba(217, 64, 56, 0.9); }         .gauge-btn { min-width: 34px; min-height: 34px; padding: 0; border-radius: 9999px; border-width: 2px; border-style: solid; font-weight: bold; }         .gauge-plus { background: rgba(89, 199, 143, 0.55); border-color: rgba(89, 199, 143, 0.9); }         .gauge-minus { background: rgba(150, 160, 190, 0.55); border-color: rgba(150, 160, 190, 0.9); }",
     );
     if let Some(display) = gtk4::gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(&display, &css, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -395,7 +473,7 @@ fn build_ui(application: &gtk4::Application) {
                 title: Some("Dial".to_string()),
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(300.0, 400.0))),
                 shape: CardShape::Circle,
-                circle_content: CircleContent::Fill,
+                content: CardContent::Fill,
                 chrome: Some(vec![
                     ChromeSlot::inline(ChromeElement::RotateCounterClockwise),
                     ChromeSlot::inline(ChromeElement::Minimize),
@@ -522,6 +600,44 @@ fn build_ui(application: &gtk4::Application) {
             },
         )
         .unwrap_or_else(|_| CardId::new("pie"));
+
+    // The gauge (`CardContent::Cover`): the dial reaches the
+    // silhouette, no ring stays chrome. Its only band is the bottom
+    // one - title centered between the packed Minimize/Close ends.
+    // Content is display-only: the +/- satellites trim the level.
+    let gauge_level = Rc::new(Cell::new(0.45));
+    let gauge_face = build_gauge(Pixels::new(170), gauge_level.clone());
+    board
+        .add_card_with_id(
+            "gauge",
+            &gauge_face,
+            CardConfig {
+                title: Some("Gauge".to_string()),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(920.0, 610.0))),
+                shape: CardShape::Circle,
+                content: CardContent::Cover,
+                arc_bottom_span: Some(Degrees::new(80.0)),
+                chrome: Some(vec![
+                    ChromeSlot::bar_start(ChromeElement::Minimize),
+                    ChromeSlot::bar(ChromeElement::Title),
+                    ChromeSlot::bar_end(ChromeElement::Close),
+                ]),
+                folded_content: Some(build_gauge(Pixels::new(70), gauge_level.clone()).upcast()),
+                unfold_on_click: true,
+                drag_handle: DragHandle::WholeCard,
+                fold_animation: CardFoldAnimation::Shrink,
+                satellites: Some(CardSatellites {
+                    layout: SatelliteLayout::Radial(Default::default()),
+                    satellites: vec![
+                        SatelliteConfig::custom("down", level_satellite("-", "gauge-minus", -0.1, &gauge_face, &gauge_level)),
+                        SatelliteConfig::custom("up", level_satellite("+", "gauge-plus", 0.1, &gauge_face, &gauge_level)),
+                    ],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|_| CardId::new("gauge"));
 
     window.set_child(Some(&board));
     window.present();

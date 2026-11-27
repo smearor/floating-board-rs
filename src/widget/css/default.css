@@ -16,6 +16,40 @@
 .floating-card-semicircle {
     border-radius: 9999px 9999px 0 0;
 }
+
+/* `CardShape::Hexagon`: the flat-top hexagon silhouette comes from
+   the card's `push_fill` snapshot clip, not border-radius - straight
+   edges stay straight. */
+.floating-card-hexagon {
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+/* `CardShape::Octagon`: the flat-top octagon silhouette comes from
+   the card's `push_fill` snapshot clip, not border-radius - straight
+   edges stay straight. */
+.floating-card-octagon {
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+/* `CardShape::Annulus`: the ring silhouette (outer circle minus the
+   see-through hole) comes from the card's `push_fill` snapshot clip
+   with a reversed inner path - no border-radius can cut a hole. */
+.floating-card-annulus {
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+/* A polygon card's background face: a child filling the bounding
+   box whose own background paints inside the snapshot clip - the
+   widget's own CSS background would render rectangular outside it. */
+.floating-card-face {
+    background-color: #2e3440;
+}
 .floating-card-header {
     background-color: #3b4252;
     border-radius: 12px 12px 0 0;

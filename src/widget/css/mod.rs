@@ -23,6 +23,15 @@ pub const CLASS_CARD_CIRCLE: &str = "floating-card-circle";
 /// CSS class of a `CardShape::Semicircle` card (dome silhouette: the
 /// top half of a circle, flat bottom edge).
 pub const CLASS_CARD_SEMICIRCLE: &str = "floating-card-semicircle";
+/// CSS class of a `CardShape::Hexagon` card (flat-top hexagon
+/// silhouette via snapshot clip).
+pub const CLASS_CARD_HEXAGON: &str = "floating-card-hexagon";
+/// CSS class of a `CardShape::Octagon` card (flat-top octagon
+/// silhouette via snapshot clip).
+pub const CLASS_CARD_OCTAGON: &str = "floating-card-octagon";
+/// CSS class marking an `Annulus` card.
+pub const CLASS_CARD_ANNULUS: &str = "floating-card-annulus";
+pub const CLASS_CARD_FACE: &str = "floating-card-face";
 /// CSS class of a card's header strip (drag affordance).
 pub const CLASS_HEADER: &str = "floating-card-header";
 /// CSS class applied to cards configured `headerless`.
@@ -99,6 +108,13 @@ fn palette_stylesheet(palette: &CardPalette, class: &str) -> String {
     let mut stylesheet = String::new();
     if let Some(background) = palette.get(CardColor::Background) {
         stylesheet.push_str(&format!(".{class} {{ background-color: {background}; }}\n"));
+        // A silhouette card's own background stays transparent -
+        // the clip cannot cover it; the face child paints the palette
+        // color inside the clip instead.
+        stylesheet.push_str(&format!(
+            ".{class}.floating-card-hexagon, .{class}.floating-card-octagon, .{class}.floating-card-annulus {{ background: none; box-shadow: none; }}\n"
+        ));
+        stylesheet.push_str(&format!(".{class} .floating-card-face {{ background-color: {background}; }}\n"));
     }
     if let Some(foreground) = palette.get(CardColor::Foreground) {
         stylesheet.push_str(&format!(".{class} {{ color: {foreground}; }}\n"));

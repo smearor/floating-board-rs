@@ -1,9 +1,17 @@
+use crate::domain::CardContent;
 use crate::domain::CardId;
 use crate::domain::CardShape;
 use crate::domain::ChromeElement;
 use crate::domain::ChromePlacement;
 use crate::domain::ChromeSlot;
-use crate::domain::CircleContent;
+use crate::domain::hexagon_content_for;
+use crate::domain::hexagon_fill_extent;
+use crate::domain::hexagon_fill_radius_for;
+use crate::domain::hexagon_radius_for;
+use crate::domain::octagon_content_for;
+use crate::domain::octagon_fill_extent;
+use crate::domain::octagon_fill_inradius_for;
+use crate::domain::octagon_inradius_for;
 use crate::widget::FloatingBoard;
 use crate::widget::card::Card;
 use crate::widget::card_layout::CardShapeLayout;
@@ -17,7 +25,6 @@ use gtk4::DrawingArea;
 use gtk4::Label;
 use gtk4::Orientation;
 use gtk4::Overflow;
-use gtk4::Overlay;
 use gtk4::Widget;
 use gtk4::glib;
 use gtk4::graphene::Point;
@@ -25,6 +32,7 @@ use gtk4::gsk::Transform;
 use gtk4::prelude::BoxExt;
 use gtk4::prelude::Cast;
 use gtk4::prelude::OrientableExt;
+use gtk4::prelude::SnapshotExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::BoxImpl;
 use gtk4::subclass::prelude::ObjectImpl;
@@ -34,11 +42,15 @@ use gtk4::subclass::prelude::ObjectSubclassExt;
 use gtk4::subclass::prelude::WidgetClassExt;
 use gtk4::subclass::prelude::WidgetImpl;
 use gtk4::subclass::prelude::WidgetImplExt;
+use smearor_commons_geometry::Annulus;
 use smearor_commons_geometry::Arc;
 use smearor_commons_geometry::Circle;
 use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::Fraction;
+use smearor_commons_geometry::Hexagon;
+use smearor_commons_geometry::Octagon;
 use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::PolygonOrientation;
 use smearor_commons_geometry::Radians;
 use smearor_commons_geometry::RotationRad;
 use smearor_commons_geometry::Size;
@@ -70,7 +82,7 @@ pub struct CardImpl {
     /// revealing an empty strip.
     pub header_shown: Cell<bool>,
     /// Overlay stacking the resize/rotate grips over the content.
-    pub content_overlay: OnceCell<Overlay>,
+    pub content_overlay: OnceCell<crate::widget::silhouette_stage::SilhouetteStage>,
     /// Container for the consumer's content widget.
     pub content_holder: OnceCell<gtk4::Box>,
     /// Resolved title - source of truth for `Card::title` regardless
@@ -114,9 +126,19 @@ pub struct CardImpl {
     /// The card's outline (`CardConfig::shape`) - drives the circle
     /// branches in `measure`/`size_allocate`/`contains`.
     pub shape: Cell<CardShape>,
+    /// Fraction of the outer radius that is the see-through hole on
+    /// `CardShape::Annulus` - `CardConfig::hole_ratio` resolved with
+    /// `DEFAULT_HOLE_RATIO`. Unused on every other shape.
+    pub hole_ratio: Cell<f64>,
     /// Content allocation mode for `CardShape::Circle`
-    /// (`CardConfig::circle_content`).
-    pub circle_content: Cell<CircleContent>,
+    /// (`CardConfig::content`).
+    pub content: Cell<CardContent>,
+    /// Whether the content subtree is pick-targetable - false for
+    /// every immersive mode (`Fill`/`Clipped`/`Cover`) on a
+    /// non-rectangular shape and always on `Annulus`, where no
+    /// allocation can keep off the hole. `apply_folded_presentation`
+    /// restores this after the fold transition's targeting resets.
+    pub content_interactive: Cell<bool>,
     /// Angular span of the arc-chrome band (`CardConfig::arc_span`,
     /// default 90°) - read by `circle_allocate` and the band's draw
     /// func.
@@ -138,10 +160,22 @@ pub struct CardImpl {
     /// `Semicircle` card (`Card::mount_arc_chrome` only creates it
     /// when `bar_items` is non-empty).
     pub bar_band: OnceCell<DrawingArea>,
-    /// Bar-chrome items on `CardShape::Semicircle` - `Bar*`
+    /// The `DrawingArea` painting the card background inside the
+    /// hexagon silhouette clip (the widget's own CSS background
+    /// renders outside the clip - it stays transparent).
+    pub face: OnceCell<DrawingArea>,
+    /// Bar-chrome items on `CardShape::Semicircle`/`Hexagon` - `Bar*`
     /// slots placed on the straight bottom bar's mid line by
-    /// `semicircle_allocate`.
+    /// `semicircle_allocate`/`hexagon_allocate`.
     pub bar_items: RefCell<Vec<(gtk4::Widget, ChromeSlot)>>,
+    /// The painted straight bar along the flat top edge of a
+    /// `Hexagon` card (`Card::mount_arc_chrome` only creates it
+    /// when `top_items` is non-empty).
+    pub top_band: OnceCell<DrawingArea>,
+    /// Top-bar chrome items on `CardShape::Hexagon` - `Inline*`/
+    /// `ArcTop*` slots placed on the straight top bar's mid line by
+    /// `hexagon_allocate`.
+    pub top_items: RefCell<Vec<(gtk4::Widget, ChromeSlot)>>,
 }
 
 impl Default for CardImpl {
@@ -169,13 +203,18 @@ impl Default for CardImpl {
             max_width: Cell::new(None),
             max_height: Cell::new(None),
             shape: Cell::new(CardShape::default()),
-            circle_content: Cell::new(CircleContent::default()),
+            hole_ratio: Cell::new(crate::widget::card_config::DEFAULT_HOLE_RATIO),
+            content: Cell::new(CardContent::default()),
+            content_interactive: Cell::new(true),
             arc_span: Cell::new(Degrees::QUARTER_TURN.to_radians()),
             arc_bottom_span: Cell::new(Degrees::QUARTER_TURN.to_radians()),
             arc_band: OnceCell::new(),
             arc_items: RefCell::new(Vec::new()),
             bar_band: OnceCell::new(),
             bar_items: RefCell::new(Vec::new()),
+            top_band: OnceCell::new(),
+            top_items: RefCell::new(Vec::new()),
+            face: OnceCell::new(),
         }
     }
 }
@@ -210,16 +249,18 @@ impl ObjectImpl for CardImpl {
         // The header strip is NOT built here: `chrome::mount_chrome`
         // composes it during `Card::build` from the config's chrome
         // slot list (and prepends it before the content overlay).
-        let content_holder = gtk4::Box::new(Orientation::Vertical, 0);
+        let content_holder = crate::widget::silhouette_box::SilhouetteBox::new(Orientation::Vertical, 0);
         content_holder.add_css_class(CLASS_CONTENT);
         content_holder.set_vexpand(true);
 
         // The overlay stacks the resize/rotate grips over the
-        // content's corners without claiming layout space.
-        let content_overlay = Overlay::new();
+        // content's corners without claiming layout space - the
+        // silhouette-bound `SilhouetteStage` lets picks in the cut
+        // regions outside the shape fall through to cards below.
+        let content_overlay = crate::widget::silhouette_stage::SilhouetteStage::new();
         content_overlay.set_child(Some(&content_holder));
 
-        let folded_holder = gtk4::Box::new(Orientation::Horizontal, 0);
+        let folded_holder = crate::widget::silhouette_box::SilhouetteBox::new(Orientation::Horizontal, 0);
         folded_holder.add_css_class(crate::widget::css::CLASS_FOLDED_CONTENT);
         folded_holder.set_visible(false);
         folded_holder.set_halign(gtk4::Align::Center);
@@ -230,15 +271,15 @@ impl ObjectImpl for CardImpl {
         // transition - both panes share the same area. The folded pane
         // is an overlay child, so it never claims layout space; the
         // folded state's size is pinned explicitly in `set_folded`.
-        let stage = Overlay::new();
+        let stage = crate::widget::silhouette_stage::SilhouetteStage::new();
         stage.set_child(Some(&content_overlay));
         stage.add_overlay(&folded_holder);
 
         card.append(&stage);
 
         let _ = self.content_overlay.set(content_overlay);
-        let _ = self.content_holder.set(content_holder);
-        let _ = self.folded_holder.set(folded_holder);
+        let _ = self.content_holder.set(content_holder.upcast());
+        let _ = self.folded_holder.set(folded_holder.upcast());
     }
 
     fn signals() -> &'static [Signal] {
@@ -251,6 +292,15 @@ impl ObjectImpl for CardImpl {
 /// The band is card chrome: it carries the card's background and stays
 /// a drag affordance; the content never reaches into it.
 const CIRCLE_RING_BAND: f64 = 8.0;
+
+/// `sqrt(3)` - the flat-top hexagon's height factor
+/// (`height = sqrt(3) * circumradius`).
+const SQRT_3: f64 = 1.732_050_807_568_877_2;
+
+/// `tan(22.5°) = sqrt(2) - 1` - a flat-top octagon's flat edge is
+/// `2 * a * tan(22.5°)` wide for inradius `a`, and its diagonal
+/// edges widen a cross-section at a 1:1 gain per unit height.
+const TAN_22_5: f64 = 0.414_213_562_373_095_03;
 /// Thickness of the arc-chrome band on `CardShape::Circle` (px): the
 /// chrome items' centers ride the band's mid radius.
 pub(crate) const ARC_CHROME_BAND: f64 = 36.0;
@@ -400,6 +450,42 @@ fn bar_offsets(items: &[ChromeSlot], half_width: f64) -> Vec<f64> {
     offsets
 }
 
+/// X-offsets (px, relative to the hexagon's top middle) per item on a
+/// `Hexagon` card's straight top bar: `InlineStart`/`ArcTopStart`
+/// pack from the bar's left edge inward - screen-left, the user's
+/// left when facing the card's top edge - `Inline`/`ArcTop` spread
+/// over the center span and `InlineEnd`/`ArcTopEnd` pack from the
+/// right. The unmirrored counterpart of [`bar_offsets`]: the top
+/// edge reads left-to-right. `half_width` is the safe half-extent of
+/// the bar (the hexagon's cross-section at the bar's mid line).
+fn top_offsets(items: &[ChromeSlot], half_width: f64) -> Vec<f64> {
+    let gap = half_width * (ARC_TITLE_GAP / ARC_HALF_SPAN);
+    let mut zones: [Vec<usize>; 3] = Default::default();
+    for (index, slot) in items.iter().enumerate() {
+        match slot.placement {
+            ChromePlacement::InlineStart | ChromePlacement::ArcTopStart => zones[0].push(index),
+            ChromePlacement::Inline | ChromePlacement::ArcTop => zones[1].push(index),
+            ChromePlacement::InlineEnd | ChromePlacement::ArcTopEnd => zones[2].push(index),
+            _ => {}
+        }
+    }
+    let mut offsets = vec![0.0; items.len()];
+    for (position, &item) in zones[0].iter().enumerate() {
+        offsets[item] = spread_line(-half_width, -gap, position, zones[0].len());
+    }
+    for (position, &item) in zones[1].iter().enumerate() {
+        offsets[item] = if zones[1].len() == 1 {
+            0.0
+        } else {
+            spread_line(-gap, gap, position, zones[1].len())
+        };
+    }
+    for (position, &item) in zones[2].iter().enumerate() {
+        offsets[item] = spread_line(half_width, gap, position, zones[2].len());
+    }
+    offsets
+}
+
 /// Evenly spreads `count` positions over `[from, to]`; a lone item
 /// sits at `from` - groups pack from the bar's outer edge inward,
 /// matching the arc bands' header-bar semantics.
@@ -429,12 +515,106 @@ impl WidgetImpl for CardImpl {
                 let radius = (width / 2.0).min(height);
                 Circle::<()>::new(Vec2::new(width / 2.0, height), radius).contains(&Vec2::new(x, y)) && y <= height
             }
+            // The flat-top hexagon: the strip test is exact inside the
+            // bounding box; the bounds guard keeps the rotation
+            // wrapper's out-of-box probes from re-entering the shape.
+            CardShape::Hexagon => {
+                let radius = (width / 2.0).min(height / SQRT_3);
+                x >= 0.0
+                    && x <= width
+                    && y >= 0.0
+                    && y <= height
+                    && Hexagon::flat_top(Vec2::<()>::new(width / 2.0, height / 2.0), radius).contains(&Vec2::new(x, y))
+            }
+            // The flat-top octagon: the 4-strip test is exact inside
+            // the bounding box; the bounds guard keeps the rotation
+            // wrapper's out-of-box probes from re-entering the shape.
+            CardShape::Octagon => {
+                let inradius = (width / 2.0).min(height / 2.0);
+                x >= 0.0
+                    && x <= width
+                    && y >= 0.0
+                    && y <= height
+                    && Octagon::with_inradius(Vec2::<()>::new(width / 2.0, height / 2.0), inradius, PolygonOrientation::FlatTop).contains(&Vec2::new(x, y))
+            }
+            // The ring: on the band, outside the hole - taps inside
+            // the hole pass through to whatever is underneath.
+            CardShape::Annulus => {
+                let outer = width.min(height) / 2.0;
+                Annulus::<()>::new(Vec2::new(width / 2.0, height / 2.0), outer * self.hole_ratio.get(), outer).contains(&Vec2::new(x, y))
+            }
             CardShape::Rectangle => self.parent_contains(x, y),
+        }
+    }
+
+    /// Silhouette clip: the card's snapshot is clipped to the
+    /// shape's path before children render - the single bound for
+    /// `Cover` content on every shape (for `Circle`/`Semicircle`
+    /// the path coincides with the CSS rounded background).
+    fn snapshot(&self, snapshot: &gtk4::Snapshot) {
+        if let Some(path) = self.silhouette_path() {
+            snapshot.push_fill(&path, gtk4::gsk::FillRule::Winding);
+            self.parent_snapshot(snapshot);
+            snapshot.pop();
+        } else {
+            self.parent_snapshot(snapshot);
         }
     }
 }
 
+/// Traces a closed polygon path through `vertices` on `builder` -
+/// shared by the card's silhouette clip for `Hexagon`/`Octagon`.
+fn polygon_path(builder: &gtk4::gsk::PathBuilder, vertices: &[Vec2<()>]) {
+    builder.move_to(vertices[0].x as f32, vertices[0].y as f32);
+    for vertex in &vertices[1..] {
+        builder.line_to(vertex.x as f32, vertex.y as f32);
+    }
+    builder.close();
+}
+
 impl CardImpl {
+    /// The silhouette path of the card, relative to its bounding
+    /// box: the inscribed circle for `Circle`, the dome (a circle
+    /// centered on the flat bottom edge - inside the widget bounds
+    /// only the dome remains) for `Semicircle`, the flat-top
+    /// polygon for `Hexagon`/`Octagon`. `None` for `Rectangle`.
+    fn silhouette_path(&self) -> Option<gtk4::gsk::Path> {
+        let (width, height) = (f64::from(self.obj().width()), f64::from(self.obj().height()));
+        let builder = gtk4::gsk::PathBuilder::new();
+        match self.shape.get() {
+            CardShape::Circle => {
+                builder.add_circle(&Point::new((width / 2.0) as f32, (height / 2.0) as f32), (width.min(height) / 2.0) as f32);
+            }
+            CardShape::Semicircle => {
+                builder.add_circle(&Point::new((width / 2.0) as f32, height as f32), ((width / 2.0).min(height)) as f32);
+            }
+            CardShape::Hexagon => {
+                let radius = (width / 2.0).min(height / SQRT_3);
+                polygon_path(&builder, &Hexagon::flat_top(Vec2::<()>::new(width / 2.0, height / 2.0), radius).vertices());
+            }
+            CardShape::Octagon => {
+                let inradius = (width / 2.0).min(height / 2.0);
+                polygon_path(
+                    &builder,
+                    &Octagon::with_inradius(Vec2::<()>::new(width / 2.0, height / 2.0), inradius, PolygonOrientation::FlatTop).vertices(),
+                );
+            }
+            // The ring: the outer circle plus the hole circle added
+            // reversed - under the winding fill rule the hole area
+            // stays outside the clip, so it renders transparent.
+            CardShape::Annulus => {
+                let outer = (width.min(height) / 2.0) as f32;
+                let center = Point::new((width / 2.0) as f32, (height / 2.0) as f32);
+                builder.add_circle(&center, outer);
+                let hole = gtk4::gsk::PathBuilder::new();
+                hole.add_circle(&center, (f64::from(outer) * self.hole_ratio.get()) as f32);
+                builder.add_reverse_path(&hole.to_path());
+            }
+            CardShape::Rectangle => return None,
+        }
+        Some(builder.to_path())
+    }
+
     /// `Circle` measure: the card reports its bounding square - a
     /// diameter derived from the visible content child's natural size
     /// via `CircleContent::diameter_for` (the `folded_holder` while it
@@ -457,13 +637,23 @@ impl CardImpl {
     /// measure for `Rectangle`. `None` without a folded widget.
     pub(crate) fn folded_natural(&self) -> Option<Size<i32>> {
         match self.shape.get() {
-            CardShape::Circle => {
+            CardShape::Circle | CardShape::Annulus => {
                 let (_, natural_width, _, natural_height) = self.circle_measure();
                 Some(Size::new(natural_width, natural_height))
             }
             CardShape::Semicircle => {
                 let (_, natural_width, ..) = self.semicircle_measure(Orientation::Horizontal);
                 let (_, natural_height, ..) = self.semicircle_measure(Orientation::Vertical);
+                Some(Size::new(natural_width, natural_height))
+            }
+            CardShape::Hexagon => {
+                let (_, natural_width, ..) = self.hexagon_measure(Orientation::Horizontal);
+                let (_, natural_height, ..) = self.hexagon_measure(Orientation::Vertical);
+                Some(Size::new(natural_width, natural_height))
+            }
+            CardShape::Octagon => {
+                let (_, natural_width, ..) = self.octagon_measure(Orientation::Horizontal);
+                let (_, natural_height, ..) = self.octagon_measure(Orientation::Vertical);
                 Some(Size::new(natural_width, natural_height))
             }
             CardShape::Rectangle => self.folded_holder.get().map(|holder| {
@@ -484,10 +674,7 @@ impl CardImpl {
         // square stable (the parent layer allocates at the minimum
         // width - a smaller value would render a shrunken circle whose
         // satellites still orbit the natural diameter).
-        let diameter = self
-            .circle_content
-            .get()
-            .diameter_for(f64::from(natural_width.max(natural_height)), CIRCLE_RING_BAND);
+        let diameter = self.content.get().diameter_for(f64::from(natural_width.max(natural_height)), CIRCLE_RING_BAND);
         (diameter.ceil() as i32, diameter.ceil() as i32, -1, -1)
     }
 
@@ -499,20 +686,30 @@ impl CardImpl {
     /// `CardShapeLayout`.
     pub(crate) fn circle_allocate(&self, size: Size<i32>, baseline: i32) {
         let diameter = f64::from(size.x.min(size.y));
-        let side = self.circle_content.get().content_square_for(diameter, CIRCLE_RING_BAND);
+        let side = self.content.get().content_square_for(diameter, CIRCLE_RING_BAND);
         let transform = Transform::new().translate(&Point::new(((f64::from(size.x) - side) / 2.0) as f32, ((f64::from(size.y) - side) / 2.0) as f32));
         let side = side.ceil() as i32;
         let arc_items = self.arc_items.borrow();
         let arc_band = self.arc_band.get();
         let slots: Vec<ChromeSlot> = arc_items.iter().map(|(_, slot)| *slot).collect();
         let angles = arc_angles(&slots, self.arc_span.get() / 2.0, self.arc_bottom_span.get() / 2.0);
-        let arc_radius = diameter / 2.0 - ARC_CHROME_BAND / 2.0;
+        // The chrome line: just inside the rim on a disc, on the
+        // band's mid radius on a ring.
+        let arc_radius = match self.shape.get() {
+            CardShape::Annulus => diameter / 2.0 * (1.0 + self.hole_ratio.get()) / 2.0,
+            _ => diameter / 2.0 - ARC_CHROME_BAND / 2.0,
+        };
         let mut child = self.obj().first_child();
         while let Some(widget) = child {
             if widget.is_visible() {
-                if arc_band.is_some_and(|band| band.upcast_ref::<Widget>() == &widget) {
+                if arc_band.is_some_and(|band| band.upcast_ref::<Widget>() == &widget)
+                    || self.face.get().is_some_and(|face| face.upcast_ref::<Widget>() == &widget)
+                {
                     // The painted band covers the whole disc square -
                     // its draw func clips itself to the arc sectors.
+                    // The face covers the whole bounding box - the
+                    // silhouette clip shapes it (the ring band on an
+                    // `Annulus` card).
                     widget.allocate(size.x, size.y, baseline, None);
                 } else if let Some(index) = arc_items.iter().position(|(item, _)| *item == widget) {
                     let (_, natural) = widget.measure_size();
@@ -550,7 +747,7 @@ impl CardImpl {
         // below the child's natural size and GTK clips it.
         let (ring, bottom_inset) = self.dome_insets();
         let radius = self
-            .circle_content
+            .content
             .get()
             .dome_radius_for(f64::from(natural_width), f64::from(natural_height), ring, bottom_inset);
         let extent = match orientation {
@@ -590,7 +787,7 @@ impl CardImpl {
         // `dome_insets` mirrors `semicircle_measure` - folded cards
         // keep their full dome for the folded pane.
         let (ring, bottom_inset) = self.dome_insets();
-        let (content_width, content_height) = self.circle_content.get().dome_content_for(radius, ring, bottom_inset);
+        let (content_width, content_height) = self.content.get().dome_content_for(radius, ring, bottom_inset);
         let transform = Transform::new().translate(&Point::new((width / 2.0 - content_width / 2.0) as f32, (height - content_height - bottom_inset) as f32));
         let (content_width, content_height) = (content_width.ceil() as i32, content_height.ceil() as i32);
         let slots: Vec<ChromeSlot> = arc_items.iter().map(|(_, slot)| *slot).collect();
@@ -631,6 +828,238 @@ impl CardImpl {
                     widget.allocate(natural.x, natural.y, baseline, Some(bar_transform));
                 } else {
                     widget.allocate(content_width, content_height, baseline, Some(transform.clone()));
+                }
+            }
+            child = widget.next_sibling();
+        }
+    }
+
+    /// The hexagon's bottom chrome inset: the `ARC_CHROME_BAND` the
+    /// straight bar occupies along the flat bottom edge - `0` while
+    /// folded (the band is hidden and the folded pane takes the full
+    /// hexagon) or without bar items.
+    fn hexagon_bottom_inset(&self) -> f64 {
+        if self.folded.get() || self.bar_items.borrow().is_empty() {
+            0.0
+        } else {
+            ARC_CHROME_BAND
+        }
+    }
+
+    /// The hexagon's top chrome inset: the `ARC_CHROME_BAND` the
+    /// straight bar occupies along the flat top edge - `0` while
+    /// folded or without top items.
+    fn hexagon_top_inset(&self) -> f64 {
+        if self.folded.get() || self.top_items.borrow().is_empty() {
+            0.0
+        } else {
+            ARC_CHROME_BAND
+        }
+    }
+
+    /// `Hexagon` measure: the card reports its bounding box `2R x
+    /// sqrt(3)*R` where `R` derives from the visible content child's
+    /// natural size via `hexagon_radius_for` (the `folded_holder`
+    /// while it carries a collapsed widget, else the
+    /// `content_overlay`). Called from `CardShapeLayout`.
+    pub(crate) fn hexagon_measure(&self, orientation: Orientation) -> (i32, i32, i32, i32) {
+        let Some(content) = self.visible_content_widget() else {
+            return (0, 0, -1, -1);
+        };
+        let (_, natural_width, _, _) = content.measure(Orientation::Horizontal, -1);
+        let (_, natural_height, _, _) = content.measure(Orientation::Vertical, -1);
+        // Like the disc the hexagon does not flex: minimum == natural.
+        // The bottom inset mirrors `hexagon_allocate` so the reported
+        // extent never undersizes the content (same invariant
+        // `dome_insets` maintains for the dome).
+        let bar_inset = self.hexagon_bottom_inset() + self.hexagon_top_inset();
+        let radius = match self.content.get() {
+            CardContent::Inscribed => hexagon_radius_for(f64::from(natural_width.max(natural_height)), CIRCLE_RING_BAND, bar_inset),
+            // `Fill`/`Clipped`: the rim-shrunk hexagon's bounding box
+            // holds the content - the bars overlay it, so the bar
+            // inset does not apply. `Cover` drops the ring too.
+            CardContent::Fill | CardContent::Clipped => hexagon_fill_radius_for(f64::from(natural_width), f64::from(natural_height), CIRCLE_RING_BAND),
+            CardContent::Cover => hexagon_fill_radius_for(f64::from(natural_width), f64::from(natural_height), 0.0),
+        };
+        let extent = match orientation {
+            Orientation::Horizontal => 2.0 * radius,
+            _ => SQRT_3 * radius,
+        };
+        (extent.ceil() as i32, extent.ceil() as i32, -1, -1)
+    }
+
+    /// `Hexagon` allocate: every visible child gets the centered
+    /// inscribed square (`hexagon_content_for` of the allocated
+    /// radius); bar items keep their natural size and sit upright on
+    /// the straight bar's mid line along the flat bottom edge.
+    /// Called from `CardShapeLayout`.
+    pub(crate) fn hexagon_allocate(&self, size: Size<i32>, baseline: i32) {
+        let (width, height) = (f64::from(size.x), f64::from(size.y));
+        let radius = (width / 2.0).min(height / SQRT_3);
+        let bar_items = self.bar_items.borrow();
+        let top_items = self.top_items.borrow();
+        let bar_inset = self.hexagon_bottom_inset() + self.hexagon_top_inset();
+        // `Inscribed` gets the centered inscribed square,
+        // `Fill`/`Clipped` the rim-shrunk hexagon's bounding box -
+        // the content draws its own hexagon silhouette.
+        let (content_width, content_height) = match self.content.get() {
+            CardContent::Inscribed => {
+                let side = hexagon_content_for(radius, CIRCLE_RING_BAND, bar_inset);
+                (side, side)
+            }
+            CardContent::Fill | CardContent::Clipped => hexagon_fill_extent(radius, CIRCLE_RING_BAND),
+            CardContent::Cover => hexagon_fill_extent(radius, 0.0),
+        };
+        let transform = Transform::new().translate(&Point::new(((width - content_width) / 2.0) as f32, ((height - content_height) / 2.0) as f32));
+        let (content_width, content_height) = (content_width.ceil() as i32, content_height.ceil() as i32);
+        // The bars' safe half-extent at their mid line: the hexagon's
+        // cross-section there - `R/2` (the flat edge's half width)
+        // grown by the slant gain `BAND * w / (4h)` over half the band.
+        let bar_half_width = radius / 2.0 + ARC_CHROME_BAND * width / (4.0 * height);
+        let bar_offsets = bar_offsets(&bar_items.iter().map(|(_, slot)| *slot).collect::<Vec<_>>(), bar_half_width);
+        let top_offsets = top_offsets(&top_items.iter().map(|(_, slot)| *slot).collect::<Vec<_>>(), bar_half_width);
+        let mut child = self.obj().first_child();
+        while let Some(widget) = child {
+            if widget.is_visible() {
+                if self.bar_band.get().is_some_and(|band| band.upcast_ref::<Widget>() == &widget)
+                    || self.top_band.get().is_some_and(|band| band.upcast_ref::<Widget>() == &widget)
+                    || self.face.get().is_some_and(|face| face.upcast_ref::<Widget>() == &widget)
+                {
+                    // The face covers the whole bounding box - the
+                    // silhouette clip shapes it.
+                    widget.allocate(size.x, size.y, baseline, None);
+                } else if let Some(index) = bar_items.iter().position(|(item, _)| *item == widget) {
+                    let (_, natural) = widget.measure_size();
+                    let max_offset = (bar_half_width - f64::from(natural.x) / 2.0).max(0.0);
+                    let center_x = width / 2.0 + bar_offsets[index].clamp(-max_offset, max_offset);
+                    let center_y = height - ARC_CHROME_BAND / 2.0;
+                    let bar_transform =
+                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    widget.allocate(natural.x, natural.y, baseline, Some(bar_transform));
+                } else if let Some(index) = top_items.iter().position(|(item, _)| *item == widget) {
+                    let (_, natural) = widget.measure_size();
+                    let max_offset = (bar_half_width - f64::from(natural.x) / 2.0).max(0.0);
+                    let center_x = width / 2.0 + top_offsets[index].clamp(-max_offset, max_offset);
+                    let center_y = ARC_CHROME_BAND / 2.0;
+                    let top_transform =
+                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    widget.allocate(natural.x, natural.y, baseline, Some(top_transform));
+                } else {
+                    widget.allocate(content_width, content_height, baseline, Some(transform.clone()));
+                }
+            }
+            child = widget.next_sibling();
+        }
+    }
+
+    /// The octagon's bottom chrome inset: the `ARC_CHROME_BAND` the
+    /// straight bar occupies along the flat bottom edge - `0` while
+    /// folded (the band is hidden and the folded pane takes the full
+    /// octagon) or without bar items.
+    fn octagon_bottom_inset(&self) -> f64 {
+        if self.folded.get() || self.bar_items.borrow().is_empty() {
+            0.0
+        } else {
+            ARC_CHROME_BAND
+        }
+    }
+
+    /// The octagon's top chrome inset: the `ARC_CHROME_BAND` the
+    /// straight bar occupies along the flat top edge - `0` while
+    /// folded or without top items.
+    fn octagon_top_inset(&self) -> f64 {
+        if self.folded.get() || self.top_items.borrow().is_empty() {
+            0.0
+        } else {
+            ARC_CHROME_BAND
+        }
+    }
+
+    /// `Octagon` measure: the card reports its bounding box `2a x 2a`
+    /// where `a` (the inradius) derives from the visible content
+    /// child's natural size via `octagon_inradius_for` (the
+    /// `folded_holder` while it carries a collapsed widget, else the
+    /// `content_overlay`). Called from `CardShapeLayout`.
+    pub(crate) fn octagon_measure(&self, _orientation: Orientation) -> (i32, i32, i32, i32) {
+        let Some(content) = self.visible_content_widget() else {
+            return (0, 0, -1, -1);
+        };
+        let (_, natural_width, _, _) = content.measure(Orientation::Horizontal, -1);
+        let (_, natural_height, _, _) = content.measure(Orientation::Vertical, -1);
+        // Like the disc the octagon does not flex: minimum == natural.
+        // The bar inset mirrors `octagon_allocate` so the reported
+        // extent never undersizes the content.
+        let bar_inset = self.octagon_bottom_inset() + self.octagon_top_inset();
+        let inradius = match self.content.get() {
+            CardContent::Inscribed => octagon_inradius_for(f64::from(natural_width.max(natural_height)), CIRCLE_RING_BAND, bar_inset),
+            // `Fill`/`Clipped`: the rim-shrunk octagon's bounding
+            // square holds the content - the bars overlay it.
+            // `Cover` drops the ring too.
+            CardContent::Fill | CardContent::Clipped => octagon_fill_inradius_for(f64::from(natural_width.max(natural_height)), CIRCLE_RING_BAND),
+            CardContent::Cover => octagon_fill_inradius_for(f64::from(natural_width.max(natural_height)), 0.0),
+        };
+        // The bounding box is the square `2a x 2a` - both
+        // orientations report the same extent.
+        let extent = 2.0 * inradius;
+        (extent.ceil() as i32, extent.ceil() as i32, -1, -1)
+    }
+
+    /// `Octagon` allocate: every visible child gets the centered
+    /// inscribed square (`octagon_content_for` of the allocated
+    /// inradius); bar items keep their natural size and sit upright
+    /// on the straight bar's mid line along a flat edge. Called from
+    /// `CardShapeLayout`.
+    pub(crate) fn octagon_allocate(&self, size: Size<i32>, baseline: i32) {
+        let (width, height) = (f64::from(size.x), f64::from(size.y));
+        let inradius = (width / 2.0).min(height / 2.0);
+        let bar_items = self.bar_items.borrow();
+        let top_items = self.top_items.borrow();
+        let bar_inset = self.octagon_bottom_inset() + self.octagon_top_inset();
+        // `Inscribed` gets the centered inscribed square,
+        // `Fill`/`Clipped` the rim-shrunk octagon's bounding box -
+        // the content draws its own octagon silhouette.
+        let side = match self.content.get() {
+            CardContent::Inscribed => octagon_content_for(inradius, CIRCLE_RING_BAND, bar_inset),
+            CardContent::Fill | CardContent::Clipped => octagon_fill_extent(inradius, CIRCLE_RING_BAND),
+            CardContent::Cover => octagon_fill_extent(inradius, 0.0),
+        };
+        let transform = Transform::new().translate(&Point::new(((width - side) / 2.0) as f32, ((height - side) / 2.0) as f32));
+        let side = side.ceil() as i32;
+        // The bars' safe half-extent at their mid line: the octagon's
+        // cross-section there - the flat edge's half width
+        // `a * tan(22.5°)` grown by the diagonal's 1:1 gain `BAND/2`
+        // over half the band.
+        let bar_half_width = width / 2.0 * TAN_22_5 + ARC_CHROME_BAND / 2.0;
+        let bar_offsets = bar_offsets(&bar_items.iter().map(|(_, slot)| *slot).collect::<Vec<_>>(), bar_half_width);
+        let top_offsets = top_offsets(&top_items.iter().map(|(_, slot)| *slot).collect::<Vec<_>>(), bar_half_width);
+        let mut child = self.obj().first_child();
+        while let Some(widget) = child {
+            if widget.is_visible() {
+                if self.bar_band.get().is_some_and(|band| band.upcast_ref::<Widget>() == &widget)
+                    || self.top_band.get().is_some_and(|band| band.upcast_ref::<Widget>() == &widget)
+                    || self.face.get().is_some_and(|face| face.upcast_ref::<Widget>() == &widget)
+                {
+                    // The face covers the whole bounding box - the
+                    // silhouette clip shapes it.
+                    widget.allocate(size.x, size.y, baseline, None);
+                } else if let Some(index) = bar_items.iter().position(|(item, _)| *item == widget) {
+                    let (_, natural) = widget.measure_size();
+                    let max_offset = (bar_half_width - f64::from(natural.x) / 2.0).max(0.0);
+                    let center_x = width / 2.0 + bar_offsets[index].clamp(-max_offset, max_offset);
+                    let center_y = height - ARC_CHROME_BAND / 2.0;
+                    let bar_transform =
+                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    widget.allocate(natural.x, natural.y, baseline, Some(bar_transform));
+                } else if let Some(index) = top_items.iter().position(|(item, _)| *item == widget) {
+                    let (_, natural) = widget.measure_size();
+                    let max_offset = (bar_half_width - f64::from(natural.x) / 2.0).max(0.0);
+                    let center_x = width / 2.0 + top_offsets[index].clamp(-max_offset, max_offset);
+                    let center_y = ARC_CHROME_BAND / 2.0;
+                    let top_transform =
+                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    widget.allocate(natural.x, natural.y, baseline, Some(top_transform));
+                } else {
+                    widget.allocate(side, side, baseline, Some(transform.clone()));
                 }
             }
             child = widget.next_sibling();

@@ -55,6 +55,7 @@ pub use domain::BoardLayout;
 pub use domain::BoundsMode;
 pub use domain::CardAnchor;
 pub use domain::CardColor;
+pub use domain::CardContent;
 pub use domain::CardFoldAnimation;
 pub use domain::CardFoldTiming;
 pub use domain::CardGeometry;

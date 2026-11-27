@@ -1,6 +1,7 @@
 use crate::domain::ANCHOR_MARGIN;
 use crate::domain::BoundsMode;
 use crate::domain::CardAnchor;
+use crate::domain::CardContent;
 use crate::domain::CardFoldAnimation;
 use crate::domain::CardFoldTiming;
 use crate::domain::CardPalette;
@@ -9,7 +10,6 @@ use crate::domain::ChromeElement;
 use crate::domain::ChromePlacement;
 use crate::domain::ChromeSlot;
 use crate::domain::ChromeStyle;
-use crate::domain::CircleContent;
 use crate::domain::DragHandle;
 use crate::domain::MinVisible;
 use crate::domain::ScaleBounds;
@@ -26,6 +26,10 @@ use smearor_commons_layout::Seat;
 /// the value `.floating-card-content` previously carried as fixed CSS
 /// padding.
 pub const DEFAULT_CONTENT_PADDING: Pixels = Pixels::new(10.0);
+
+/// Default fraction of an `Annulus` card's outer radius that is the
+/// see-through, click-through hole.
+pub const DEFAULT_HOLE_RATIO: f64 = 0.5;
 
 /// Placement and interaction configuration of a card.
 ///
@@ -77,24 +81,35 @@ pub struct CardConfig {
     /// through to whatever is underneath.
     #[cfg_attr(feature = "serde", serde(default))]
     pub shape: CardShape,
-    /// How a `Circle` card allocates its content inside the bounding
-    /// square. Ignored for `Rectangle`.
-    #[cfg_attr(feature = "serde", serde(default))]
-    pub circle_content: CircleContent,
-    /// Angular span of the arc-chrome band on `CardShape::Circle` -
-    /// the top arc the inline chrome items ride on, centered on the
-    /// disc's top. `None` defaults to `Degrees::QUARTER_TURN` (90°);
-    /// values above a full turn are clamped. Ignored for `Rectangle`
-    /// and for circle cards without inline chrome.
+    /// How a shaped card (`Circle`/`Semicircle`/`Hexagon`/`Octagon`)
+    /// allocates its content inside the bounding box: `Inscribed`
+    /// fits the shape's inscribed square, `Fill` the rim-shrunk
+    /// silhouette (the content draws its own shape), `Clipped` like
+    /// `Fill` plus a silhouette clip so picks in the cut regions fall
+    /// back onto the card. Ignored for `Rectangle`.
+    #[cfg_attr(feature = "serde", serde(default, alias = "circle_content"))]
+    pub content: CardContent,
+    /// Angular span of the arc-chrome band on `CardShape::Circle` and
+    /// `CardShape::Annulus` - the top arc the inline chrome items ride
+    /// on, centered on the card's top. `None` defaults to
+    /// `Degrees::QUARTER_TURN` (90°); values above a full turn are
+    /// clamped. Ignored for `Rectangle` and for cards without inline
+    /// chrome.
     #[cfg_attr(feature = "serde", serde(default))]
     pub arc_span: Option<Degrees>,
     /// Angular span of the bottom arc-chrome band on
-    /// `CardShape::Circle`. `None` mirrors `arc_span`; set it when the
-    /// bottom band should wrap a different share of the rim than the
-    /// top band. Ignored for `Rectangle` and for circle cards without
-    /// `Bar*` chrome.
+    /// `CardShape::Circle` and `CardShape::Annulus`. `None` mirrors
+    /// `arc_span`; set it when the bottom band should wrap a different
+    /// share of the rim than the top band. Ignored for `Rectangle` and
+    /// for cards without `Bar*` chrome.
     #[cfg_attr(feature = "serde", serde(default))]
     pub arc_bottom_span: Option<Degrees>,
+    /// Fraction of the outer radius making the see-through,
+    /// click-through hole on `CardShape::Annulus`. `None` defaults to
+    /// `DEFAULT_HOLE_RATIO` (0.5); clamped to `0.05..=0.95`. Ignored
+    /// for every other shape.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub hole_ratio: Option<f64>,
     /// Margin in pixels an edge or corner anchor keeps between the card's
     /// footprint and the board edge; default `ANCHOR_MARGIN` (24 px).
     /// Ignored for `Center` and `Explicit` placements.
@@ -116,6 +131,9 @@ pub struct CardConfig {
     /// Space in pixels between the card border and the content widget;
     /// default `DEFAULT_CONTENT_PADDING` (10 px, the former fixed CSS
     /// value). `0` lets the content sit flush with the card edge.
+    /// Applies to `CardContent::Inscribed` only - `Fill`/`Clipped`
+    /// carry the ring band as their designed inset already, and
+    /// `Cover` is edge-to-edge.
     #[cfg_attr(feature = "serde", serde(default = "default_content_padding"))]
     pub content_padding: Pixels,
     /// Optional initial z-ordering; `None` appends the card on top.
@@ -239,9 +257,10 @@ impl Default for CardConfig {
             headerless: false,
             drag_handle: DragHandle::Header,
             shape: CardShape::default(),
-            circle_content: CircleContent::default(),
+            content: CardContent::default(),
             arc_span: None,
             arc_bottom_span: None,
+            hole_ratio: None,
             anchor_margin: ANCHOR_MARGIN,
             scale_limits: ScaleBounds::default(),
             min_visible: MinVisible::default(),
@@ -424,9 +443,10 @@ mod tests {
         let config = CardConfig {
             drag_handle: DragHandle::Header,
             shape: CardShape::default(),
-            circle_content: CircleContent::default(),
+            content: CardContent::default(),
             arc_span: None,
             arc_bottom_span: None,
+            hole_ratio: None,
             ..Default::default()
         };
         assert!(!elements(&config).contains(&ChromeElement::DragHandle));

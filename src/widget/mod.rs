@@ -14,13 +14,15 @@ mod card_layout;
 mod card_satellites;
 mod card_signal;
 pub(crate) mod chrome;
-mod circular_clip;
 mod floating_board_layout;
 mod satellite;
 mod satellite_config;
 #[cfg(feature = "fx")]
 mod satellite_fx;
 mod scaling;
+mod shape_clip;
+mod silhouette_box;
+mod silhouette_stage;
 
 pub(crate) mod css;
 

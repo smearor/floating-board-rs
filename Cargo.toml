@@ -44,9 +44,3 @@ opt-level = 0
 opt-level = 3
 lto = true
 strip = "symbols"
-
-# Local override until the `contains` delegation in `RotationWidgetImpl`
-# (leaf picks in a rotated child's invisible corners were swallowed by
-# the transform wrapper) lands upstream.
-#[patch."https://github.com/smearor/smearor-wrot-rotation.git"]
-#smearor-wrot-rotation = { path = "../smearor-wrot-rotation" }

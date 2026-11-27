@@ -15,6 +15,7 @@ use crate::widget::imp::tracked_touch::TrackedTouch;
 use crate::widget::scaling::ScalingWidget;
 use gtk4::GestureDrag;
 use gtk4::gdk::EventSequence;
+use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Radians;
 use smearor_commons_geometry::RotationRad;
@@ -164,8 +165,8 @@ pub(crate) struct CardEntry {
 const RESIZE_MIN_RADIUS: Pixels = Pixels::new(4.0);
 
 /// Angular sweep around the card center that triggers the rotate
-/// grip's quarter-turn step (5 degrees) - above pointer jitter, well
-/// below the quarter turn itself.
+/// grip's snap step (5 degrees) - above pointer jitter, well below
+/// the shape's snap step itself.
 const ROTATE_TRIGGER: RotationRad = RotationRad::new(5.0 * std::f64::consts::PI / 180.0);
 
 /// Smallest pointer-to-center distance for a meaningful swipe
@@ -183,12 +184,14 @@ impl CardEntry {
         Some(resize_scale(grab, now, self.center(), self.resize_scale.get(), &self.config.scale_limits))
     }
 
-    /// Quarter-turn target for a rotate-drag sample at pointer position
+    /// Snap-step target for a rotate-drag sample at pointer position
     /// `now` (workspace coordinates): once the pointer's angular sweep
-    /// around the card center passes `ROTATE_TRIGGER`, the next 90
-    /// degree boundary in the sweep direction off `current`. `None`
-    /// while no rotate grab is active, while the swipe is still below
-    /// the trigger, or once the drag's single step was taken.
+    /// around the card center passes `ROTATE_TRIGGER`, the next snap
+    /// boundary (the shape's `rotation_step` - 60 degrees on a
+    /// `Hexagon`, 90 otherwise) in the sweep direction off `current`.
+    /// `None` while no rotate grab is active, while the swipe is
+    /// still below the trigger, or once the drag's single step was
+    /// taken.
     pub(crate) fn rotate_target(&self, now: Vec2<Pixels>, current: RotationRad) -> Option<RotationRad> {
         if self.rotate_stepped.get() {
             return None;
@@ -202,7 +205,7 @@ impl CardEntry {
         if sweep.abs() < ROTATE_TRIGGER {
             return None;
         }
-        Some(next_quarter_turn(current, sweep > RotationRad::ZERO))
+        Some(next_snap_turn(current, sweep > RotationRad::ZERO, self.config.shape.rotation_step()))
     }
 
     /// The transition duration the card's `animation_speed_ms`
@@ -248,21 +251,21 @@ fn resize_scale(grab: Vec2<Pixels>, now: Vec2<Pixels>, center: Vec2<Pixels>, sta
     ScaleFactor::new(start.value() * ratio).clamped(limits)
 }
 
-/// The quarter-turn boundary next in `direction` from `current`: the
-/// smallest 90 degree multiple past `current` when `clockwise`, the
-/// largest below it when not. A `current` already on a boundary steps
-/// a full quarter turn; the epsilon keeps float noise on snapped
+/// The snap boundary next in `direction` from `current`: the
+/// smallest `step` degree multiple past `current` when `clockwise`,
+/// the largest below it when not. A `current` already on a boundary
+/// steps a full snap step; the epsilon keeps float noise on snapped
 /// angles from staying put.
-fn next_quarter_turn(current: RotationRad, clockwise: bool) -> RotationRad {
-    const QUARTER: f64 = 90.0;
+fn next_snap_turn(current: RotationRad, clockwise: bool, step: Degrees) -> RotationRad {
     const EPSILON: f64 = 1e-6;
-    let turns = current.to_degrees() / QUARTER;
+    let step = step.as_f64();
+    let turns = current.to_degrees() / step;
     let next = if clockwise {
         (turns + EPSILON).floor() + 1.0
     } else {
         (turns - EPSILON).ceil() - 1.0
     };
-    RotationRad::from_degrees(next * QUARTER)
+    RotationRad::from_degrees(next * step)
 }
 
 #[cfg(test)]
@@ -310,15 +313,30 @@ mod tests {
     }
 
     fn next(current: f64, clockwise: bool) -> f64 {
-        next_quarter_turn(RotationRad::from_degrees(current), clockwise).to_degrees()
+        next_snap_turn(RotationRad::from_degrees(current), clockwise, Degrees::QUARTER_TURN).to_degrees()
     }
 
     #[test]
-    fn snapped_rotation_steps_a_full_quarter_turn() {
+    fn snapped_rotation_steps_a_full_snap_step() {
         assert_eq!(next(0.0, true), 90.0);
         assert_eq!(next(90.0, true), 180.0);
         assert_eq!(next(90.0, false), 0.0);
         assert_eq!(next(0.0, false), -90.0);
+    }
+
+    #[test]
+    fn hexagon_snap_steps_in_sixth_turns() {
+        let next = |current: f64, clockwise: bool| next_snap_turn(RotationRad::from_degrees(current), clockwise, Degrees::SIXTH_TURN).to_degrees();
+        let expected = [
+            (0.0, true, 60.0),
+            (60.0, true, 120.0),
+            (60.0, false, 0.0),
+            (30.0, true, 60.0),
+            (0.0, false, -60.0),
+        ];
+        for (current, clockwise, target) in expected {
+            assert!((next(current, clockwise) - target).abs() < 1e-9, "{current} {clockwise} -> {target}");
+        }
     }
 
     #[test]

@@ -19,11 +19,11 @@ pub enum ChromeElement {
     /// (`CardConfig::closable`).
     Close,
     /// The button stepping the card one snap step clockwise
-    /// (`Card::rotate_to_next_quarter`) - the precise, tap-friendly
+    /// (`Card::rotate_to_next_snap`) - the precise, tap-friendly
     /// counterpart of [`ChromeElement::RotateGrip`].
     RotateClockwise,
     /// The button stepping the card one snap step counter-clockwise
-    /// (`Card::rotate_to_next_quarter`).
+    /// (`Card::rotate_to_next_snap`).
     RotateCounterClockwise,
     /// The button passing the card one table side clockwise
     /// (`Card::pass_to_next_user` with `TurnDirection::Clockwise`) -

@@ -30,6 +30,7 @@ use crate::widget::css::CLASS_HEADER;
 use crate::widget::css::CLASS_RESIZE_GRIP;
 use crate::widget::css::CLASS_ROTATE_GRIP;
 use crate::widget::imp::card::ARC_CHROME_BAND;
+
 use glib::object::Cast;
 use glib::object::ObjectExt;
 use gtk4::Align;
@@ -92,7 +93,10 @@ impl Card {
         // mounts along the disc's arc bands as an "arc header", a
         // semicircle's on the top arc plus a straight bottom bar;
         // `Satellite` placements stay satellites either way.
-        if matches!(config.shape, CardShape::Circle | CardShape::Semicircle) {
+        if matches!(
+            config.shape,
+            CardShape::Circle | CardShape::Semicircle | CardShape::Hexagon | CardShape::Octagon | CardShape::Annulus
+        ) {
             self.mount_arc_chrome(config);
             return;
         }
@@ -119,7 +123,11 @@ impl Card {
     /// radius, a `Title` pinned to the arc's center like a header
     /// bar's. On `CardShape::Semicircle` the top slots ride the same
     /// arc while `Bar*` slots mount the straight bottom bar
-    /// (`CardImpl::bar_items`, placed by `semicircle_allocate`).
+    /// (`CardImpl::bar_items`, placed by `semicircle_allocate`). On
+    /// `CardShape::Hexagon`/`CardShape::Octagon` the flat edges replace the
+    /// arcs: `Bar*` slots ride the bottom edge's bar
+    /// (`CardImpl::bar_items`), every other placement the top edge's
+    /// (`CardImpl::top_items`).
     /// `Satellite` slots stay satellites; the edge grips have no
     /// mount on a curve.
     fn mount_arc_chrome(&self, config: &CardConfig) {
@@ -143,6 +151,7 @@ impl Card {
         // the straight bottom bar on `Semicircle`.
         let mut items = Vec::new();
         let mut bar_items = Vec::new();
+        let mut top_items = Vec::new();
         for slot in &slots {
             if slot.placement == ChromePlacement::Satellite {
                 skip_satellite(slot.element);
@@ -178,7 +187,7 @@ impl Card {
                 ChromeElement::NextSeat => self.build_pass_button(TurnDirection::Clockwise).upcast(),
                 ChromeElement::PreviousSeat => self.build_pass_button(TurnDirection::CounterClockwise).upcast(),
                 ChromeElement::ResizeGrip | ChromeElement::RotateGrip => {
-                    warn!(element = ?slot.element, "edge grip has no mount on a circle card - skipped");
+                    warn!(element = ?slot.element, "edge grip has no mount on a curved card - skipped");
                     continue;
                 }
             };
@@ -190,7 +199,17 @@ impl Card {
                 widget.add_css_class("circular");
             }
             self.append(&widget);
-            if config.shape == CardShape::Semicircle && slot.placement.is_bar() {
+            // The polygon shapes have no arcs - their straight flat
+            // edges take the role of the curved bands: `Bar*` slots
+            // line up on the bottom bar, every other placement on the
+            // top bar.
+            if matches!(config.shape, CardShape::Hexagon | CardShape::Octagon) {
+                if slot.placement.is_bar() {
+                    bar_items.push((widget, *slot));
+                } else {
+                    top_items.push((widget, *slot));
+                }
+            } else if config.shape == CardShape::Semicircle && slot.placement.is_bar() {
                 bar_items.push((widget, *slot));
             } else {
                 items.push((widget, *slot));
@@ -205,12 +224,18 @@ impl Card {
             let _ = imp.arc_band.set(band);
         }
         if !bar_items.is_empty() {
-            let band = bar_band(self);
+            let band = bar_band(self, false);
             band.insert_before(self, bar_items.first().map(|(first, _)| first));
             let _ = imp.bar_band.set(band);
         }
+        if !top_items.is_empty() {
+            let band = bar_band(self, true);
+            band.insert_before(self, top_items.first().map(|(first, _)| first));
+            let _ = imp.top_band.set(band);
+        }
         *imp.arc_items.borrow_mut() = items;
         *imp.bar_items.borrow_mut() = bar_items;
+        *imp.top_items.borrow_mut() = top_items;
     }
 
     /// `Builtin` renderer: header strip as a `gtk4::Box` of inline
@@ -218,7 +243,7 @@ impl Card {
     /// historical card look one-to-one (P1.3 regression baseline).
     fn mount_builtin_chrome(&self, title: &str, slots: &[ChromeSlot]) {
         let imp = self.imp();
-        let header = gtk4::Box::new(Orientation::Horizontal, 6);
+        let header = crate::widget::silhouette_box::SilhouetteBox::new(Orientation::Horizontal, 6);
         header.add_css_class(CLASS_HEADER);
         header.set_hexpand(true);
         // Header children are grouped by placement: `InlineStart`
@@ -334,7 +359,7 @@ impl Card {
     }
 
     /// Mount-agnostic rotate button stepping the card one snap step in
-    /// `direction` per click (`Card::rotate_to_next_quarter`) - the
+    /// `direction` per click (`Card::rotate_to_next_snap`) - the
     /// shared builder for `ChromeElement::RotateClockwise` and
     /// `RotateCounterClockwise`, inline and satellite mounts alike.
     pub(crate) fn build_rotate_button(&self, direction: RotationDirection) -> Button {
@@ -348,7 +373,7 @@ impl Card {
         let card_weak = self.downgrade();
         button.connect_clicked(move |_| {
             if let Some(card) = card_weak.upgrade() {
-                card.rotate_to_next_quarter(direction);
+                card.rotate_to_next_snap(direction);
             }
         });
         button
@@ -410,6 +435,12 @@ fn arc_band(card: &Card) -> DrawingArea {
                 f64::from(height),
                 (f64::from(width) / 2.0).min(f64::from(height)) - ARC_CHROME_BAND / 2.0,
             ),
+            // The ring's chrome line is the band's mid radius, not
+            // just inside the rim like on a disc.
+            CardShape::Annulus => {
+                let outer = f64::from(width.min(height)) / 2.0;
+                (f64::from(width) / 2.0, f64::from(height) / 2.0, outer * (1.0 + card.imp().hole_ratio.get()) / 2.0)
+            }
             _ => (f64::from(width) / 2.0, f64::from(height) / 2.0, f64::from(width.min(height)) / 2.0 - ARC_CHROME_BAND / 2.0),
         };
         if radius <= 0.0 {
@@ -437,31 +468,69 @@ fn arc_band(card: &Card) -> DrawingArea {
     band
 }
 
-/// The straight bar painted along the flat bottom edge of a
-/// `Semicircle` card: a trapezoid strip (`ARC_CHROME_BAND` tall, the
-/// dome's full width at the flat edge, the chord at its top edge) in
-/// `CLASS_BAR_BAND`'s `color` - the palette's header color like the
-/// arc band. Non-interactive (`set_can_target(false)`); reads the
-/// dome's radius from the card's allocation per frame.
-fn bar_band(card: &Card) -> DrawingArea {
+/// `tan(22.5°) = sqrt(2) - 1` - a flat-top octagon's flat edge is
+/// `2 * a * tan(22.5°)` wide for inradius `a`; its diagonal edges
+/// widen a cross-section at a 1:1 gain per unit height.
+const TAN_22_5: f64 = 0.414_213_562_373_095_03;
+
+/// The straight bar painted along a card's flat edge: on
+/// `Semicircle` a trapezoid strip (`ARC_CHROME_BAND` tall, the
+/// dome's full width at the flat bottom edge, the chord at its top
+/// edge), on `Hexagon`/`Octagon` a trapezoid on either flat edge
+/// (`top` mirrors it onto the top edge) in `CLASS_BAR_BAND`'s `color` -
+/// the palette's header color like the arc band. Non-interactive
+/// (`set_can_target(false)`); reads the shape's extents from the
+/// card's allocation per frame.
+fn bar_band(card: &Card, top: bool) -> DrawingArea {
     let band = DrawingArea::new();
     band.add_css_class(CLASS_BAR_BAND);
     band.set_can_target(false);
     let card_weak = card.downgrade();
     band.set_draw_func(move |area, cr, width, height| {
-        if card_weak.upgrade().is_none() {
-            return;
-        }
+        let Some(card) = card_weak.upgrade() else { return };
         let (width, height) = (f64::from(width), f64::from(height));
-        let radius = (width / 2.0).min(height);
         let center_x = width / 2.0;
-        // The chord where the bar's top edge crosses the dome rim.
-        let chord = (radius * radius - ARC_CHROME_BAND * ARC_CHROME_BAND).max(0.0).sqrt();
-        cr.move_to(center_x - radius, height);
-        cr.line_to(center_x - chord, height - ARC_CHROME_BAND);
-        cr.line_to(center_x + chord, height - ARC_CHROME_BAND);
-        cr.line_to(center_x + radius, height);
-        cr.close_path();
+        match card.imp().shape.get() {
+            CardShape::Hexagon => {
+                // The hexagon's flat edge is `R = w/2` wide; the slanted
+                // edges widen the bar by `BAND * w / (2h)` per side at
+                // the band's far edge (the slant gains `1/sqrt(3)` per
+                // unit height), so it ends exactly on the silhouette.
+                let edge_half = width / 4.0;
+                let far_half = edge_half + ARC_CHROME_BAND * width / (2.0 * height);
+                let (edge_y, far_y) = if top { (0.0, ARC_CHROME_BAND) } else { (height, height - ARC_CHROME_BAND) };
+                cr.move_to(center_x - edge_half, edge_y);
+                cr.line_to(center_x - far_half, far_y);
+                cr.line_to(center_x + far_half, far_y);
+                cr.line_to(center_x + edge_half, edge_y);
+                cr.close_path();
+            }
+            CardShape::Octagon => {
+                // The octagon's flat edge is `2a * tan(22.5°)` wide
+                // (`a = w/2`); the 45° diagonal edges widen the bar by
+                // `BAND` per side at the band's far edge (the slant
+                // gains 1:1 per unit height), so it ends exactly on
+                // the silhouette.
+                let edge_half = width / 2.0 * TAN_22_5;
+                let far_half = edge_half + ARC_CHROME_BAND;
+                let (edge_y, far_y) = if top { (0.0, ARC_CHROME_BAND) } else { (height, height - ARC_CHROME_BAND) };
+                cr.move_to(center_x - edge_half, edge_y);
+                cr.line_to(center_x - far_half, far_y);
+                cr.line_to(center_x + far_half, far_y);
+                cr.line_to(center_x + edge_half, edge_y);
+                cr.close_path();
+            }
+            _ => {
+                let radius = (width / 2.0).min(height);
+                // The chord where the bar's top edge crosses the dome rim.
+                let chord = (radius * radius - ARC_CHROME_BAND * ARC_CHROME_BAND).max(0.0).sqrt();
+                cr.move_to(center_x - radius, height);
+                cr.line_to(center_x - chord, height - ARC_CHROME_BAND);
+                cr.line_to(center_x + chord, height - ARC_CHROME_BAND);
+                cr.line_to(center_x + radius, height);
+                cr.close_path();
+            }
+        }
         let color = area.color();
         cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
         let _ = cr.fill();

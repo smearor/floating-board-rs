@@ -16,6 +16,7 @@
 use floating_board::CardAnchor;
 use floating_board::CardColor;
 use floating_board::CardConfig;
+use floating_board::CardContent;
 use floating_board::CardFoldAnimation;
 use floating_board::CardFoldTiming;
 use floating_board::CardId;
@@ -26,7 +27,6 @@ use floating_board::CardShape;
 use floating_board::ChromeElement;
 use floating_board::ChromeSlot;
 use floating_board::ChromeStyle;
-use floating_board::CircleContent;
 use floating_board::DragHandle;
 use floating_board::FloatingBoard;
 use floating_board::SatelliteConfig;
@@ -323,7 +323,7 @@ fn build_ui(application: &gtk4::Application) {
     // card radius + gap). Its bounding-box corners overlap the memo
     // card: taps there fall through the circle's `contains` and pick
     // memo - the pass-through proof.
-    // `CircleContent::Fill`: the widget draws its own circular
+    // `CardContent::Fill`: the widget draws its own circular
     // appearance - a clock face with hands, ticking once per second.
     // The face fills the inner square and leaves the palette ring
     // visible. Folded, the card swaps to a second clock instance via
@@ -347,7 +347,7 @@ fn build_ui(application: &gtk4::Application) {
                 position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(465.0, 450.0))),
                 palette: Some(orb_palette),
                 shape: CardShape::Circle,
-                circle_content: CircleContent::Fill,
+                content: CardContent::Fill,
                 foldable: true,
                 closable: true,
                 // Minimized the card shows the folded clock; a tap

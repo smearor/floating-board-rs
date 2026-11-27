@@ -138,7 +138,8 @@ impl FloatingBoard {
         // Exception: a circle card has no header strip - its `Minimize`
         // satellite is the only fold/unfold control and stays visible
         // while folded (otherwise the fold would be a dead end).
-        let fold_exception = folded && entry.scaling.is_visible() && entry.config.shape == CardShape::Circle && !entry.config.unfold_on_click;
+        let fold_exception =
+            folded && entry.scaling.is_visible() && matches!(entry.config.shape, CardShape::Circle | CardShape::Annulus) && !entry.config.unfold_on_click;
         match resolve(&geometry, footprint, entry.config.shape, &settings.layout, settings.rotation_mode, &items) {
             Ok(placements) => {
                 for satellite in satellites.iter() {
@@ -156,7 +157,7 @@ impl FloatingBoard {
                             // closes, so it must stay rendered while the
                             // rest of the set animates into the seed.
                             let fold_control = matches!(satellite.kind, SatelliteKind::Chrome(ChromeElement::Minimize))
-                                && entry.config.shape == CardShape::Circle
+                                && matches!(entry.config.shape, CardShape::Circle | CardShape::Annulus)
                                 && !entry.config.unfold_on_click
                                 && (fold_exception || (entry.fold_choreo_closing.get() && entry.scaling.is_visible()));
                             // A running close transition keeps its
@@ -334,7 +335,7 @@ impl FloatingBoard {
         for (index, satellite) in satellites.iter().enumerate() {
             let fold_protected = skip_fold_control
                 && !opening
-                && entry.config.shape == CardShape::Circle
+                && matches!(entry.config.shape, CardShape::Circle | CardShape::Annulus)
                 && !entry.config.unfold_on_click
                 && matches!(satellite.kind, SatelliteKind::Chrome(ChromeElement::Minimize));
             if fold_protected {
@@ -481,7 +482,7 @@ impl FloatingBoard {
                 let satellites = entry.satellites.borrow();
                 satellites.iter().any(|satellite| {
                     satellite.open.get()
-                        && !(entry.config.shape == CardShape::Circle
+                        && !(matches!(entry.config.shape, CardShape::Circle | CardShape::Annulus)
                             && !entry.config.unfold_on_click
                             && matches!(satellite.kind, SatelliteKind::Chrome(ChromeElement::Minimize)))
                 })

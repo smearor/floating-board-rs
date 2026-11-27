@@ -1,10 +1,10 @@
 use crate::domain::BoardError;
+use crate::domain::CardContent;
 use crate::domain::CardGeometry;
 use crate::domain::CardId;
 use crate::domain::CardPalette;
 use crate::domain::CardPosition;
 use crate::domain::CardShape;
-use crate::domain::CircleContent;
 use crate::domain::DragHandle;
 use crate::domain::ScaleFactor;
 use crate::domain::TurnDirection;
@@ -13,19 +13,24 @@ use crate::widget::board::FloatingBoard;
 use crate::widget::card_config::CardConfig;
 use crate::widget::card_layer::CardLayer;
 use crate::widget::card_signal::CardSignal;
-use crate::widget::circular_clip::CircularClip;
+use crate::widget::css::CLASS_CARD_ANNULUS;
 use crate::widget::css::CLASS_CARD_CIRCLE;
+use crate::widget::css::CLASS_CARD_FACE;
+use crate::widget::css::CLASS_CARD_HEXAGON;
+use crate::widget::css::CLASS_CARD_OCTAGON;
 use crate::widget::css::CLASS_CARD_SEMICIRCLE;
 use crate::widget::css::CLASS_COLLAPSED;
 use crate::widget::css::CLASS_FOLDED;
 use crate::widget::css::CLASS_HEADERLESS;
 use crate::widget::css::install_palette;
 use crate::widget::imp::card::CardImpl;
+use crate::widget::shape_clip::ShapeClip;
 use glib::object::Cast;
 use glib::object::ObjectExt;
 use gtk4::Accessible;
 use gtk4::Buildable;
 use gtk4::ConstraintTarget;
+use gtk4::DrawingArea;
 use gtk4::Orientable;
 use gtk4::Widget;
 use gtk4::cairo::Region;
@@ -36,7 +41,6 @@ use gtk4::prelude::FixedExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use smearor_commons_geometry::Pixels;
-use smearor_commons_geometry::QuarterTurn;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::RotationDirection;
@@ -72,7 +76,9 @@ impl Card {
         imp.max_height.set(config.max_height);
 
         imp.shape.set(config.shape);
-        imp.circle_content.set(config.circle_content);
+        imp.content.set(config.content);
+        imp.hole_ratio
+            .set(config.hole_ratio.unwrap_or(crate::widget::card_config::DEFAULT_HOLE_RATIO).clamp(0.05, 0.95));
         if config.shape == CardShape::Circle {
             card.add_css_class(CLASS_CARD_CIRCLE);
         }
@@ -83,6 +89,25 @@ impl Card {
             if let Some(holder) = imp.folded_holder.get() {
                 holder.set_valign(gtk4::Align::End);
             }
+        }
+        if matches!(config.shape, CardShape::Hexagon | CardShape::Octagon | CardShape::Annulus) {
+            card.add_css_class(match config.shape {
+                CardShape::Hexagon => CLASS_CARD_HEXAGON,
+                CardShape::Octagon => CLASS_CARD_OCTAGON,
+                _ => CLASS_CARD_ANNULUS,
+            });
+            // The face paints the card background inside the clip
+            // silhouette (the widget's own CSS background renders
+            // outside it and stays transparent) - inserted beneath the
+            // stage so content and chrome draw on top. On `Annulus`
+            // the face is the ring: the hole stays see-through.
+            let face = DrawingArea::new();
+            face.add_css_class(CLASS_CARD_FACE);
+            face.set_can_target(false);
+            if let Some(stage) = card.first_child() {
+                face.insert_before(&card, Some(&stage));
+            }
+            let _ = imp.face.set(face);
         }
         if config.headerless {
             card.add_css_class(CLASS_HEADERLESS);
@@ -98,14 +123,16 @@ impl Card {
         if let Some(label) = imp.title_label.get() {
             label.set_visible(!config.headerless);
         }
-        if config.shape == CardShape::Circle
-            && config.circle_content == CircleContent::Clipped
+        // `Clipped` on every non-rectangular card: a silhouette clip
+        // between overlay and holder cuts render and pick at the
+        // inner shape - picks in the cut regions fall back to the
+        // card, keeping the ring a drag affordance. `Cover` needs no
+        // clip here: the card's own silhouette clip is the bound.
+        if config.content == CardContent::Clipped
+            && config.shape != CardShape::Rectangle
             && let (Some(overlay), Some(holder)) = (imp.content_overlay.get(), imp.content_holder.get())
         {
-            // `Clipped`: a `CircularClip` between overlay and holder cuts
-            // render and pick at the inner circle - crescent picks fall
-            // back to the card, keeping the ring a drag affordance.
-            let clip = CircularClip::new();
+            let clip = ShapeClip::new(config.shape, imp.hole_ratio.get());
             overlay.set_child(None::<&Widget>);
             clip.set_child(holder);
             overlay.set_child(Some(&clip));
@@ -114,7 +141,30 @@ impl Card {
             // Configured as margin on our own holder rather than padding on
             // the consumer widget: the gap shows the card's background and
             // does not clobber margins the consumer may set on `content`.
-            let padding = config.content_padding.as_f64() as i32;
+            // The margin applies to `Inscribed` only - `Fill`/`Clipped`
+            // carry the ring band as their designed inset already, and
+            // `Cover` is edge-to-edge.
+            let padding = if config.content == CardContent::Inscribed {
+                config.content_padding.as_f64() as i32
+            } else {
+                0
+            };
+            // `Fill`/`Clipped`/`Cover` extend the content allocation
+            // over the card's cut corners. GTK descends into children
+            // unconditionally (`contains` is only the leaf check), so
+            // the content would claim corner clicks that belong to
+            // cards underneath - and GTK offers no non-rectangular
+            // pick masks. Marking the holder non-targetable skips the
+            // whole content subtree during picking; picks inside the
+            // silhouette still reach the card through the
+            // silhouette-bound containers. `Inscribed` and `Rectangle`
+            // content stays interactive: its bounds never cover cut
+            // corners. An `Annulus` card's hole passes picks through in
+            // every mode - even `Inscribed` allocations span it - so
+            // its content is display-only regardless.
+            let interactive = config.shape != CardShape::Annulus && (config.content == CardContent::Inscribed || config.shape == CardShape::Rectangle);
+            imp.content_interactive.set(interactive);
+            holder.set_can_target(interactive);
             holder.set_margin_top(padding);
             holder.set_margin_bottom(padding);
             holder.set_margin_start(padding);
@@ -179,14 +229,15 @@ impl Card {
     }
 
     /// Rotates one snap step in `direction` with the zoom-snap
-    /// transition. `QuarterTurn::snap_target` semantics: snap zones
-    /// reach 45 degrees either side of each turn, so a card already
-    /// past halfway steps to the turn after the engaged zone - every
-    /// call produces a visible ~90 degree step. This is the wiring
-    /// behind `ChromeElement::RotateClockwise`/`RotateCounterClockwise`.
-    pub fn rotate_to_next_quarter(&self, direction: RotationDirection) {
-        let target = QuarterTurn::snap_target(self.rotation().to_rotation_rad(), direction);
-        self.set_rotation_with_animation(Rotation::QuarterTurn(target));
+    /// transition. `snap_target` semantics: snap zones reach half a
+    /// step either side of each turn, so a card already past halfway
+    /// steps to the turn after the engaged zone - every call produces
+    /// a visible step of the shape's `rotation_step` (60 degrees on
+    /// `CardShape::Hexagon`, 90 otherwise). This is the wiring behind
+    /// `ChromeElement::RotateClockwise`/`RotateCounterClockwise`.
+    pub fn rotate_to_next_snap(&self, direction: RotationDirection) {
+        let snap = self.imp().shape.get().rotation_snap_target(self.rotation().to_rotation_rad(), direction);
+        self.set_rotation_with_animation(snap);
     }
 
     /// Snaps the rotation back to `Rotation::ZERO` with the zoom-snap
@@ -437,10 +488,16 @@ impl Card {
         if let Some(band) = imp.bar_band.get() {
             band.set_visible(!folded);
         }
+        if let Some(band) = imp.top_band.get() {
+            band.set_visible(!folded);
+        }
         for (widget, _) in imp.arc_items.borrow().iter() {
             widget.set_visible(!folded);
         }
         for (widget, _) in imp.bar_items.borrow().iter() {
+            widget.set_visible(!folded);
+        }
+        for (widget, _) in imp.top_items.borrow().iter() {
             widget.set_visible(!folded);
         }
         // A custom folded widget replaces the header too; restore it on
@@ -502,7 +559,10 @@ impl Card {
             holder.set_can_target(true);
         }
         if let Some(holder) = imp.content_holder.get() {
-            holder.set_can_target(true);
+            // Restore the build-time decision - immersive content on
+            // shaped cards (and every `Annulus` content, whose hole
+            // must stay click-through) stays non-targetable.
+            holder.set_can_target(imp.content_interactive.get());
         }
     }
 

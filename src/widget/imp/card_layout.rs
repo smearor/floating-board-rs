@@ -87,8 +87,10 @@ impl LayoutManagerImpl for CardShapeLayoutImpl {
                 _ => (pin.y, pin.y, -1, -1),
             },
             None => match imp.shape.get() {
-                CardShape::Circle => imp.circle_measure(),
+                CardShape::Circle | CardShape::Annulus => imp.circle_measure(),
                 CardShape::Semicircle => imp.semicircle_measure(orientation),
+                CardShape::Hexagon => imp.hexagon_measure(orientation),
+                CardShape::Octagon => imp.octagon_measure(orientation),
                 CardShape::Rectangle => self.box_layout.measure(widget, orientation, for_size),
             },
         };
@@ -114,7 +116,10 @@ impl LayoutManagerImpl for CardShapeLayoutImpl {
             // `Circle`: every visible child gets the centered content
             // square (`CircleContent::content_square_for` of the
             // allocated diameter); the margin around it renders the ring.
-            Some(CardShape::Circle) => {
+            // `Annulus` shares the disc's allocation math - its
+            // bounding square is the outer circle's, only the clip
+            // and `contains` differ.
+            Some(CardShape::Circle) | Some(CardShape::Annulus) => {
                 if let Some(card) = widget.downcast_ref::<Card>() {
                     card.imp().circle_allocate(Size::new(width, height), baseline);
                 }
@@ -124,6 +129,20 @@ impl LayoutManagerImpl for CardShapeLayoutImpl {
             Some(CardShape::Semicircle) => {
                 if let Some(card) = widget.downcast_ref::<Card>() {
                     card.imp().semicircle_allocate(Size::new(width, height), baseline);
+                }
+            }
+            // `Hexagon`: the flat-top hexagon allocates the inscribed
+            // content square and the bottom-edge bar itself.
+            Some(CardShape::Hexagon) => {
+                if let Some(card) = widget.downcast_ref::<Card>() {
+                    card.imp().hexagon_allocate(Size::new(width, height), baseline);
+                }
+            }
+            // `Octagon`: the flat-top octagon allocates the inscribed
+            // content square and the flat-edge bars itself.
+            Some(CardShape::Octagon) => {
+                if let Some(card) = widget.downcast_ref::<Card>() {
+                    card.imp().octagon_allocate(Size::new(width, height), baseline);
                 }
             }
             _ => self.box_layout.allocate(widget, width, height, baseline),
