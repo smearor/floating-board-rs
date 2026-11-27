@@ -76,6 +76,13 @@ let controls_id = board.add_card_with_id(
 | `closable` | `bool` | `false` | Show a close button; removes the card (`card-removed`) |
 | `headerless` | `bool` | `false` | Collapse the header to a slim grip |
 | `drag_handle` | `DragHandle` | `Header` | `Header`, `WholeCard` or `Handle` (grip icon) |
+| `shape` | `CardShape` | `Rectangle` | `Rectangle`, `Circle`, `Semicircle`, `Hexagon`, `Octagon`, `Annulus` — see [Shapes](cards/shapes.md) |
+| `content` | `CardContent` | `Inscribed` | `Inscribed`, `Fill`, `Clipped`, `Cover` — how content fills the shape |
+| `hole_ratio` | `Option<f64>` | `0.5` | `Annulus` inner radius as a fraction of the outer radius |
+| `arc_span` / `arc_bottom_span` | `Option<Degrees>` | `90°` | Width of the top/bottom arc bands on curved cards |
+| `chrome` | `Option<Vec<ChromeSlot>>` | legacy | Explicit `ChromeElement` + `ChromePlacement` list; `Some(vec![])` = chrome-free |
+| `chrome_style` | `ChromeStyle` | `Builtin` | `Builtin` or `Adwaita` (feature `adwaita`) |
+| `satellites` | `Option<CardSatellites>` | `None` | Floating chrome buttons around the card (`Radial`/`Anchored`) |
 | `scale_limits` | `ScaleBounds` | `0.5 – 2.0` | Inclusive pinch zoom limits |
 | `min_visible` | `MinVisible` | `40.0` | Pixels that must stay inside the bounds (`Loose` mode) |
 | `bounds_mode` | `BoundsMode` | `Loose` | `Loose` clamps on drag end; `Contained` keeps the whole footprint inside, live |
@@ -412,6 +419,7 @@ card.connect_closure("card-moved", false,
 | `card-folded` | `Card` | fold state toggles |
 | `card-seat-changed` | `Card` | seat assignment changes (`set_seat`, pass to user) |
 | `card-added` / `card-removed` | `FloatingBoard` | card lifecycle (carries the `Card`) |
+| `card-visibility-changed` | `FloatingBoard` | `set_card_visible` toggles or `CardCloseAction::Hide` hides the card (carries the `Card`) |
 | `geometry-changed` | `FloatingBoard` | aggregate: any geometry mutation |
 
 ## Styling

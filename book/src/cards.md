@@ -34,6 +34,17 @@ flowchart LR
   `DragHandle` variants, `headerless`, fold modes including
   `folded_content`, `CardCloseAction`, per-card `CardPalette`,
   `content_padding`, size caps and `z_index`.
+- **[Shapes](cards/shapes.md)**: non-rectangular cards — the six
+  `CardShape` silhouettes (including the click-through `Annulus`
+  ring), the four `CardContent` allocation modes, `ShapeClip`, and
+  the arc/bar bands that chrome rides on curved and polygon cards.
+- **[Satellites](cards/satellites.md)**: chrome elements and custom
+  widgets floating outside the card — radial orbits and sidebar
+  strips, anchor angles, rotation and collision modes, and the
+  open/close menu pattern.
+- **[Animations](cards/animations.md)**: the shared `animation_speed_ms`
+  budget — fold/unfold morphs (`Instant`/`Crossfade`/`Shrink`/`Spin`),
+  `CardFoldTiming` against satellite transitions, and one-shot FX.
 
 ## The card API at a glance
 

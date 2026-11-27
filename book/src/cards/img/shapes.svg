@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" font-family="'Source Code Pro',ui-monospace,monospace">
+<rect width="700" height="400" rx="14" fill="#0a0e16" stroke="#1c2433"/>
+<text x="350.0" y="34" fill="#8b98ad" font-size="11" letter-spacing="2" text-anchor="middle">CARD SHAPE — six silhouettes, one bounding box each</text>
+<rect x="65" y="95" width="104" height="80" rx="8" fill="#2e3440" stroke="#00a1e4" stroke-width="1.5"/>
+<text x="117" y="207" fill="#e8ecf4" font-size="12" text-anchor="middle">Rectangle</text>
+<text x="117" y="223" fill="#8b98ad" font-size="9" text-anchor="middle">bbox = silhouette</text>
+<circle cx="350" cy="135" r="46" fill="#2e3440" stroke="#00a1e4" stroke-width="1.5"/>
+<text x="350" y="207" fill="#e8ecf4" font-size="12" text-anchor="middle">Circle</text>
+<text x="350" y="223" fill="#8b98ad" font-size="9" text-anchor="middle">disc</text>
+<path d="M 537 151 A 46 46 0 0 1 629 151 Z" fill="#2e3440" stroke="#00a1e4" stroke-width="1.5"/><line x1="537" y1="151" x2="629" y2="151" stroke="#00a1e4" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.5"/>
+<text x="583" y="207" fill="#e8ecf4" font-size="12" text-anchor="middle">Semicircle</text>
+<text x="583" y="223" fill="#8b98ad" font-size="9" text-anchor="middle">dome · 2r x r</text>
+<polygon points="117.0,348.0 75.4,324.0 75.4,276.0 117.0,252.0 158.6,276.0 158.6,324.0" fill="#2e3440" stroke="#00a1e4" stroke-width="1.5"/><rect x="69" y="258" width="96" height="83" fill="none" stroke="#3a4560" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="117" y="372" fill="#e8ecf4" font-size="12" text-anchor="middle">Hexagon</text>
+<text x="117" y="388" fill="#8b98ad" font-size="9" text-anchor="middle">flat-top · 2R x √3R</text>
+<polygon points="394.3,318.4 368.4,344.3 331.6,344.3 305.7,318.4 305.7,281.6 331.6,255.7 368.4,255.7 394.3,281.6" fill="#2e3440" stroke="#00a1e4" stroke-width="1.5"/><rect x="302" y="252" width="96" height="96" fill="none" stroke="#3a4560" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="350" y="372" fill="#e8ecf4" font-size="12" text-anchor="middle">Octagon</text>
+<text x="350" y="388" fill="#8b98ad" font-size="9" text-anchor="middle">flat-top</text>
+<path fill="#2e3440" fill-rule="evenodd" stroke="#00a1e4" stroke-width="1.5" d="M 537 300 A 46 46 0 1 0 629 300 A 46 46 0 1 0 537 300 Z M 560 300 A 23 23 0 1 0 606 300 A 23 23 0 1 0 560 300 Z"/><circle cx="583" cy="300" r="23" fill="#0a0e16"/><line x1="513" y1="300" x2="533" y2="300" stroke="#04e762" stroke-width="1" stroke-dasharray="3 3"/><text x="509" y="295" fill="#04e762" font-size="8" text-anchor="end">hole</text>
+<text x="583" y="372" fill="#e8ecf4" font-size="12" text-anchor="middle">Annulus</text>
+<text x="583" y="388" fill="#8b98ad" font-size="9" text-anchor="middle">ring · hole passes picks</text>
+</svg>

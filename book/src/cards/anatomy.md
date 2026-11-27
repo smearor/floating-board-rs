@@ -6,6 +6,12 @@ and the **content area** (an arbitrary consumer widget). Optional
 grips sit on the bottom corners. Everything outside the flags a
 `CardConfig` enables is never built.
 
+This page describes the default `Rectangle` silhouette. `CardConfig::shape`
+swaps it for `Circle`, `Semicircle`, `Hexagon`, `Octagon` or `Annulus` —
+chrome then rides on arc or bar bands instead of a header, the content
+area is governed by `CardContent`, and the card is clipped and
+hit-tested along the shape. See [Shapes](shapes.md).
+
 <figure class="diagram">
   <img src="img/anatomy.svg" alt="Card with header strip containing handle, title, fold and close buttons, a content area, and resize and rotate grips on the bottom corners">
   <figcaption>the anatomy of a fully chromed card — every element is opt-in</figcaption>
@@ -26,6 +32,11 @@ controls:
 `headerless` collapses the whole strip to a slim grip — for cards that
 still need a fold/close path but no title bar.
 
+Non-rectangular shapes have no header strip at all: `Circle` and
+`Annulus` mount inline chrome on arc bands, `Semicircle` on a top arc
+plus a bottom bar, `Hexagon`/`Octagon` on straight top/bottom edge bars
+(see [Shapes](shapes.md#chrome-on-shaped-cards)).
+
 ## The content area
 
 `.floating-card-content` holds one consumer widget — the card imposes
@@ -39,6 +50,12 @@ rotation and scale during picking, and the quad tracker never claims
 touch sequences (see [Quad Transform](../gestures/quad.md)). Buttons,
 entries and canvases on a card behave exactly as if they were not
 floating.
+
+On non-rectangular shapes the content area is additionally clipped by
+the card silhouette and — in the immersive `CardContent` modes
+(`Fill`, `Clipped`, `Cover`) — made display-only so picks in the cut
+corners or an `Annulus`' hole fall through to the cards below. The
+details live in [Shapes](shapes.md#cardcontent--how-content-fills-a-shape).
 
 ## The grips
 

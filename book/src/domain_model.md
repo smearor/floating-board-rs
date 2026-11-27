@@ -53,13 +53,21 @@ the widget API, in gesture handling, and in the persisted layout files.
 | `GotoTransition` | `Snap` \| `Glide` (default) \| `Transit` — how `goto_card` moves the camera. |
 | `GotoRotation` | `Keep` \| `Upright` — the destination rotation of a `goto_card` flight. |
 | `CardPalette` / `CardColor` | Semantic color set per card (`Background`, `Foreground`, `Header`), turned into a scoped CSS provider. |
+| `CardShape` | Card silhouette: `Rectangle`, `Circle`, `Semicircle`, `Hexagon`, `Octagon`, `Annulus` — drives the clip path, `contains` and the band-based chrome layout. |
+| `CardContent` | Content allocation on shaped cards: `Inscribed`, `Fill`, `Clipped`, `Cover`. |
+| `ChromeElement` / `ChromePlacement` / `ChromeSlot` | Declarative chrome: an element (`Title`, `Minimize`, `Close`, rotate/pass steps, grips, `DragHandle`) plus where it mounts (`Inline*`, `ArcTop*`, `Bar*`, `Satellite`). |
+| `ChromeStyle` | Chrome renderer: `Builtin` or `Adwaita`. |
+| `CardSatellites` / `SatelliteConfig` / `SatelliteDistribution` | Floating chrome buttons orbiting the card — `Radial` or `Anchored` at `QuarterTurn` angles, with `SatelliteRotationMode`. |
 
 ### Configuration (widget layer)
 
 `CardConfig` technically lives in the widget layer but uses only domain
 types: `title`, `position: CardAnchor`, `draggable`, `rotatable`, `scalable`,
 `foldable`, `closable`, `headerless`, `drag_handle`,
-`scale_limits: ScaleBounds`, `min_visible: MinVisible`, `z_index`.
+`shape: CardShape`, `content: CardContent`, `hole_ratio`,
+`arc_span`/`arc_bottom_span`, `chrome`, `chrome_style: ChromeStyle`,
+`satellites`, `scale_limits: ScaleBounds`, `min_visible: MinVisible`,
+`bounds_mode: BoundsMode`, `palette`, `z_index`.
 
 ## Pure Geometry Functions
 

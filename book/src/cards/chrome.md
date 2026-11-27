@@ -41,6 +41,51 @@ CardConfig {
 `board.close_card(&id)` runs the configured action programmatically;
 `is_card_visible` reports the state.
 
+## Chrome slots and placements
+
+The `foldable`/`closable` convenience flags are sugar over the real
+model: `chrome` takes an explicit `Vec<ChromeSlot>` — a `ChromeElement`
+plus a `ChromePlacement` that says *where* it mounts.
+
+```rust,ignore
+chrome: Some(vec![
+    ChromeSlot::inline(ChromeElement::DragHandle),
+    ChromeSlot::inline(ChromeElement::Title),
+    ChromeSlot::inline_end(ChromeElement::Minimize),
+    ChromeSlot::bar(ChromeElement::RotateCounterClockwise),
+    ChromeSlot::bar(ChromeElement::RotateClockwise),
+    ChromeSlot::satellite(ChromeElement::Close),
+]),
+```
+
+Elements: `DragHandle`, `Title`, `Minimize`, `Close`,
+`RotateClockwise`/`RotateCounterClockwise` (snap-step buttons),
+`NextSeat`/`PreviousSeat` (pass around the table), `ResizeGrip` and
+`RotateGrip` (the bottom-corner drags). Placements: `Inline*`
+(header strip on `Rectangle`, top arc band on curved shapes),
+`ArcTop*` (explicit top-arc zones), `Bar*` (bottom band — arc on
+`Circle`/`Annulus`, straight strip on `Semicircle`/`Hexagon`/`Octagon`)
+and `Satellite`. See [Shapes](shapes.md#chrome-on-shaped-cards) for the
+band layout and mirroring rules.
+
+Two subtleties:
+
+- `chrome: None` does **not** mean "no chrome" — it falls back to the
+  legacy slot list derived from the flags (always `Title`, plus
+  `Minimize`/`Close` when `foldable`/`closable`). A truly chrome-free
+  card is `chrome: Some(vec![])`; pair it with `drag_handle: WholeCard`.
+- `chrome_style` selects the renderer: `ChromeStyle::Builtin` (stock
+  GTK4/CSS) or `ChromeStyle::Adwaita` (`adw::HeaderBar`, behind the
+  `adwaita` feature).
+
+## Satellites
+
+`satellites: Option<CardSatellites>` mounts small floating buttons
+around the card — the same `ChromeElement`s, freed from the strip,
+plus consumer widgets of any kind. Layouts (`Radial` orbit, `Sidebar`
+strip), rotation and collision modes, and the open/close menu pattern
+have their own page: [Satellites](satellites.md).
+
 ## Per-card colors
 
 `palette` accepts a `CardPalette` — a `Palette<CardColor, f64>` from
@@ -68,7 +113,11 @@ idiomatic use: each player's cards carry their marker color.
 | Field | Effect |
 |---|---|
 | `headerless` | collapses the header to a slim grip |
-| `content_padding` | inset between card border and content (default 10 px) |
+| `shape` | `CardShape` — `Rectangle` (default), `Circle`, `Semicircle`, `Hexagon`, `Octagon`, `Annulus`; see [Shapes](shapes.md) |
+| `content` | `CardContent` allocation mode — `Inscribed` (default), `Fill`, `Clipped`, `Cover` |
+| `hole_ratio` | `Annulus` only: inner radius as a fraction of the outer (default 0.5) |
+| `arc_span` / `arc_bottom_span` | angular width of the top/bottom arc bands on curved cards (default a quarter turn) |
+| `content_padding` | inset between card border and content (default 10 px; `Inscribed` only — immersive modes allocate to the silhouette) |
 | `max_width` / `max_height` | hard cap on measured card size |
 | `z_index` | initial stacking order; `None` appends on top |
 | `animation_speed_ms` | duration of rotation, glide and camera animations on this card (default 500 ms) |
