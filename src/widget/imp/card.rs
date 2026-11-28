@@ -282,6 +282,12 @@ impl ObjectImpl for CardImpl {
         let stage = SilhouetteStage::new();
         stage.set_child(Some(&content_overlay));
         stage.add_overlay(&folded_holder);
+        // The stage must fill the card's box allocation: folded, the
+        // base child's measure collapses to zero (its content is
+        // hidden), and a non-expanding stage would sit zero-height at
+        // the top of the pinned card - the folded pane centered on
+        // that strip would overflow the card's top edge and clip.
+        stage.set_vexpand(true);
 
         card.append(&stage);
 
