@@ -12,8 +12,17 @@ use gtk4::prelude::WidgetExt;
 /// claimable region as the card itself, so picks in the cut regions
 /// outside the shape pass through to the widgets below instead of
 /// being swallowed as leaf claims.
+///
+/// The point must also lie inside the widget's own allocation:
+/// `contains` is consulted in z-order, and a container that claimed
+/// points outside its allocation would steal picks meant for siblings
+/// painted below it - the content stage claiming the header strip
+/// left the header's card drag unreachable.
 pub(crate) fn within_card(widget: &impl IsA<gtk4::Widget>, x: f64, y: f64) -> bool {
     let widget = widget.as_ref();
+    if x < 0.0 || y < 0.0 || x > f64::from(widget.width()) || y > f64::from(widget.height()) {
+        return false;
+    }
     let Some(card) = widget.ancestor(Card::static_type()) else {
         return true;
     };

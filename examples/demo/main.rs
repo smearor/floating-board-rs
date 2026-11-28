@@ -83,7 +83,7 @@ fn build_ui(application: &gtk4::Application) {
     let users: Rc<RefCell<Vec<DemoUser>>> = Rc::new(RefCell::new(USERS.to_vec()));
     let window = gtk4::ApplicationWindow::new(application);
     window.set_title(Some("floating-board demo"));
-    window.set_default_size(1280, 800);
+    window.set_default_size(1920, 1080);
 
     // --- Bottom layer: ordinary application content -------------------------
     // Clicks on empty areas of the card layer fall through to these widgets.
@@ -294,7 +294,7 @@ fn build_ui(application: &gtk4::Application) {
         &layout_card,
         CardConfig {
             title: Some("Layout".to_string()),
-            position: CardAnchor::CenterLeft,
+            position: CardAnchor::TopCenter,
             sticky: true,
             foldable: true,
             ..Default::default()
@@ -402,7 +402,7 @@ fn build_ui(application: &gtk4::Application) {
             &controls,
             CardConfig {
                 title: Some("Controls".to_string()),
-                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(300.0, 420.0))),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(320.0, 540.0))),
                 content_padding: Pixels::new(16.0),
                 scale_limits: ScaleBounds::new(0.75, 4.0),
                 seat: Some(Seat::new(TableSide::Bottom)),
@@ -448,7 +448,7 @@ fn build_ui(application: &gtk4::Application) {
             &info,
             CardConfig {
                 title: Some("Info".to_string()),
-                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(540.0, 420.0))),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(640.0, 540.0))),
                 drag_handle: DragHandle::Handle,
                 min_visible: MinVisible::new(60.0),
                 palette: Some(info_palette),
@@ -476,7 +476,7 @@ fn build_ui(application: &gtk4::Application) {
             CardConfig {
                 title: None,
                 headerless: true,
-                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(770.0, 420.0))),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(960.0, 540.0))),
                 drag_handle: DragHandle::WholeCard,
                 seat: Some(Seat::at(TableSide::Top, Fraction::new(0.25))),
                 ..Default::default()
@@ -499,13 +499,10 @@ fn build_ui(application: &gtk4::Application) {
             &parameters,
             CardConfig {
                 title: Some("Parameters".to_string()),
-                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(1000.0, 420.0))),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(1260.0, 540.0))),
                 foldable: true,
                 max_width: Some(Pixels::new(300.0)),
                 seat: Some(Seat::at(TableSide::Top, Fraction::new(0.75))),
-                // Pinned to the glass: keeps its spot while the camera
-                // pans, zooms or rotates (passing it releases the pin).
-                sticky: true,
                 ..Default::default()
             },
         )
@@ -555,7 +552,7 @@ minimize docked below, star = custom
             &chrome,
             CardConfig {
                 title: Some("Chrome".to_string()),
-                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(1230.0, 420.0))),
+                position: CardAnchor::Explicit(CardPosition::new(Vec2::<Pixels>::new(1600.0, 540.0))),
                 foldable: true,
                 max_width: Some(Pixels::new(300.0)),
                 chrome: Some(vec![
