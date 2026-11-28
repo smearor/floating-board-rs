@@ -1,6 +1,5 @@
-/// `sqrt(2)` - the flat-top octagon's inscribed-square factor
-/// (`content side = sqrt(2) * a` for inradius `a`).
-use std::f64::consts::SQRT_2;
+use smearor_commons_geometry::Octagon;
+use smearor_commons_geometry::PolygonOrientation;
 
 // Content-region math for a flat-top octagon card: the bounding
 // box is the square `2a x 2a` where `a` is the inradius (center to
@@ -11,18 +10,15 @@ use std::f64::consts::SQRT_2;
 // (`bar_inset`, the combined top+bottom band height) shrink the
 // usable height to `2 * a - 2 * bar_inset`.
 
-/// Side of the square inscribed in an octagon of inradius `1`:
-/// `sqrt(2) ≈ 1.414`. The corner `(|s/2|, |s/2|)` rests on the
-/// diagonal edge `x + y = a * (1 + tan(22.5°))` = `a * sqrt(2)`.
-const OCTAGON_CONTENT_FACTOR: f64 = SQRT_2;
-
-/// The inradius whose inscribed content square fits `side`:
-/// `side / sqrt(2)` grown by the ring margin, but at least large
-/// enough that the centered square clears a combined bar inset
-/// `bar_inset` tall on each flat edge - the sum of the top and
-/// bottom band heights (`2 * a >= side + 2 * bar_inset`).
+/// The inradius whose inscribed content square fits `side` -
+/// [`Octagon::inradius_for_inscribed_square`] is `side / sqrt(2)` -
+/// grown by the ring margin, but at least large enough that the
+/// centered square clears a combined bar inset `bar_inset` tall on
+/// each flat edge - the sum of the top and bottom band heights
+/// (`2 * a >= side + 2 * bar_inset`).
 pub fn octagon_inradius_for(content_side: f64, ring: f64, bar_inset: f64) -> f64 {
-    (content_side / OCTAGON_CONTENT_FACTOR + ring).max((content_side + 2.0 * bar_inset) / 2.0)
+    (Octagon::<()>::inradius_for_inscribed_square(content_side, PolygonOrientation::FlatTop) + ring)
+        .max(Octagon::<()>::inradius_for_bounding_side(content_side + 2.0 * bar_inset, PolygonOrientation::FlatTop))
 }
 
 /// The content square fitting inside the octagon of `inradius`:
@@ -31,26 +27,28 @@ pub fn octagon_inradius_for(content_side: f64, ring: f64, bar_inset: f64) -> f64
 /// insets `bar_inset` tall. The exact inverse of
 /// [`octagon_inradius_for`].
 pub fn octagon_content_for(inradius: f64, ring: f64, bar_inset: f64) -> f64 {
-    ((inradius - ring) * OCTAGON_CONTENT_FACTOR).min(2.0 * inradius - 2.0 * bar_inset)
+    Octagon::<()>::inscribed_square_side_for_inradius(inradius - ring, PolygonOrientation::FlatTop)
+        .min(Octagon::<()>::bounding_side_for_inradius(inradius, PolygonOrientation::FlatTop) - 2.0 * bar_inset)
 }
 
 /// The inradius whose rim-shrunk bounding square fits `natural`
 /// for `Fill`/`Clipped` content: `natural / 2 + ring`. The content
 /// underlaps the chrome bars, so no bar inset applies.
 pub fn octagon_fill_inradius_for(natural: f64, ring: f64) -> f64 {
-    natural / 2.0 + ring
+    Octagon::<()>::inradius_for_bounding_side(natural, PolygonOrientation::FlatTop) + ring
 }
 
 /// The rim-shrunk bounding square a `Fill`/`Clipped` content gets
 /// inside the octagon of `inradius`: `2 * (inradius - ring)`. The
 /// exact inverse of [`octagon_fill_inradius_for`].
 pub fn octagon_fill_extent(inradius: f64, ring: f64) -> f64 {
-    (2.0 * (inradius - ring)).max(0.0)
+    Octagon::<()>::bounding_side_for_inradius(inradius - ring, PolygonOrientation::FlatTop).max(0.0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::SQRT_2;
 
     /// `octagon_inradius_for` and `octagon_content_for` are exact
     /// inverses for both constraint branches.

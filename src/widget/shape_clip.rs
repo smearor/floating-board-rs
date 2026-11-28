@@ -8,6 +8,7 @@ use gtk4::glib;
 use gtk4::prelude::IsA;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use smearor_commons_geometry::Fraction;
 
 glib::wrapper! {
     /// Single-child container that clips its content to the card
@@ -27,7 +28,7 @@ impl ShapeClip {
     /// Creates an empty clip container cutting to `shape` - a
     /// band of `inner_ratio` of its outer radius on `Annulus`,
     /// ignored on every other shape.
-    pub(crate) fn new(shape: CardShape, inner_ratio: f64) -> Self {
+    pub(crate) fn new(shape: CardShape, inner_ratio: Fraction) -> Self {
         let clip: Self = glib::Object::builder().build();
         clip.imp().shape.set(shape);
         clip.imp().inner_ratio.set(inner_ratio);

@@ -40,6 +40,7 @@ use gtk4::prelude::ButtonExt;
 use gtk4::prelude::FixedExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
@@ -77,8 +78,13 @@ impl Card {
 
         imp.shape.set(config.shape);
         imp.content.set(config.content);
-        imp.hole_ratio
-            .set(config.hole_ratio.unwrap_or(crate::widget::card_config::DEFAULT_HOLE_RATIO).clamp(0.05, 0.95));
+        imp.hole_ratio.set(Fraction::new(
+            config
+                .hole_ratio
+                .unwrap_or(crate::widget::card_config::DEFAULT_HOLE_RATIO)
+                .as_f64()
+                .clamp(0.05, 0.95),
+        ));
         if config.shape == CardShape::Circle {
             card.add_css_class(CLASS_CARD_CIRCLE);
         }

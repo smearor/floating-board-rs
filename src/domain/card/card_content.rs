@@ -1,4 +1,8 @@
-use std::f64::consts::SQRT_2;
+use crate::domain::DomeInsets;
+use smearor_commons_geometry::Circle;
+use smearor_commons_geometry::Distance;
+use smearor_commons_geometry::Pixels;
+use smearor_commons_geometry::Vec2;
 
 /// How a shaped card allocates its content inside the shape's
 /// bounding box, in ascending extent: `Inscribed` < `Fill` <
@@ -50,10 +54,11 @@ impl CardContent {
     /// For `Inscribed` the inner circle circumscribes the content
     /// square (`d_inner = side · √2`); for `Fill`/`Clipped` the inner
     /// circle is inscribed in it (`d_inner = side`).
-    pub fn diameter_for(&self, content_natural: f64, ring: f64) -> f64 {
+    pub fn diameter_for(&self, content_natural: Distance<Pixels>, ring: Distance<Pixels>) -> Distance<Pixels> {
         match self {
-            Self::Inscribed => content_natural * SQRT_2 + 2.0 * ring,
-            Self::Fill | Self::Clipped => content_natural + 2.0 * ring,
+            // `with_inscribed_square` gives `d_inner = side * sqrt(2)`.
+            Self::Inscribed => Distance::new(Circle::<()>::radius_for_inscribed_square(content_natural.as_f64()) * 2.0) + ring * 2.0,
+            Self::Fill | Self::Clipped => content_natural + ring * 2.0,
             // `Cover` fills the bounding box - no ring applies.
             Self::Cover => content_natural,
         }
@@ -62,20 +67,19 @@ impl CardContent {
     /// The content square's side length for a card of `diameter` with a
     /// ring band of `ring` (px). Inverse of [`Self::diameter_for`]:
     /// `content_square_for(diameter_for(nat)) == nat`.
-    pub fn content_square_for(&self, diameter: f64, ring: f64) -> f64 {
-        let inner = (diameter - 2.0 * ring).max(0.0);
+    pub fn content_square_for(&self, diameter: Distance<Pixels>, ring: Distance<Pixels>) -> Distance<Pixels> {
+        let inner = (diameter - ring * 2.0).max(Distance::ZERO);
         match self {
-            Self::Inscribed => inner / SQRT_2,
+            Self::Inscribed => Distance::new(Circle::<()>::inscribed_square_side_for_radius(inner.as_f64() / 2.0)),
             Self::Fill | Self::Clipped => inner,
             Self::Cover => diameter,
         }
     }
 
     /// The dome's radius for a `Semicircle` card, given the content's
-    /// natural `(width, height)`, a `ring` band width (px) inside the
-    /// dome's edge and a `bottom_inset` (px) that lifts the content
-    /// off the flat edge (the straight bar's band width, `0.0`
-    /// without one).
+    /// `natural` size, a `ring` band width inside the dome's edge and
+    /// a `bottom_inset` that lifts the content off the flat edge (the
+    /// straight bar's band width, `Distance::ZERO` without one).
     ///
     /// For `Inscribed` the inner dome circumscribes a square that is
     /// bottom-aligned `bottom_inset` above the flat edge: the binding
@@ -86,35 +90,36 @@ impl CardContent {
     /// `r_inner = max(width/2, height + bottom_inset)`. For `Cover`
     /// the dome's bounding box `2r × r` holds the content, so
     /// `r = max(width/2, height)` and no ring applies.
-    pub fn dome_radius_for(&self, natural_width: f64, natural_height: f64, ring: f64, bottom_inset: f64) -> f64 {
+    pub fn dome_radius_for(&self, natural: Vec2<Pixels>, insets: DomeInsets) -> Distance<Pixels> {
         match self {
             Self::Inscribed => {
-                let side = natural_width.max(natural_height);
-                ((side / 2.0).powi(2) + (side + bottom_inset).powi(2)).sqrt() + ring
+                let side = natural.x.max(natural.y);
+                Distance::new(((side / 2.0).powi(2) + (side + insets.bottom_inset.as_f64()).powi(2)).sqrt()) + insets.ring
             }
-            Self::Fill | Self::Clipped => (natural_width / 2.0).max(natural_height + bottom_inset) + ring,
-            Self::Cover => (natural_width / 2.0).max(natural_height),
+            Self::Fill | Self::Clipped => Distance::new((natural.x / 2.0).max(natural.y + insets.bottom_inset.as_f64())) + insets.ring,
+            Self::Cover => Distance::new((natural.x / 2.0).max(natural.y)),
         }
     }
 
-    /// The content extent `(width, height)` inside a `Semicircle` card
-    /// of `radius` with a ring band of `ring` (px) and a bottom inset
-    /// of `bottom_inset` (px). Inverse of [`Self::dome_radius_for`].
+    /// The content extent inside a `Semicircle` card of `radius`
+    /// with a ring band of `ring` and a bottom inset of
+    /// `bottom_inset`. Inverse of [`Self::dome_radius_for`].
     /// The content rect is bottom-aligned `bottom_inset` above the
     /// dome's flat edge: `Inscribed` solves the circumscribed-square
     /// quadratic for its side, `Fill`/`Clipped` gives the inner
     /// dome's bounding box (`2·r_inner × (r_inner − bottom_inset)`),
     /// `Cover` the dome's bounding box (`2r × r`).
-    pub fn dome_content_for(&self, radius: f64, ring: f64, bottom_inset: f64) -> (f64, f64) {
-        let inner = (radius - ring).max(0.0);
+    pub fn dome_content_for(&self, radius: Distance<Pixels>, insets: DomeInsets) -> Vec2<Pixels> {
+        let inner = (radius - insets.ring).max(Distance::ZERO).as_f64();
+        let inset = insets.bottom_inset.as_f64();
         match self {
             Self::Inscribed => {
                 // 1.25·side² + 2·bottom_inset·side + bottom_inset² = r_inner²
-                let side = ((5.0 * inner.powi(2) - bottom_inset.powi(2)).max(0.0).sqrt() - 2.0 * bottom_inset) / 2.5;
-                (side.max(0.0), side.max(0.0))
+                let side = ((5.0 * inner.powi(2) - inset.powi(2)).max(0.0).sqrt() - 2.0 * inset) / 2.5;
+                Vec2::new(side.max(0.0), side.max(0.0))
             }
-            Self::Fill | Self::Clipped => (2.0 * inner, (inner - bottom_inset).max(0.0)),
-            Self::Cover => (2.0 * radius, radius),
+            Self::Fill | Self::Clipped => Vec2::new(2.0 * inner, (inner - inset).max(0.0)),
+            Self::Cover => Vec2::new(2.0 * radius.as_f64(), radius.as_f64()),
         }
     }
 }
@@ -126,6 +131,7 @@ pub type CircleContent = CardContent;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::SQRT_2;
 
     #[test]
     fn default_content_is_inscribed() {
@@ -136,28 +142,28 @@ mod tests {
     fn inscribed_diameter_circumscribes_the_content_square() {
         // A 100px content square needs an inner circle of 100·√2 plus
         // a 4px ring on both sides.
-        let diameter = CardContent::Inscribed.diameter_for(100.0, 4.0);
+        let diameter = CardContent::Inscribed.diameter_for(Distance::new(100.0), Distance::new(4.0)).as_f64();
         assert!((diameter - (100.0 * SQRT_2 + 8.0)).abs() < 1e-9);
     }
 
     #[test]
     fn fill_diameter_is_content_plus_ring() {
-        let diameter = CardContent::Fill.diameter_for(100.0, 4.0);
+        let diameter = CardContent::Fill.diameter_for(Distance::new(100.0), Distance::new(4.0)).as_f64();
         assert!((diameter - 108.0).abs() < 1e-9);
-        assert!((CardContent::Clipped.diameter_for(100.0, 4.0) - 108.0).abs() < 1e-9);
+        assert!((CardContent::Clipped.diameter_for(Distance::new(100.0), Distance::new(4.0)).as_f64() - 108.0).abs() < 1e-9);
     }
 
     #[test]
     fn diameter_and_square_are_inverses() {
         for content in [CardContent::Inscribed, CardContent::Fill, CardContent::Clipped, CardContent::Cover] {
-            let diameter = content.diameter_for(120.0, 6.0);
-            assert!((content.content_square_for(diameter, 6.0) - 120.0).abs() < 1e-9);
+            let diameter = content.diameter_for(Distance::new(120.0), Distance::new(6.0));
+            assert!((content.content_square_for(diameter, Distance::new(6.0)).as_f64() - 120.0).abs() < 1e-9);
         }
     }
 
     #[test]
     fn degenerate_diameter_clamps_to_zero() {
-        assert_eq!(CardContent::Fill.content_square_for(4.0, 6.0), 0.0);
+        assert_eq!(CardContent::Fill.content_square_for(Distance::new(4.0), Distance::new(6.0)), Distance::ZERO);
     }
 
     #[test]
@@ -166,8 +172,8 @@ mod tests {
         // reduce to the flat-edge formulas.
         for content in [CardContent::Inscribed, CardContent::Fill, CardContent::Clipped, CardContent::Cover] {
             for bottom_inset in [0.0, 20.0, 40.0] {
-                let radius = content.dome_radius_for(150.0, 120.0, 8.0, bottom_inset);
-                let (width, height) = content.dome_content_for(radius, 8.0, bottom_inset);
+                let radius = content.dome_radius_for(Vec2::new(150.0, 120.0), DomeInsets::new(Distance::new(8.0), Distance::new(bottom_inset)));
+                let Vec2 { x: width, y: height, .. } = content.dome_content_for(radius, DomeInsets::new(Distance::new(8.0), Distance::new(bottom_inset)));
                 assert!(width >= 150.0 - 1e-9, "{content:?} width {width} < 150 (inset {bottom_inset})");
                 assert!(height >= 120.0 - 1e-9, "{content:?} height {height} < 120 (inset {bottom_inset})");
             }
@@ -178,10 +184,12 @@ mod tests {
     fn dome_bottom_inset_grows_the_radius() {
         // A bar under the content lifts it: the dome must grow so the
         // same square still fits above the bar.
-        let flat = CardContent::Inscribed.dome_radius_for(100.0, 100.0, 8.0, 0.0);
-        let lifted = CardContent::Inscribed.dome_radius_for(100.0, 100.0, 8.0, 36.0);
+        let flat = CardContent::Inscribed.dome_radius_for(Vec2::new(100.0, 100.0), DomeInsets::new(Distance::new(8.0), Distance::ZERO));
+        let lifted = CardContent::Inscribed.dome_radius_for(Vec2::new(100.0, 100.0), DomeInsets::new(Distance::new(8.0), Distance::new(36.0)));
         assert!(lifted > flat);
-        let (side, _) = CardContent::Inscribed.dome_content_for(lifted, 8.0, 36.0);
+        let side = CardContent::Inscribed
+            .dome_content_for(lifted, DomeInsets::new(Distance::new(8.0), Distance::new(36.0)))
+            .x;
         assert!((side - 100.0).abs() < 1e-9);
     }
 }

@@ -14,6 +14,7 @@ mod card_layout;
 mod card_satellites;
 mod card_signal;
 pub(crate) mod chrome;
+mod chrome_slots;
 mod floating_board_layout;
 mod satellite;
 mod satellite_config;

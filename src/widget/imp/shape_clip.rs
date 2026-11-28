@@ -13,15 +13,15 @@ use gtk4::subclass::prelude::WidgetClassExt;
 use gtk4::subclass::prelude::WidgetImpl;
 use smearor_commons_geometry::Annulus;
 use smearor_commons_geometry::Circle;
+use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Hexagon;
 use smearor_commons_geometry::Octagon;
 use smearor_commons_geometry::PolygonOrientation;
+use smearor_commons_geometry::Rect;
+use smearor_commons_geometry::Semicircle;
 use smearor_commons_geometry::Vec2;
+use smearor_commons_geometry::WidgetSizeExt;
 use std::cell::Cell;
-
-/// `sqrt(3)` - the flat-top hexagon's height factor
-/// (`height = sqrt(3) * circumradius`).
-const SQRT_3: f64 = 1.732_050_807_568_877_2;
 
 /// Implementation of [`ShapeClip`].
 pub struct ShapeClipImpl {
@@ -30,14 +30,14 @@ pub struct ShapeClipImpl {
     /// Fraction of the outer radius that is the hole on
     /// `CardShape::Annulus` - the clip cuts a band, not a disc.
     /// Unused on every other shape.
-    pub inner_ratio: Cell<f64>,
+    pub inner_ratio: Cell<Fraction>,
 }
 
 impl Default for ShapeClipImpl {
     fn default() -> Self {
         Self {
             shape: Cell::new(CardShape::default()),
-            inner_ratio: Cell::new(0.5),
+            inner_ratio: Cell::new(Fraction::HALF),
         }
     }
 }
@@ -61,29 +61,23 @@ impl ShapeClipImpl {
     /// centered on the flat bottom edge) for `Semicircle`, the
     /// flat-top polygon path for `Hexagon`/`Octagon`.
     fn clip_path(&self) -> gtk4::gsk::Path {
-        let (width, height) = (f64::from(self.obj().width()), f64::from(self.obj().height()));
+        let size = self.obj().allocated_size().to_f64();
+        let bounds = Rect::<()>::from_size(size);
         let builder = gtk4::gsk::PathBuilder::new();
         match self.shape.get() {
             CardShape::Circle => {
-                builder.add_circle(&gtk4::graphene::Point::new((width / 2.0) as f32, (height / 2.0) as f32), (width.min(height) / 2.0) as f32);
+                builder.add_circle(&gtk4::graphene::Point::new((size.x / 2.0) as f32, (size.y / 2.0) as f32), (size.x.min(size.y) / 2.0) as f32);
             }
             CardShape::Semicircle => {
                 // A full circle centered on the flat edge: inside the
                 // widget's bounds only the dome remains.
-                builder.add_circle(&gtk4::graphene::Point::new((width / 2.0) as f32, height as f32), ((width / 2.0).min(height)) as f32);
+                let dome = Semicircle::<()>::inscribed_in(&bounds);
+                builder.add_circle(&gtk4::graphene::Point::new(dome.center.x as f32, dome.center.y as f32), dome.radius as f32);
             }
             shape => {
                 let vertices: Vec<Vec2<()>> = match shape {
-                    CardShape::Octagon => {
-                        let inradius = (width / 2.0).min(height / 2.0);
-                        Octagon::with_inradius(Vec2::<()>::new(width / 2.0, height / 2.0), inradius, PolygonOrientation::FlatTop)
-                            .vertices()
-                            .to_vec()
-                    }
-                    _ => {
-                        let radius = (width / 2.0).min(height / SQRT_3);
-                        Hexagon::flat_top(Vec2::<()>::new(width / 2.0, height / 2.0), radius).vertices().to_vec()
-                    }
+                    CardShape::Octagon => Octagon::inscribed_in(&bounds, PolygonOrientation::FlatTop).vertices().to_vec(),
+                    _ => Hexagon::inscribed_in(&bounds, PolygonOrientation::FlatTop).vertices().to_vec(),
                 };
                 builder.move_to(vertices[0].x as f32, vertices[0].y as f32);
                 for vertex in &vertices[1..] {
@@ -97,25 +91,17 @@ impl ShapeClipImpl {
 
     /// Whether the point lies inside the clip shape.
     fn inside(&self, x: f64, y: f64) -> bool {
-        let (width, height) = (f64::from(self.obj().width()), f64::from(self.obj().height()));
+        let size = self.obj().allocated_size().to_f64();
+        let bounds = Rect::<()>::from_size(size);
         match self.shape.get() {
-            CardShape::Circle => Circle::<()>::new(Vec2::new(width / 2.0, height / 2.0), width.min(height) / 2.0).contains(&Vec2::new(x, y)),
+            CardShape::Circle => Circle::<()>::new(Vec2::new(size.x / 2.0, size.y / 2.0), size.x.min(size.y) / 2.0).contains(&Vec2::new(x, y)),
             CardShape::Annulus => {
-                let outer = width.min(height) / 2.0;
-                Annulus::<()>::new(Vec2::new(width / 2.0, height / 2.0), outer * self.inner_ratio.get(), outer).contains(&Vec2::new(x, y))
+                let outer = size.x.min(size.y) / 2.0;
+                Annulus::<()>::new(Vec2::new(size.x / 2.0, size.y / 2.0), outer * self.inner_ratio.get().as_f64(), outer).contains(&Vec2::new(x, y))
             }
-            CardShape::Semicircle => {
-                let radius = (width / 2.0).min(height);
-                Circle::<()>::new(Vec2::new(width / 2.0, height), radius).contains(&Vec2::new(x, y)) && y <= height
-            }
-            CardShape::Octagon => {
-                let inradius = (width / 2.0).min(height / 2.0);
-                Octagon::with_inradius(Vec2::<()>::new(width / 2.0, height / 2.0), inradius, PolygonOrientation::FlatTop).contains(&Vec2::new(x, y))
-            }
-            _ => {
-                let radius = (width / 2.0).min(height / SQRT_3);
-                Hexagon::flat_top(Vec2::<()>::new(width / 2.0, height / 2.0), radius).contains(&Vec2::new(x, y))
-            }
+            CardShape::Semicircle => Semicircle::<()>::inscribed_in(&bounds).contains(&Vec2::new(x, y)),
+            CardShape::Octagon => Octagon::inscribed_in(&bounds, PolygonOrientation::FlatTop).contains(&Vec2::new(x, y)),
+            _ => Hexagon::inscribed_in(&bounds, PolygonOrientation::FlatTop).contains(&Vec2::new(x, y)),
         }
     }
 }

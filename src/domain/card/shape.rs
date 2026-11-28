@@ -1,14 +1,20 @@
+use crate::domain::CardOutline;
+use smearor_commons_geometry::Annulus;
+use smearor_commons_geometry::Circle;
 use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::Distance;
 use smearor_commons_geometry::EighthTurn;
+use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Hexagon;
 use smearor_commons_geometry::Octagon;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::PolygonOrientation;
 use smearor_commons_geometry::QuarterTurn;
+use smearor_commons_geometry::Rect;
 use smearor_commons_geometry::Rotation;
 use smearor_commons_geometry::RotationDirection;
 use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::Semicircle;
 use smearor_commons_geometry::SixthTurn;
 use smearor_commons_geometry::Size;
 use smearor_commons_geometry::Vec2;
@@ -83,11 +89,6 @@ pub enum CardShape {
 /// `diameter * sqrt(3) / 2`.
 const SQRT_3_OVER_2: f64 = 0.866_025_403_784_438_6;
 
-/// `cos(22.5°)` - a flat-top octagon's inradius is
-/// `circumradius * cos(22.5°)`, so the circumradius of an octagon
-/// with bounding-box half extent `a` is `a / cos(22.5°)`.
-const COS_22_5: f64 = 0.923_879_532_511_286_7;
-
 impl CardShape {
     /// How far the shape's outline extends along `direction`, measured
     /// from the bounding box's center: the disk radius for a `Circle`
@@ -127,7 +128,9 @@ impl CardShape {
     pub fn bounding_radius(&self, footprint: Vec2<Pixels>) -> Distance<Pixels> {
         match self {
             Self::Circle | Self::Semicircle | Self::Hexagon | Self::Annulus => Distance::new(footprint.x / 2.0),
-            Self::Octagon => Distance::new(footprint.x / 2.0 / COS_22_5),
+            Self::Octagon => Distance::new(
+                Octagon::with_inradius(Vec2::<Pixels>::new(footprint.x / 2.0, footprint.y / 2.0), footprint.x / 2.0, PolygonOrientation::FlatTop).circumradius,
+            ),
             Self::Rectangle => Distance::new(footprint.magnitude_f64() / 2.0),
         }
     }
@@ -154,6 +157,44 @@ impl CardShape {
             CardShape::Hexagon => Degrees::SIXTH_TURN,
             CardShape::Octagon => Degrees::EIGHTH_TURN,
             _ => Degrees::QUARTER_TURN,
+        }
+    }
+
+    /// The shape's geometry inscribed in `bounds`: the disc for
+    /// `Circle`, the dome (center at the bounds' bottom middle) for
+    /// `Semicircle`, the flat-top polygons for `Hexagon`/`Octagon` and
+    /// the ring with `hole` as its inner-radius share for `Annulus`.
+    /// `Rectangle` has no inscribed outline - its contour is the
+    /// bounding box itself - so callers fall back to rectangular
+    /// defaults (`parent_contains` for hit-tests, no silhouette clip
+    /// path for snapshots).
+    pub fn outline(&self, bounds: &Rect<()>, hole: Fraction) -> Option<CardOutline> {
+        let outline = match self {
+            Self::Circle => CardOutline::Circle(Circle::inscribed_in(bounds)),
+            Self::Semicircle => CardOutline::Semicircle(Semicircle::inscribed_in(bounds)),
+            Self::Hexagon => CardOutline::Hexagon(Hexagon::inscribed_in(bounds, PolygonOrientation::FlatTop)),
+            Self::Octagon => CardOutline::Octagon(Octagon::inscribed_in(bounds, PolygonOrientation::FlatTop)),
+            Self::Annulus => CardOutline::Annulus(Annulus::inscribed_in(bounds, hole)),
+            Self::Rectangle => return None,
+        };
+        Some(outline)
+    }
+
+    /// Whether `point` hits the shape's contour inside `bounds` -
+    /// `None` for `Rectangle`, whose callers keep the rectangular
+    /// fallback test.
+    pub fn contains(&self, bounds: &Rect<()>, hole: Fraction, point: &Vec2<()>) -> Option<bool> {
+        self.outline(bounds, hole).map(|outline| outline.contains(bounds, point))
+    }
+
+    /// The radius the arc chrome rides at: an `Annulus` ring floats
+    /// its chrome on the band's middle (`(inner + outer) / 2`); every
+    /// other shape rides the inscribed circle's rim minus half the
+    /// `band` thickness.
+    pub fn arc_chrome_radius(&self, bounds: &Rect<()>, hole: Fraction, band: f64) -> f64 {
+        match self.outline(bounds, hole) {
+            Some(CardOutline::Annulus(annulus)) => (annulus.inner + annulus.outer) / 2.0,
+            _ => bounds.size.x.min(bounds.size.y) / 2.0 - band / 2.0,
         }
     }
 

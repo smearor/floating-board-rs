@@ -1,9 +1,9 @@
 use crate::domain::CardContent;
 use crate::domain::CardId;
+use crate::domain::CardOutline;
 use crate::domain::CardShape;
-use crate::domain::ChromeElement;
-use crate::domain::ChromePlacement;
 use crate::domain::ChromeSlot;
+use crate::domain::DomeInsets;
 use crate::domain::hexagon_content_for;
 use crate::domain::hexagon_fill_extent;
 use crate::domain::hexagon_fill_radius_for;
@@ -16,19 +16,20 @@ use crate::widget::FloatingBoard;
 use crate::widget::card::Card;
 use crate::widget::card_layout::CardShapeLayout;
 use crate::widget::card_signal::CARD_SIGNALS;
+use crate::widget::chrome_slots::ChromeSlots;
 use crate::widget::css::CLASS_CARD;
 use crate::widget::css::CLASS_CONTENT;
+use crate::widget::silhouette_box::SilhouetteBox;
+use crate::widget::silhouette_stage::SilhouetteStage;
 use glib::WeakRef;
 use glib::subclass::Signal;
-use gtk4::Button;
-use gtk4::DrawingArea;
 use gtk4::Label;
 use gtk4::Orientation;
 use gtk4::Overflow;
 use gtk4::Widget;
 use gtk4::glib;
 use gtk4::graphene::Point;
-use gtk4::gsk::Transform;
+use gtk4::gsk::{FillRule, Path, PathBuilder, Transform};
 use gtk4::prelude::BoxExt;
 use gtk4::prelude::Cast;
 use gtk4::prelude::OrientableExt;
@@ -42,17 +43,18 @@ use gtk4::subclass::prelude::ObjectSubclassExt;
 use gtk4::subclass::prelude::WidgetClassExt;
 use gtk4::subclass::prelude::WidgetImpl;
 use gtk4::subclass::prelude::WidgetImplExt;
-use smearor_commons_geometry::Annulus;
-use smearor_commons_geometry::Arc;
-use smearor_commons_geometry::Circle;
+use gtk4::{Align, Button, CssProvider};
+use gtk4::{DrawingArea, Snapshot};
 use smearor_commons_geometry::Degrees;
+use smearor_commons_geometry::Distance;
 use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Hexagon;
 use smearor_commons_geometry::Octagon;
 use smearor_commons_geometry::Pixels;
 use smearor_commons_geometry::PolygonOrientation;
 use smearor_commons_geometry::Radians;
-use smearor_commons_geometry::RotationRad;
+use smearor_commons_geometry::Rect;
+use smearor_commons_geometry::Semicircle;
 use smearor_commons_geometry::Size;
 use smearor_commons_geometry::Vec2;
 use smearor_commons_geometry::WidgetSizeExt;
@@ -72,17 +74,17 @@ pub struct CardImpl {
     pub board: RefCell<WeakRef<FloatingBoard>>,
     /// The installed palette's generated CSS class + provider, so
     /// `Card::set_palette` can uninstall a replaced palette.
-    pub palette: RefCell<Option<(String, gtk4::CssProvider)>>,
+    pub palette: RefCell<Option<(String, CssProvider)>>,
     /// Header strip (drag affordance) - built by `chrome::mount_chrome`
     /// during `Card::build`; `gtk4::Box` for the builtin style,
     /// `adw::HeaderBar` for adwaita.
-    pub header: OnceCell<gtk4::Widget>,
+    pub header: OnceCell<Widget>,
     /// Whether the header has chrome children (and may be shown);
     /// `set_folded` restores to this instead of unconditionally
     /// revealing an empty strip.
     pub header_shown: Cell<bool>,
     /// Overlay stacking the resize/rotate grips over the content.
-    pub content_overlay: OnceCell<crate::widget::silhouette_stage::SilhouetteStage>,
+    pub content_overlay: OnceCell<SilhouetteStage>,
     /// Container for the consumer's content widget.
     pub content_holder: OnceCell<gtk4::Box>,
     /// Resolved title - source of truth for `Card::title` regardless
@@ -129,7 +131,7 @@ pub struct CardImpl {
     /// Fraction of the outer radius that is the see-through hole on
     /// `CardShape::Annulus` - `CardConfig::hole_ratio` resolved with
     /// `DEFAULT_HOLE_RATIO`. Unused on every other shape.
-    pub hole_ratio: Cell<f64>,
+    pub hole_ratio: Cell<Fraction>,
     /// Content allocation mode for `CardShape::Circle`
     /// (`CardConfig::content`).
     pub content: Cell<CardContent>,
@@ -155,7 +157,7 @@ pub struct CardImpl {
     /// `(widget, slot)` pairs in slot order, mounted by
     /// `Card::mount_arc_chrome` and placed on the arc bands by
     /// `circle_allocate`/`semicircle_allocate`.
-    pub arc_items: RefCell<Vec<(gtk4::Widget, ChromeSlot)>>,
+    pub arc_items: RefCell<Vec<(Widget, ChromeSlot)>>,
     /// The painted straight bar along the flat bottom edge of a
     /// `Semicircle` card (`Card::mount_arc_chrome` only creates it
     /// when `bar_items` is non-empty).
@@ -167,7 +169,7 @@ pub struct CardImpl {
     /// Bar-chrome items on `CardShape::Semicircle`/`Hexagon` - `Bar*`
     /// slots placed on the straight bottom bar's mid line by
     /// `semicircle_allocate`/`hexagon_allocate`.
-    pub bar_items: RefCell<Vec<(gtk4::Widget, ChromeSlot)>>,
+    pub bar_items: RefCell<Vec<(Widget, ChromeSlot)>>,
     /// The painted straight bar along the flat top edge of a
     /// `Hexagon` card (`Card::mount_arc_chrome` only creates it
     /// when `top_items` is non-empty).
@@ -175,7 +177,7 @@ pub struct CardImpl {
     /// Top-bar chrome items on `CardShape::Hexagon` - `Inline*`/
     /// `ArcTop*` slots placed on the straight top bar's mid line by
     /// `hexagon_allocate`.
-    pub top_items: RefCell<Vec<(gtk4::Widget, ChromeSlot)>>,
+    pub top_items: RefCell<Vec<(Widget, ChromeSlot)>>,
 }
 
 impl Default for CardImpl {
@@ -249,7 +251,7 @@ impl ObjectImpl for CardImpl {
         // The header strip is NOT built here: `chrome::mount_chrome`
         // composes it during `Card::build` from the config's chrome
         // slot list (and prepends it before the content overlay).
-        let content_holder = crate::widget::silhouette_box::SilhouetteBox::new(Orientation::Vertical, 0);
+        let content_holder = SilhouetteBox::new(Orientation::Vertical, 0);
         content_holder.add_css_class(CLASS_CONTENT);
         content_holder.set_vexpand(true);
 
@@ -260,18 +262,18 @@ impl ObjectImpl for CardImpl {
         let content_overlay = crate::widget::silhouette_stage::SilhouetteStage::new();
         content_overlay.set_child(Some(&content_holder));
 
-        let folded_holder = crate::widget::silhouette_box::SilhouetteBox::new(Orientation::Horizontal, 0);
+        let folded_holder = SilhouetteBox::new(Orientation::Horizontal, 0);
         folded_holder.add_css_class(crate::widget::css::CLASS_FOLDED_CONTENT);
         folded_holder.set_visible(false);
-        folded_holder.set_halign(gtk4::Align::Center);
-        folded_holder.set_valign(gtk4::Align::Center);
+        folded_holder.set_halign(Align::Center);
+        folded_holder.set_valign(Align::Center);
 
         // The stage stacks the folded pane over the content pane:
         // while folded - or mid-crossfade in a `CardFoldAnimation`
         // transition - both panes share the same area. The folded pane
         // is an overlay child, so it never claims layout space; the
         // folded state's size is pinned explicitly in `set_folded`.
-        let stage = crate::widget::silhouette_stage::SilhouetteStage::new();
+        let stage = SilhouetteStage::new();
         stage.set_child(Some(&content_overlay));
         stage.add_overlay(&folded_holder);
 
@@ -293,10 +295,6 @@ impl ObjectImpl for CardImpl {
 /// a drag affordance; the content never reaches into it.
 const CIRCLE_RING_BAND: f64 = 8.0;
 
-/// `sqrt(3)` - the flat-top hexagon's height factor
-/// (`height = sqrt(3) * circumradius`).
-const SQRT_3: f64 = 1.732_050_807_568_877_2;
-
 /// `tan(22.5°) = sqrt(2) - 1` - a flat-top octagon's flat edge is
 /// `2 * a * tan(22.5°)` wide for inradius `a`, and its diagonal
 /// edges widen a cross-section at a 1:1 gain per unit height.
@@ -304,256 +302,28 @@ const TAN_22_5: f64 = 0.414_213_562_373_095_03;
 /// Thickness of the arc-chrome band on `CardShape::Circle` (px): the
 /// chrome items' centers ride the band's mid radius.
 pub(crate) const ARC_CHROME_BAND: f64 = 36.0;
-/// Default arc-chrome band span - the disc's top quarter (±45°).
-const ARC_HALF_SPAN: Radians = Radians::new(std::f64::consts::FRAC_PI_4);
-/// Angular distance kept around a centered arc `Title` at the default
-/// span (rad); `arc_angle` scales the gap with the configured span.
-const ARC_TITLE_GAP: Radians = Radians::new(std::f64::consts::PI / 15.0);
-
-/// Evenly spreads `count` directions over `[from, to]` as an `Arc`;
-/// a lone item sits at `from` - groups pack from the band's outer
-/// edge inward, like a header bar's packed ends.
-fn spread(from: RotationRad, to: RotationRad, index: usize, count: usize) -> RotationRad {
-    let t = if count <= 1 {
-        Fraction::ZERO
-    } else {
-        Fraction::new(index as f64 / (count - 1) as f64)
-    };
-    Arc::new(from, to - from).at(t)
-}
-
-/// Angular position of arc-chrome item `index` of `count` in the
-/// legacy all-`Inline` packing (the band spanning `±half_span`):
-/// items before `title_index` pack the left half of the band from its
-/// outer edge inward, a `Title` item sits centered like a header
-/// bar's title, and items after pack the right half from its outer
-/// edge inward - the header bar's end-pack semantics. Without a title
-/// the whole set spreads evenly over the band.
-fn arc_angle(index: usize, count: usize, title_index: Option<usize>, half_span: Radians) -> RotationRad {
-    let title_gap = half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
-    let Some(title) = title_index else {
-        return if count <= 1 {
-            RotationRad::ZERO
-        } else {
-            spread(RotationRad::from(-half_span), RotationRad::from(half_span), index, count)
-        };
-    };
-    if index == title {
-        RotationRad::ZERO
-    } else if index < title {
-        spread(RotationRad::from(-half_span), RotationRad::from(-title_gap), index, title)
-    } else {
-        spread(RotationRad::from(half_span), RotationRad::from(title_gap), index - title - 1, count - title - 1)
-    }
-}
-
-/// Disc-direction per arc-chrome item (radians, 0 = the disc's top,
-/// positive clockwise): the top band packs items with `Start`
-/// placements edge-inward on its left end, spreads `ArcTop`/`Inline`
-/// items over the center zone and packs `End` items edge-inward on
-/// its right end - header-bar zones on an arc. `Bar*` items
-/// land on the mirrored bottom band (offset π: its "start" edge sits
-/// on the screen's right, the user's left when facing the card's
-/// bottom). Each band spans its configured `arc_span` /
-/// `arc_bottom_span`. A top band of pure `Inline` slots keeps the
-/// legacy title-centered spread over the whole band.
-fn arc_angles(items: &[ChromeSlot], top_half_span: Radians, bottom_half_span: Radians) -> Vec<RotationRad> {
-    let top_gap = top_half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
-    let bottom_gap = bottom_half_span * (ARC_TITLE_GAP / ARC_HALF_SPAN);
-    let mut zones: [Vec<usize>; 6] = Default::default();
-    for (index, slot) in items.iter().enumerate() {
-        match slot.placement {
-            ChromePlacement::InlineStart | ChromePlacement::ArcTopStart => zones[0].push(index),
-            ChromePlacement::Inline | ChromePlacement::ArcTop => zones[1].push(index),
-            ChromePlacement::InlineEnd | ChromePlacement::ArcTopEnd => zones[2].push(index),
-            ChromePlacement::BarStart => zones[3].push(index),
-            ChromePlacement::Bar => zones[4].push(index),
-            ChromePlacement::BarEnd => zones[5].push(index),
-            ChromePlacement::Satellite => {}
-        }
-    }
-    let [top_start, top_center, top_end] = [zones[0].clone(), zones[1].clone(), zones[2].clone()];
-    let mut angles = vec![RotationRad::ZERO; items.len()];
-    // The legacy path: an unpinned top band of `Inline` items packs
-    // around a centered title over the whole band.
-    let legacy = top_start.is_empty() && top_end.is_empty() && top_center.iter().all(|&index| items[index].placement == ChromePlacement::Inline);
-    if legacy && !top_center.is_empty() {
-        let title_index = top_center.iter().position(|&index| items[index].element == ChromeElement::Title);
-        for (position, &item) in top_center.iter().enumerate() {
-            angles[item] = arc_angle(position, top_center.len(), title_index, top_half_span);
-        }
-    } else {
-        for (position, &item) in top_start.iter().enumerate() {
-            angles[item] = spread(RotationRad::from(-top_half_span), RotationRad::from(-top_gap), position, top_start.len());
-        }
-        for (position, &item) in top_center.iter().enumerate() {
-            angles[item] = if top_center.len() == 1 {
-                RotationRad::ZERO
-            } else {
-                spread(RotationRad::from(-top_gap), RotationRad::from(top_gap), position, top_center.len())
-            };
-        }
-        for (position, &item) in top_end.iter().enumerate() {
-            angles[item] = spread(RotationRad::from(top_half_span), RotationRad::from(top_gap), position, top_end.len());
-        }
-    }
-    let bottom = RotationRad::HALF_TURN;
-    for (position, &item) in zones[3].iter().enumerate() {
-        angles[item] = bottom + spread(RotationRad::from(-bottom_half_span), RotationRad::from(-bottom_gap), position, zones[3].len());
-    }
-    for (position, &item) in zones[4].iter().enumerate() {
-        angles[item] = bottom
-            + if zones[4].len() == 1 {
-                RotationRad::ZERO
-            } else {
-                spread(RotationRad::from(-bottom_gap), RotationRad::from(bottom_gap), position, zones[4].len())
-            };
-    }
-    for (position, &item) in zones[5].iter().enumerate() {
-        angles[item] = bottom + spread(RotationRad::from(bottom_half_span), RotationRad::from(bottom_gap), position, zones[5].len());
-    }
-    angles
-}
-
-/// X-offsets (px, relative to the dome's bottom middle) per item on a
-/// `Semicircle` card's straight bottom bar: `BarStart` packs
-/// from the bar's "start" edge inward - screen-right, the user's left
-/// when facing the card's bottom edge, the same convention the bottom
-/// arc uses - `Bar` spreads over the center span and
-/// `BarEnd` packs from the left. `half_width` is the safe
-/// half-extent of the bar (the dome's chord at the bar's top edge).
-fn bar_offsets(items: &[ChromeSlot], half_width: f64) -> Vec<f64> {
-    let gap = half_width * (ARC_TITLE_GAP / ARC_HALF_SPAN);
-    let mut zones: [Vec<usize>; 3] = Default::default();
-    for (index, slot) in items.iter().enumerate() {
-        match slot.placement {
-            ChromePlacement::BarStart => zones[0].push(index),
-            ChromePlacement::Bar => zones[1].push(index),
-            ChromePlacement::BarEnd => zones[2].push(index),
-            _ => {}
-        }
-    }
-    let mut offsets = vec![0.0; items.len()];
-    for (position, &item) in zones[0].iter().enumerate() {
-        offsets[item] = spread_line(half_width, gap, position, zones[0].len());
-    }
-    for (position, &item) in zones[1].iter().enumerate() {
-        offsets[item] = if zones[1].len() == 1 {
-            0.0
-        } else {
-            spread_line(-gap, gap, position, zones[1].len())
-        };
-    }
-    for (position, &item) in zones[2].iter().enumerate() {
-        offsets[item] = spread_line(-half_width, -gap, position, zones[2].len());
-    }
-    offsets
-}
-
-/// X-offsets (px, relative to the hexagon's top middle) per item on a
-/// `Hexagon` card's straight top bar: `InlineStart`/`ArcTopStart`
-/// pack from the bar's left edge inward - screen-left, the user's
-/// left when facing the card's top edge - `Inline`/`ArcTop` spread
-/// over the center span and `InlineEnd`/`ArcTopEnd` pack from the
-/// right. The unmirrored counterpart of [`bar_offsets`]: the top
-/// edge reads left-to-right. `half_width` is the safe half-extent of
-/// the bar (the hexagon's cross-section at the bar's mid line).
-fn top_offsets(items: &[ChromeSlot], half_width: f64) -> Vec<f64> {
-    let gap = half_width * (ARC_TITLE_GAP / ARC_HALF_SPAN);
-    let mut zones: [Vec<usize>; 3] = Default::default();
-    for (index, slot) in items.iter().enumerate() {
-        match slot.placement {
-            ChromePlacement::InlineStart | ChromePlacement::ArcTopStart => zones[0].push(index),
-            ChromePlacement::Inline | ChromePlacement::ArcTop => zones[1].push(index),
-            ChromePlacement::InlineEnd | ChromePlacement::ArcTopEnd => zones[2].push(index),
-            _ => {}
-        }
-    }
-    let mut offsets = vec![0.0; items.len()];
-    for (position, &item) in zones[0].iter().enumerate() {
-        offsets[item] = spread_line(-half_width, -gap, position, zones[0].len());
-    }
-    for (position, &item) in zones[1].iter().enumerate() {
-        offsets[item] = if zones[1].len() == 1 {
-            0.0
-        } else {
-            spread_line(-gap, gap, position, zones[1].len())
-        };
-    }
-    for (position, &item) in zones[2].iter().enumerate() {
-        offsets[item] = spread_line(half_width, gap, position, zones[2].len());
-    }
-    offsets
-}
-
-/// Evenly spreads `count` positions over `[from, to]`; a lone item
-/// sits at `from` - groups pack from the bar's outer edge inward,
-/// matching the arc bands' header-bar semantics.
-fn spread_line(from: f64, to: f64, index: usize, count: usize) -> f64 {
-    if count <= 1 {
-        return from;
-    }
-    from + (to - from) * index as f64 / (count - 1) as f64
-}
-
 impl WidgetImpl for CardImpl {
     // `Circle`: only the disk inside the bounding square is pickable -
     // taps in the corners pass through to whatever is underneath
     // (through the board layers' `contains` chain, same as the rotated
     // corners of a rectangle card).
     fn contains(&self, x: f64, y: f64) -> bool {
-        let (width, height) = (f64::from(self.obj().width()), f64::from(self.obj().height()));
-        match self.shape.get() {
-            CardShape::Circle => Circle::<()>::new(Vec2::new(width / 2.0, height / 2.0), width.min(height) / 2.0).contains(&Vec2::new(x, y)),
-            // The dome: inside the virtual circle (center at the
-            // bottom middle) and above the flat edge. `y <= height`
-            // cuts the circle's lower half: the rotation wrapper
-            // probes points beyond the allocation, and without the
-            // flat edge the phantom disc below the card stays
-            // pickable and swallows sibling cards' clicks.
-            CardShape::Semicircle => {
-                let radius = (width / 2.0).min(height);
-                Circle::<()>::new(Vec2::new(width / 2.0, height), radius).contains(&Vec2::new(x, y)) && y <= height
-            }
-            // The flat-top hexagon: the strip test is exact inside the
-            // bounding box; the bounds guard keeps the rotation
-            // wrapper's out-of-box probes from re-entering the shape.
-            CardShape::Hexagon => {
-                let radius = (width / 2.0).min(height / SQRT_3);
-                x >= 0.0
-                    && x <= width
-                    && y >= 0.0
-                    && y <= height
-                    && Hexagon::flat_top(Vec2::<()>::new(width / 2.0, height / 2.0), radius).contains(&Vec2::new(x, y))
-            }
-            // The flat-top octagon: the 4-strip test is exact inside
-            // the bounding box; the bounds guard keeps the rotation
-            // wrapper's out-of-box probes from re-entering the shape.
-            CardShape::Octagon => {
-                let inradius = (width / 2.0).min(height / 2.0);
-                x >= 0.0
-                    && x <= width
-                    && y >= 0.0
-                    && y <= height
-                    && Octagon::with_inradius(Vec2::<()>::new(width / 2.0, height / 2.0), inradius, PolygonOrientation::FlatTop).contains(&Vec2::new(x, y))
-            }
-            // The ring: on the band, outside the hole - taps inside
-            // the hole pass through to whatever is underneath.
-            CardShape::Annulus => {
-                let outer = width.min(height) / 2.0;
-                Annulus::<()>::new(Vec2::new(width / 2.0, height / 2.0), outer * self.hole_ratio.get(), outer).contains(&Vec2::new(x, y))
-            }
-            CardShape::Rectangle => self.parent_contains(x, y),
-        }
+        let bounds = Rect::<()>::from_size(self.obj().allocated_size().to_f64());
+        // `Rectangle` keeps the rectangular parent test - every other
+        // shape answers through its inscribed `CardOutline`.
+        self.shape
+            .get()
+            .contains(&bounds, self.hole_ratio.get(), &Vec2::new(x, y))
+            .unwrap_or_else(|| self.parent_contains(x, y))
     }
 
     /// Silhouette clip: the card's snapshot is clipped to the
     /// shape's path before children render - the single bound for
     /// `Cover` content on every shape (for `Circle`/`Semicircle`
     /// the path coincides with the CSS rounded background).
-    fn snapshot(&self, snapshot: &gtk4::Snapshot) {
+    fn snapshot(&self, snapshot: &Snapshot) {
         if let Some(path) = self.silhouette_path() {
-            snapshot.push_fill(&path, gtk4::gsk::FillRule::Winding);
+            snapshot.push_fill(&path, FillRule::Winding);
             self.parent_snapshot(snapshot);
             snapshot.pop();
         } else {
@@ -564,7 +334,7 @@ impl WidgetImpl for CardImpl {
 
 /// Traces a closed polygon path through `vertices` on `builder` -
 /// shared by the card's silhouette clip for `Hexagon`/`Octagon`.
-fn polygon_path(builder: &gtk4::gsk::PathBuilder, vertices: &[Vec2<()>]) {
+fn polygon_path(builder: &PathBuilder, vertices: &[Vec2<()>]) {
     builder.move_to(vertices[0].x as f32, vertices[0].y as f32);
     for vertex in &vertices[1..] {
         builder.line_to(vertex.x as f32, vertex.y as f32);
@@ -578,39 +348,35 @@ impl CardImpl {
     /// centered on the flat bottom edge - inside the widget bounds
     /// only the dome remains) for `Semicircle`, the flat-top
     /// polygon for `Hexagon`/`Octagon`. `None` for `Rectangle`.
-    fn silhouette_path(&self) -> Option<gtk4::gsk::Path> {
-        let (width, height) = (f64::from(self.obj().width()), f64::from(self.obj().height()));
-        let builder = gtk4::gsk::PathBuilder::new();
-        match self.shape.get() {
-            CardShape::Circle => {
-                builder.add_circle(&Point::new((width / 2.0) as f32, (height / 2.0) as f32), (width.min(height) / 2.0) as f32);
+    fn silhouette_path(&self) -> Option<Path> {
+        let bounds = Rect::<()>::from_size(self.obj().allocated_size().to_f64());
+        let builder = PathBuilder::new();
+        match self.shape.get().outline(&bounds, self.hole_ratio.get()) {
+            // The dome adds its virtual circle - the bounds box cuts
+            // it back to the dome's upper half.
+            Some(CardOutline::Circle(circle)) => {
+                builder.add_circle(&Point::new(circle.center.x as f32, circle.center.y as f32), circle.radius as f32);
             }
-            CardShape::Semicircle => {
-                builder.add_circle(&Point::new((width / 2.0) as f32, height as f32), ((width / 2.0).min(height)) as f32);
+            Some(CardOutline::Semicircle(dome)) => {
+                builder.add_circle(&Point::new(dome.center.x as f32, dome.center.y as f32), dome.radius as f32);
             }
-            CardShape::Hexagon => {
-                let radius = (width / 2.0).min(height / SQRT_3);
-                polygon_path(&builder, &Hexagon::flat_top(Vec2::<()>::new(width / 2.0, height / 2.0), radius).vertices());
+            Some(CardOutline::Hexagon(hexagon)) => {
+                polygon_path(&builder, &hexagon.vertices());
             }
-            CardShape::Octagon => {
-                let inradius = (width / 2.0).min(height / 2.0);
-                polygon_path(
-                    &builder,
-                    &Octagon::with_inradius(Vec2::<()>::new(width / 2.0, height / 2.0), inradius, PolygonOrientation::FlatTop).vertices(),
-                );
+            Some(CardOutline::Octagon(octagon)) => {
+                polygon_path(&builder, &octagon.vertices());
             }
             // The ring: the outer circle plus the hole circle added
             // reversed - under the winding fill rule the hole area
             // stays outside the clip, so it renders transparent.
-            CardShape::Annulus => {
-                let outer = (width.min(height) / 2.0) as f32;
-                let center = Point::new((width / 2.0) as f32, (height / 2.0) as f32);
-                builder.add_circle(&center, outer);
-                let hole = gtk4::gsk::PathBuilder::new();
-                hole.add_circle(&center, (f64::from(outer) * self.hole_ratio.get()) as f32);
+            Some(CardOutline::Annulus(annulus)) => {
+                let center = Point::new(annulus.center.x as f32, annulus.center.y as f32);
+                builder.add_circle(&center, annulus.outer as f32);
+                let hole = PathBuilder::new();
+                hole.add_circle(&center, annulus.inner as f32);
                 builder.add_reverse_path(&hole.to_path());
             }
-            CardShape::Rectangle => return None,
+            None => return None,
         }
         Some(builder.to_path())
     }
@@ -674,8 +440,11 @@ impl CardImpl {
         // square stable (the parent layer allocates at the minimum
         // width - a smaller value would render a shrunken circle whose
         // satellites still orbit the natural diameter).
-        let diameter = self.content.get().diameter_for(f64::from(natural_width.max(natural_height)), CIRCLE_RING_BAND);
-        (diameter.ceil() as i32, diameter.ceil() as i32, -1, -1)
+        let diameter = self
+            .content
+            .get()
+            .diameter_for(Distance::new(f64::from(natural_width.max(natural_height))), Distance::new(CIRCLE_RING_BAND));
+        (diameter.as_f64().ceil() as i32, diameter.as_f64().ceil() as i32, -1, -1)
     }
 
     /// `Circle` allocate: every visible child gets the centered content
@@ -686,19 +455,20 @@ impl CardImpl {
     /// `CardShapeLayout`.
     pub(crate) fn circle_allocate(&self, size: Size<i32>, baseline: i32) {
         let diameter = f64::from(size.x.min(size.y));
-        let side = self.content.get().content_square_for(diameter, CIRCLE_RING_BAND);
+        let side = self
+            .content
+            .get()
+            .content_square_for(Distance::new(diameter), Distance::new(CIRCLE_RING_BAND))
+            .as_f64();
         let transform = Transform::new().translate(&Point::new(((f64::from(size.x) - side) / 2.0) as f32, ((f64::from(size.y) - side) / 2.0) as f32));
         let side = side.ceil() as i32;
         let arc_items = self.arc_items.borrow();
         let arc_band = self.arc_band.get();
-        let slots: Vec<ChromeSlot> = arc_items.iter().map(|(_, slot)| *slot).collect();
-        let angles = arc_angles(&slots, self.arc_span.get() / 2.0, self.arc_bottom_span.get() / 2.0);
+        let angles = ChromeSlots::from(arc_items.as_slice()).arc_angles(self.arc_span.get() / 2.0, self.arc_bottom_span.get() / 2.0);
         // The chrome line: just inside the rim on a disc, on the
         // band's mid radius on a ring.
-        let arc_radius = match self.shape.get() {
-            CardShape::Annulus => diameter / 2.0 * (1.0 + self.hole_ratio.get()) / 2.0,
-            _ => diameter / 2.0 - ARC_CHROME_BAND / 2.0,
-        };
+        let bounds = Rect::<()>::from_size(Vec2::new(f64::from(size.x), f64::from(size.y)));
+        let arc_radius = self.shape.get().arc_chrome_radius(&bounds, self.hole_ratio.get(), ARC_CHROME_BAND);
         let mut child = self.obj().first_child();
         while let Some(widget) = child {
             if widget.is_visible() {
@@ -713,11 +483,10 @@ impl CardImpl {
                     widget.allocate(size.x, size.y, baseline, None);
                 } else if let Some(index) = arc_items.iter().position(|(item, _)| *item == widget) {
                     let (_, natural) = widget.measure_size();
-                    let (sin, cos) = angles[index].sin_cos();
-                    let center_x = f64::from(size.x) / 2.0 + arc_radius * sin;
-                    let center_y = f64::from(size.y) / 2.0 - arc_radius * cos;
-                    let arc_transform =
-                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    let up = Vec2::<Pixels>::new(0.0, -1.0);
+                    let center = Vec2::<Pixels>::new(f64::from(size.x) / 2.0, f64::from(size.y) / 2.0) + up.rotated(angles[index]) * arc_radius;
+                    let origin = Rect::<Pixels>::centered(center, Vec2::new(f64::from(natural.x), f64::from(natural.y))).min;
+                    let arc_transform = Transform::new().translate(&Point::new(origin.x as f32, origin.y as f32));
                     widget.allocate(natural.x, natural.y, baseline, Some(arc_transform));
                 } else {
                     widget.allocate(side, side, baseline, Some(transform.clone()));
@@ -745,29 +514,29 @@ impl CardImpl {
         // The measure must reserve the same chrome insets the
         // allocation applies - otherwise the content extent shrinks
         // below the child's natural size and GTK clips it.
-        let (ring, bottom_inset) = self.dome_insets();
+        let insets = self.dome_insets();
         let radius = self
             .content
             .get()
-            .dome_radius_for(f64::from(natural_width), f64::from(natural_height), ring, bottom_inset);
+            .dome_radius_for(Vec2::new(f64::from(natural_width), f64::from(natural_height)), insets);
         let extent = match orientation {
-            Orientation::Horizontal => 2.0 * radius,
+            Orientation::Horizontal => radius * 2.0,
             _ => radius,
         };
-        (extent.ceil() as i32, extent.ceil() as i32, -1, -1)
+        (extent.as_f64().ceil() as i32, extent.as_f64().ceil() as i32, -1, -1)
     }
 
     /// The dome's chrome insets `(ring, bottom_inset)`: `ring`
     /// reserves the arc band's width inside the rim, `bottom_inset`
     /// lifts the content onto the straight bar's top. While folded
     /// both bands are hidden and reserve nothing.
-    fn dome_insets(&self) -> (f64, f64) {
+    fn dome_insets(&self) -> DomeInsets {
         if self.folded.get() {
-            return (CIRCLE_RING_BAND, 0.0);
+            return DomeInsets::new(Distance::new(CIRCLE_RING_BAND), Distance::ZERO);
         }
-        let ring = CIRCLE_RING_BAND + if self.arc_items.borrow().is_empty() { 0.0 } else { ARC_CHROME_BAND };
-        let bottom_inset = if self.bar_items.borrow().is_empty() { 0.0 } else { ARC_CHROME_BAND };
-        (ring, bottom_inset)
+        let ring = Distance::new(CIRCLE_RING_BAND + if self.arc_items.borrow().is_empty() { 0.0 } else { ARC_CHROME_BAND });
+        let bottom_inset = Distance::new(if self.bar_items.borrow().is_empty() { 0.0 } else { ARC_CHROME_BAND });
+        DomeInsets::new(ring, bottom_inset)
     }
 
     /// `Semicircle` allocate: the dome's virtual circle centers at
@@ -778,7 +547,7 @@ impl CardImpl {
     /// bar's mid line (`bar_offsets`). Called from `CardShapeLayout`.
     pub(crate) fn semicircle_allocate(&self, size: Size<i32>, baseline: i32) {
         let (width, height) = (f64::from(size.x), f64::from(size.y));
-        let radius = (width / 2.0).min(height);
+        let radius = Semicircle::<()>::inscribed_in(&Rect::<()>::from_size(Vec2::new(width, height))).radius;
         let arc_items = self.arc_items.borrow();
         let bar_items = self.bar_items.borrow();
         // Each painted band pushes the content inward: the arc band
@@ -786,20 +555,23 @@ impl CardImpl {
         // bar lifts the content's bottom edge onto the bar's top.
         // `dome_insets` mirrors `semicircle_measure` - folded cards
         // keep their full dome for the folded pane.
-        let (ring, bottom_inset) = self.dome_insets();
-        let (content_width, content_height) = self.content.get().dome_content_for(radius, ring, bottom_inset);
-        let transform = Transform::new().translate(&Point::new((width / 2.0 - content_width / 2.0) as f32, (height - content_height - bottom_inset) as f32));
+        let insets = self.dome_insets();
+        let content = self.content.get().dome_content_for(Distance::new(radius), insets);
+        let (content_width, content_height) = (content.x, content.y);
+        let transform = Transform::new().translate(&Point::new(
+            (width / 2.0 - content_width / 2.0) as f32,
+            (height - content_height - insets.bottom_inset.as_f64()) as f32,
+        ));
         let (content_width, content_height) = (content_width.ceil() as i32, content_height.ceil() as i32);
-        let slots: Vec<ChromeSlot> = arc_items.iter().map(|(_, slot)| *slot).collect();
         // A dome has no bottom arc - `arc_items` holds top-zone slots
         // only; the bottom span is unused.
         let half_span = self.arc_span.get() / 2.0;
-        let angles = arc_angles(&slots, half_span, half_span);
+        let angles = ChromeSlots::from(arc_items.as_slice()).arc_angles(half_span, half_span);
         // The bar's safe half-extent at its mid line - item centers
         // are additionally clamped so an item's edge stays inside the
         // dome's chord.
         let bar_half_width = (radius.powi(2) - (ARC_CHROME_BAND / 2.0).powi(2)).max(0.0).sqrt();
-        let bar_offsets = bar_offsets(&bar_items.iter().map(|(_, slot)| *slot).collect::<Vec<_>>(), bar_half_width);
+        let bar_offsets = ChromeSlots::from(bar_items.as_slice()).bar_offsets(bar_half_width);
         let arc_radius = radius - ARC_CHROME_BAND / 2.0;
         let mut child = self.obj().first_child();
         while let Some(widget) = child {
@@ -812,19 +584,17 @@ impl CardImpl {
                     widget.allocate(size.x, size.y, baseline, None);
                 } else if let Some(index) = arc_items.iter().position(|(item, _)| *item == widget) {
                     let (_, natural) = widget.measure_size();
-                    let (sin, cos) = angles[index].sin_cos();
-                    let center_x = width / 2.0 + arc_radius * sin;
-                    let center_y = height - arc_radius * cos;
-                    let arc_transform =
-                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    let up = Vec2::<Pixels>::new(0.0, -1.0);
+                    let center = Vec2::<Pixels>::new(width / 2.0, height) + up.rotated(angles[index]) * arc_radius;
+                    let origin = Rect::<Pixels>::centered(center, Vec2::new(f64::from(natural.x), f64::from(natural.y))).min;
+                    let arc_transform = Transform::new().translate(&Point::new(origin.x as f32, origin.y as f32));
                     widget.allocate(natural.x, natural.y, baseline, Some(arc_transform));
                 } else if let Some(index) = bar_items.iter().position(|(item, _)| *item == widget) {
                     let (_, natural) = widget.measure_size();
                     let max_offset = (bar_half_width - f64::from(natural.x) / 2.0).max(0.0);
-                    let center_x = width / 2.0 + bar_offsets[index].clamp(-max_offset, max_offset);
-                    let center_y = height - ARC_CHROME_BAND / 2.0;
-                    let bar_transform =
-                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    let center = Vec2::<Pixels>::new(width / 2.0 + bar_offsets[index].clamp(-max_offset, max_offset), height - ARC_CHROME_BAND / 2.0);
+                    let origin = Rect::<Pixels>::centered(center, Vec2::new(f64::from(natural.x), f64::from(natural.y))).min;
+                    let bar_transform = Transform::new().translate(&Point::new(origin.x as f32, origin.y as f32));
                     widget.allocate(natural.x, natural.y, baseline, Some(bar_transform));
                 } else {
                     widget.allocate(content_width, content_height, baseline, Some(transform.clone()));
@@ -881,9 +651,10 @@ impl CardImpl {
             CardContent::Fill | CardContent::Clipped => hexagon_fill_radius_for(f64::from(natural_width), f64::from(natural_height), CIRCLE_RING_BAND),
             CardContent::Cover => hexagon_fill_radius_for(f64::from(natural_width), f64::from(natural_height), 0.0),
         };
+        let bounding = Hexagon::<()>::bounding_size_for_circumradius(radius, PolygonOrientation::FlatTop);
         let extent = match orientation {
-            Orientation::Horizontal => 2.0 * radius,
-            _ => SQRT_3 * radius,
+            Orientation::Horizontal => bounding.x,
+            _ => bounding.y,
         };
         (extent.ceil() as i32, extent.ceil() as i32, -1, -1)
     }
@@ -895,7 +666,7 @@ impl CardImpl {
     /// Called from `CardShapeLayout`.
     pub(crate) fn hexagon_allocate(&self, size: Size<i32>, baseline: i32) {
         let (width, height) = (f64::from(size.x), f64::from(size.y));
-        let radius = (width / 2.0).min(height / SQRT_3);
+        let radius = Hexagon::<()>::circumradius_bounded_by(Vec2::new(width, height), PolygonOrientation::FlatTop);
         let bar_items = self.bar_items.borrow();
         let top_items = self.top_items.borrow();
         let bar_inset = self.hexagon_bottom_inset() + self.hexagon_top_inset();
@@ -916,8 +687,8 @@ impl CardImpl {
         // cross-section there - `R/2` (the flat edge's half width)
         // grown by the slant gain `BAND * w / (4h)` over half the band.
         let bar_half_width = radius / 2.0 + ARC_CHROME_BAND * width / (4.0 * height);
-        let bar_offsets = bar_offsets(&bar_items.iter().map(|(_, slot)| *slot).collect::<Vec<_>>(), bar_half_width);
-        let top_offsets = top_offsets(&top_items.iter().map(|(_, slot)| *slot).collect::<Vec<_>>(), bar_half_width);
+        let bar_offsets = ChromeSlots::from(bar_items.as_slice()).bar_offsets(bar_half_width);
+        let top_offsets = ChromeSlots::from(top_items.as_slice()).top_offsets(bar_half_width);
         let mut child = self.obj().first_child();
         while let Some(widget) = child {
             if widget.is_visible() {
@@ -931,18 +702,16 @@ impl CardImpl {
                 } else if let Some(index) = bar_items.iter().position(|(item, _)| *item == widget) {
                     let (_, natural) = widget.measure_size();
                     let max_offset = (bar_half_width - f64::from(natural.x) / 2.0).max(0.0);
-                    let center_x = width / 2.0 + bar_offsets[index].clamp(-max_offset, max_offset);
-                    let center_y = height - ARC_CHROME_BAND / 2.0;
-                    let bar_transform =
-                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    let center = Vec2::<Pixels>::new(width / 2.0 + bar_offsets[index].clamp(-max_offset, max_offset), height - ARC_CHROME_BAND / 2.0);
+                    let origin = Rect::<Pixels>::centered(center, Vec2::new(f64::from(natural.x), f64::from(natural.y))).min;
+                    let bar_transform = Transform::new().translate(&Point::new(origin.x as f32, origin.y as f32));
                     widget.allocate(natural.x, natural.y, baseline, Some(bar_transform));
                 } else if let Some(index) = top_items.iter().position(|(item, _)| *item == widget) {
                     let (_, natural) = widget.measure_size();
                     let max_offset = (bar_half_width - f64::from(natural.x) / 2.0).max(0.0);
-                    let center_x = width / 2.0 + top_offsets[index].clamp(-max_offset, max_offset);
-                    let center_y = ARC_CHROME_BAND / 2.0;
-                    let top_transform =
-                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    let center = Vec2::<Pixels>::new(width / 2.0 + top_offsets[index].clamp(-max_offset, max_offset), ARC_CHROME_BAND / 2.0);
+                    let origin = Rect::<Pixels>::centered(center, Vec2::new(f64::from(natural.x), f64::from(natural.y))).min;
+                    let top_transform = Transform::new().translate(&Point::new(origin.x as f32, origin.y as f32));
                     widget.allocate(natural.x, natural.y, baseline, Some(top_transform));
                 } else {
                     widget.allocate(content_width, content_height, baseline, Some(transform.clone()));
@@ -1011,7 +780,7 @@ impl CardImpl {
     /// `CardShapeLayout`.
     pub(crate) fn octagon_allocate(&self, size: Size<i32>, baseline: i32) {
         let (width, height) = (f64::from(size.x), f64::from(size.y));
-        let inradius = (width / 2.0).min(height / 2.0);
+        let inradius = Octagon::inscribed_in(&Rect::<()>::from_size(Vec2::new(width, height)), PolygonOrientation::FlatTop).inradius();
         let bar_items = self.bar_items.borrow();
         let top_items = self.top_items.borrow();
         let bar_inset = self.octagon_bottom_inset() + self.octagon_top_inset();
@@ -1030,8 +799,8 @@ impl CardImpl {
         // `a * tan(22.5°)` grown by the diagonal's 1:1 gain `BAND/2`
         // over half the band.
         let bar_half_width = width / 2.0 * TAN_22_5 + ARC_CHROME_BAND / 2.0;
-        let bar_offsets = bar_offsets(&bar_items.iter().map(|(_, slot)| *slot).collect::<Vec<_>>(), bar_half_width);
-        let top_offsets = top_offsets(&top_items.iter().map(|(_, slot)| *slot).collect::<Vec<_>>(), bar_half_width);
+        let bar_offsets = ChromeSlots::from(bar_items.as_slice()).bar_offsets(bar_half_width);
+        let top_offsets = ChromeSlots::from(top_items.as_slice()).top_offsets(bar_half_width);
         let mut child = self.obj().first_child();
         while let Some(widget) = child {
             if widget.is_visible() {
@@ -1045,18 +814,16 @@ impl CardImpl {
                 } else if let Some(index) = bar_items.iter().position(|(item, _)| *item == widget) {
                     let (_, natural) = widget.measure_size();
                     let max_offset = (bar_half_width - f64::from(natural.x) / 2.0).max(0.0);
-                    let center_x = width / 2.0 + bar_offsets[index].clamp(-max_offset, max_offset);
-                    let center_y = height - ARC_CHROME_BAND / 2.0;
-                    let bar_transform =
-                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    let center = Vec2::<Pixels>::new(width / 2.0 + bar_offsets[index].clamp(-max_offset, max_offset), height - ARC_CHROME_BAND / 2.0);
+                    let origin = Rect::<Pixels>::centered(center, Vec2::new(f64::from(natural.x), f64::from(natural.y))).min;
+                    let bar_transform = Transform::new().translate(&Point::new(origin.x as f32, origin.y as f32));
                     widget.allocate(natural.x, natural.y, baseline, Some(bar_transform));
                 } else if let Some(index) = top_items.iter().position(|(item, _)| *item == widget) {
                     let (_, natural) = widget.measure_size();
                     let max_offset = (bar_half_width - f64::from(natural.x) / 2.0).max(0.0);
-                    let center_x = width / 2.0 + top_offsets[index].clamp(-max_offset, max_offset);
-                    let center_y = ARC_CHROME_BAND / 2.0;
-                    let top_transform =
-                        Transform::new().translate(&Point::new((center_x - f64::from(natural.x) / 2.0) as f32, (center_y - f64::from(natural.y) / 2.0) as f32));
+                    let center = Vec2::<Pixels>::new(width / 2.0 + top_offsets[index].clamp(-max_offset, max_offset), ARC_CHROME_BAND / 2.0);
+                    let origin = Rect::<Pixels>::centered(center, Vec2::new(f64::from(natural.x), f64::from(natural.y))).min;
+                    let top_transform = Transform::new().translate(&Point::new(origin.x as f32, origin.y as f32));
                     widget.allocate(natural.x, natural.y, baseline, Some(top_transform));
                 } else {
                     widget.allocate(side, side, baseline, Some(transform.clone()));
@@ -1068,118 +835,3 @@ impl CardImpl {
 }
 
 impl BoxImpl for CardImpl {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Direction comparisons go through `sin_cos` - the normalized
-    /// scalar wraps across the turn boundary.
-    fn assert_angle(actual: RotationRad, expected_degrees: f64) {
-        let (actual_sin, actual_cos) = actual.sin_cos();
-        let expected = RotationRad::new(expected_degrees.to_radians());
-        let (expected_sin, expected_cos) = expected.sin_cos();
-        assert!(
-            (actual_sin - expected_sin).abs() < 1e-9 && (actual_cos - expected_cos).abs() < 1e-9,
-            "{actual:?} != {expected_degrees}deg"
-        );
-    }
-
-    fn slots(placements: &[ChromePlacement]) -> Vec<ChromeSlot> {
-        placements
-            .iter()
-            .map(|placement| ChromeSlot {
-                element: ChromeElement::Minimize,
-                placement: *placement,
-            })
-            .collect()
-    }
-
-    #[test]
-    fn arc_angle_single_item_centers() {
-        assert_angle(arc_angle(0, 1, None, ARC_HALF_SPAN), 0.0);
-    }
-
-    #[test]
-    fn arc_angle_spreads_over_band_without_title() {
-        assert_angle(arc_angle(0, 3, None, ARC_HALF_SPAN), -45.0);
-        assert_angle(arc_angle(1, 3, None, ARC_HALF_SPAN), 0.0);
-        assert_angle(arc_angle(2, 3, None, ARC_HALF_SPAN), 45.0);
-    }
-
-    #[test]
-    fn arc_angle_title_pins_center() {
-        assert_angle(arc_angle(1, 3, Some(1), ARC_HALF_SPAN), 0.0);
-        assert_angle(arc_angle(0, 3, Some(1), ARC_HALF_SPAN), -45.0);
-        assert_angle(arc_angle(2, 3, Some(1), ARC_HALF_SPAN), 45.0);
-    }
-
-    #[test]
-    fn arc_angle_groups_around_title() {
-        // [A, B, Title, C, D] - each side packs outer-edge inward, so
-        // the first slot of each group sits at the band's end.
-        assert_angle(arc_angle(0, 5, Some(2), ARC_HALF_SPAN), -45.0);
-        assert_angle(arc_angle(1, 5, Some(2), ARC_HALF_SPAN), -12.0);
-        assert_angle(arc_angle(3, 5, Some(2), ARC_HALF_SPAN), 45.0);
-        assert_angle(arc_angle(4, 5, Some(2), ARC_HALF_SPAN), 12.0);
-    }
-
-    #[test]
-    fn arc_angles_zones_pack_edges() {
-        let angles = arc_angles(
-            &slots(&[ChromePlacement::ArcTopStart, ChromePlacement::ArcTop, ChromePlacement::ArcTopEnd]),
-            ARC_HALF_SPAN,
-            ARC_HALF_SPAN,
-        );
-        assert_angle(angles[0], -45.0);
-        assert_angle(angles[1], 0.0);
-        assert_angle(angles[2], 45.0);
-    }
-
-    #[test]
-    fn arc_angles_inline_ends_map_to_zones() {
-        let angles = arc_angles(&slots(&[ChromePlacement::InlineStart, ChromePlacement::InlineEnd]), ARC_HALF_SPAN, ARC_HALF_SPAN);
-        assert_angle(angles[0], -45.0);
-        assert_angle(angles[1], 45.0);
-    }
-
-    #[test]
-    fn arc_angles_bottom_band_is_mirrored() {
-        // Bottom band: the "start" edge sits on the screen's right -
-        // the user's left when facing the card's bottom.
-        let angles = arc_angles(
-            &slots(&[ChromePlacement::BarStart, ChromePlacement::Bar, ChromePlacement::BarEnd]),
-            ARC_HALF_SPAN,
-            ARC_HALF_SPAN,
-        );
-        assert_angle(angles[0], 135.0);
-        assert_angle(angles[1], 180.0);
-        assert_angle(angles[2], 225.0);
-    }
-
-    #[test]
-    fn arc_angles_bottom_band_uses_own_span() {
-        // A narrow bottom band: start/end pack its 15deg half-span.
-        let angles = arc_angles(
-            &slots(&[ChromePlacement::BarStart, ChromePlacement::BarEnd]),
-            ARC_HALF_SPAN,
-            Radians::new(std::f64::consts::PI / 12.0),
-        );
-        assert_angle(angles[0], 165.0);
-        assert_angle(angles[1], 195.0);
-    }
-
-    #[test]
-    fn arc_angles_mixed_inline_plus_zone_uses_zones() {
-        // One pinned slot switches the whole top band to zone packing:
-        // remaining `Inline` items share the center zone.
-        let angles = arc_angles(
-            &slots(&[ChromePlacement::Inline, ChromePlacement::Inline, ChromePlacement::InlineEnd]),
-            ARC_HALF_SPAN,
-            ARC_HALF_SPAN,
-        );
-        assert_angle(angles[0], -12.0);
-        assert_angle(angles[1], 12.0);
-        assert_angle(angles[2], 45.0);
-    }
-}

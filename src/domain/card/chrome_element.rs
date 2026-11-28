@@ -61,6 +61,21 @@ impl ChromeElement {
     pub fn supports_arc(&self) -> bool {
         !matches!(self, Self::ResizeGrip | Self::RotateGrip)
     }
+
+    /// The element's deterministic id suffix for chrome satellites
+    /// (`chrome-minimize`) - `None` for elements without satellite
+    /// support, matching [`Self::supports_satellite`].
+    pub fn satellite_key(&self) -> Option<&'static str> {
+        match self {
+            Self::Minimize => Some("minimize"),
+            Self::Close => Some("close"),
+            Self::RotateClockwise => Some("rotate-clockwise"),
+            Self::RotateCounterClockwise => Some("rotate-counter-clockwise"),
+            Self::NextSeat => Some("next-seat"),
+            Self::PreviousSeat => Some("previous-seat"),
+            Self::DragHandle | Self::Title | Self::ResizeGrip | Self::RotateGrip => None,
+        }
+    }
 }
 
 #[cfg(test)]

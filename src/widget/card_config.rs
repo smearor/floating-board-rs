@@ -29,7 +29,7 @@ pub const DEFAULT_CONTENT_PADDING: Pixels = Pixels::new(10.0);
 
 /// Default fraction of an `Annulus` card's outer radius that is the
 /// see-through, click-through hole.
-pub const DEFAULT_HOLE_RATIO: f64 = 0.5;
+pub const DEFAULT_HOLE_RATIO: Fraction = Fraction::HALF;
 
 /// Placement and interaction configuration of a card.
 ///
@@ -109,7 +109,7 @@ pub struct CardConfig {
     /// `DEFAULT_HOLE_RATIO` (0.5); clamped to `0.05..=0.95`. Ignored
     /// for every other shape.
     #[cfg_attr(feature = "serde", serde(default))]
-    pub hole_ratio: Option<f64>,
+    pub hole_ratio: Option<Fraction>,
     /// Margin in pixels an edge or corner anchor keeps between the card's
     /// footprint and the board edge; default `ANCHOR_MARGIN` (24 px).
     /// Ignored for `Center` and `Explicit` placements.
@@ -358,28 +358,10 @@ impl CardConfig {
             .effective_chrome_slots()
             .iter()
             .filter(|slot| slot.placement == ChromePlacement::Satellite && slot.element.supports_satellite())
-            .map(|slot| SatelliteConfig::chrome(format!("chrome-{}", satellite_key(slot.element)), slot.element))
+            .map(|slot| SatelliteConfig::chrome(format!("chrome-{}", slot.element.satellite_key().unwrap_or("element")), slot.element))
             .collect();
         configs.extend(settings.satellites.iter().cloned());
         (settings, configs)
-    }
-}
-
-/// Deterministic id suffix for chrome satellites (`chrome-minimize`).
-/// Only satellite-capable elements reach it (`supports_satellite`
-/// filtered upstream); the fallback keeps the match total.
-fn satellite_key(element: ChromeElement) -> &'static str {
-    match element {
-        ChromeElement::Minimize => "minimize",
-        ChromeElement::Close => "close",
-        ChromeElement::RotateClockwise => "rotate-clockwise",
-        ChromeElement::RotateCounterClockwise => "rotate-counter-clockwise",
-        ChromeElement::NextSeat => "next-seat",
-        ChromeElement::PreviousSeat => "previous-seat",
-        // Non-satellite-capable elements never reach this function
-        // (`supports_satellite` filters upstream); distinct arms keep
-        // id collisions impossible if the capability set grows.
-        ChromeElement::DragHandle | ChromeElement::Title | ChromeElement::ResizeGrip | ChromeElement::RotateGrip => "element",
     }
 }
 

@@ -31,6 +31,7 @@ use crate::widget::css::CLASS_RESIZE_GRIP;
 use crate::widget::css::CLASS_ROTATE_GRIP;
 use crate::widget::imp::card::ARC_CHROME_BAND;
 
+use crate::widget::silhouette_box::SilhouetteBox;
 use glib::object::Cast;
 use glib::object::ObjectExt;
 use gtk4::Align;
@@ -47,8 +48,11 @@ use gtk4::prelude::DrawingAreaExt;
 use gtk4::prelude::DrawingAreaExtManual;
 use gtk4::prelude::WidgetExt;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use smearor_commons_color::Color;
 use smearor_commons_geometry::Degrees;
 use smearor_commons_geometry::RotationDirection;
+use smearor_commons_geometry::Vec2;
+use smearor_commons_geometry::WidgetSizeExt;
 use std::f64::consts::FRAC_PI_2;
 use tracing::debug;
 use tracing::warn;
@@ -243,7 +247,7 @@ impl Card {
     /// historical card look one-to-one (P1.3 regression baseline).
     fn mount_builtin_chrome(&self, title: &str, slots: &[ChromeSlot]) {
         let imp = self.imp();
-        let header = crate::widget::silhouette_box::SilhouetteBox::new(Orientation::Horizontal, 6);
+        let header = SilhouetteBox::new(Orientation::Horizontal, 6);
         header.add_css_class(CLASS_HEADER);
         header.set_hexpand(true);
         // Header children are grouped by placement: `InlineStart`
@@ -439,7 +443,7 @@ fn arc_band(card: &Card) -> DrawingArea {
             // just inside the rim like on a disc.
             CardShape::Annulus => {
                 let outer = f64::from(width.min(height)) / 2.0;
-                (f64::from(width) / 2.0, f64::from(height) / 2.0, outer * (1.0 + card.imp().hole_ratio.get()) / 2.0)
+                (f64::from(width) / 2.0, f64::from(height) / 2.0, outer * (1.0 + card.imp().hole_ratio.get().as_f64()) / 2.0)
             }
             _ => (f64::from(width) / 2.0, f64::from(height) / 2.0, f64::from(width.min(height)) / 2.0 - ARC_CHROME_BAND / 2.0),
         };
@@ -452,8 +456,8 @@ fn arc_band(card: &Card) -> DrawingArea {
         let has_top = items.iter().any(|(_, slot)| slot.placement.is_top_arc());
         let has_bottom = items.iter().any(|(_, slot)| slot.placement.is_bar());
         drop(items);
-        let color = area.color();
-        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
+        let color = Color::<f64>::from(area.color());
+        color.apply_rgba(cr);
         cr.set_line_width(ARC_CHROME_BAND);
         cr.set_line_cap(LineCap::Round);
         // Cairo measures angles from +x: the bands center on -90°
@@ -488,17 +492,17 @@ fn bar_band(card: &Card, top: bool) -> DrawingArea {
     let card_weak = card.downgrade();
     band.set_draw_func(move |area, cr, width, height| {
         let Some(card) = card_weak.upgrade() else { return };
-        let (width, height) = (f64::from(width), f64::from(height));
-        let center_x = width / 2.0;
+        let size = Vec2::<()>::new(f64::from(width), f64::from(height));
+        let center_x = size.x / 2.0;
         match card.imp().shape.get() {
             CardShape::Hexagon => {
                 // The hexagon's flat edge is `R = w/2` wide; the slanted
                 // edges widen the bar by `BAND * w / (2h)` per side at
                 // the band's far edge (the slant gains `1/sqrt(3)` per
                 // unit height), so it ends exactly on the silhouette.
-                let edge_half = width / 4.0;
-                let far_half = edge_half + ARC_CHROME_BAND * width / (2.0 * height);
-                let (edge_y, far_y) = if top { (0.0, ARC_CHROME_BAND) } else { (height, height - ARC_CHROME_BAND) };
+                let edge_half = size.x / 4.0;
+                let far_half = edge_half + ARC_CHROME_BAND * size.x / (2.0 * size.y);
+                let (edge_y, far_y) = if top { (0.0, ARC_CHROME_BAND) } else { (size.y, size.y - ARC_CHROME_BAND) };
                 cr.move_to(center_x - edge_half, edge_y);
                 cr.line_to(center_x - far_half, far_y);
                 cr.line_to(center_x + far_half, far_y);
@@ -511,9 +515,9 @@ fn bar_band(card: &Card, top: bool) -> DrawingArea {
                 // `BAND` per side at the band's far edge (the slant
                 // gains 1:1 per unit height), so it ends exactly on
                 // the silhouette.
-                let edge_half = width / 2.0 * TAN_22_5;
+                let edge_half = size.x / 2.0 * TAN_22_5;
                 let far_half = edge_half + ARC_CHROME_BAND;
-                let (edge_y, far_y) = if top { (0.0, ARC_CHROME_BAND) } else { (height, height - ARC_CHROME_BAND) };
+                let (edge_y, far_y) = if top { (0.0, ARC_CHROME_BAND) } else { (size.y, size.y - ARC_CHROME_BAND) };
                 cr.move_to(center_x - edge_half, edge_y);
                 cr.line_to(center_x - far_half, far_y);
                 cr.line_to(center_x + far_half, far_y);
@@ -521,18 +525,18 @@ fn bar_band(card: &Card, top: bool) -> DrawingArea {
                 cr.close_path();
             }
             _ => {
-                let radius = (width / 2.0).min(height);
+                let radius = (size.x / 2.0).min(size.y);
                 // The chord where the bar's top edge crosses the dome rim.
                 let chord = (radius * radius - ARC_CHROME_BAND * ARC_CHROME_BAND).max(0.0).sqrt();
-                cr.move_to(center_x - radius, height);
-                cr.line_to(center_x - chord, height - ARC_CHROME_BAND);
-                cr.line_to(center_x + chord, height - ARC_CHROME_BAND);
-                cr.line_to(center_x + radius, height);
+                cr.move_to(center_x - radius, size.y);
+                cr.line_to(center_x - chord, size.y - ARC_CHROME_BAND);
+                cr.line_to(center_x + chord, size.y - ARC_CHROME_BAND);
+                cr.line_to(center_x + radius, size.y);
                 cr.close_path();
             }
         }
-        let color = area.color();
-        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
+        let color = Color::<f64>::from(area.color());
+        color.apply_rgba(cr);
         let _ = cr.fill();
     });
     band
@@ -575,15 +579,14 @@ fn resize_grip() -> DrawingArea {
     grip.set_cursor_from_name(Some("nwse-resize"));
     grip.set_tooltip_text(Some(&l10n().message("card-resize")));
     grip.set_draw_func(|grip, cr, _, _| {
-        let color = grip.color();
-        let width = f64::from(grip.width());
-        let height = f64::from(grip.height());
-        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
+        let color = Color::<f64>::from(grip.color());
+        let size = grip.allocated_size().to_f64();
+        color.apply_rgba(cr);
         cr.set_line_width(1.5);
         cr.set_line_cap(LineCap::Round);
         for inset in [4.0, 8.0, 12.0] {
-            cr.move_to(width - inset, height - 2.0);
-            cr.line_to(width - 2.0, height - inset);
+            cr.move_to(size.x - inset, size.y - 2.0);
+            cr.line_to(size.x - 2.0, size.y - inset);
             let _ = cr.stroke();
         }
     });
@@ -607,17 +610,16 @@ fn rotate_grip() -> DrawingArea {
     grip.set_cursor_from_name(Some("grab"));
     grip.set_tooltip_text(Some(&l10n().message("card-rotate")));
     grip.set_draw_func(|grip, cr, _, _| {
-        let color = grip.color();
-        let width = f64::from(grip.width());
-        let height = f64::from(grip.height());
-        cr.set_source_rgba(f64::from(color.red()), f64::from(color.green()), f64::from(color.blue()), f64::from(color.alpha()));
+        let color = Color::<f64>::from(grip.color());
+        let size = grip.allocated_size().to_f64();
+        color.apply_rgba(cr);
         cr.set_line_width(1.5);
         cr.set_line_cap(LineCap::Round);
         // A three-quarter clockwise arc with an arrowhead on its tip:
         // the circular arrow suggests turning in either direction.
-        let radius = width.min(height) / 2.0 - 3.0;
-        let center_x = width / 2.0;
-        let center_y = height / 2.0;
+        let radius = size.x.min(size.y) / 2.0 - 3.0;
+        let center_x = size.x / 2.0;
+        let center_y = size.y / 2.0;
         let start = -FRAC_PI_2 + 0.7;
         let end = start + 3.0 * FRAC_PI_2;
         cr.arc(center_x, center_y, radius, start, end);
