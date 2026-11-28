@@ -1,5 +1,5 @@
 (function() {
-    const implementors = Object.fromEntries([["floating_board",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.100.0/core/ops/arith/trait.Div.html\" title=\"trait core::ops::arith::Div\">Div</a> for <a class=\"struct\" href=\"floating_board/domain/struct.ScaleFactor.html\" title=\"struct floating_board::domain::ScaleFactor\">ScaleFactor</a>",0]]]]);
+    const implementors = Object.fromEntries([["floating_board",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.100.1/core/ops/arith/trait.Div.html\" title=\"trait core::ops::arith::Div\">Div</a> for <a class=\"struct\" href=\"floating_board/domain/struct.ScaleFactor.html\" title=\"struct floating_board::domain::ScaleFactor\">ScaleFactor</a>",0]]]]);
     if (window.register_implementors) {
         window.register_implementors(implementors);
     } else {
