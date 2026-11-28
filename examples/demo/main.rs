@@ -1,5 +1,7 @@
 mod table;
 
+use floating_board::BoardLayout;
+use floating_board::Card;
 use floating_board::CardAnchor;
 use floating_board::CardColor;
 use floating_board::CardConfig;
@@ -19,8 +21,9 @@ use floating_board::SatelliteConfig;
 use floating_board::ScaleBounds;
 use floating_board::SeatAnchor;
 use floating_board::TurnDirection;
-use floating_board::{BoardLayout, Card};
+use gtk4::Align;
 use gtk4::Button;
+use gtk4::CheckButton;
 use gtk4::EventSequenceState;
 use gtk4::GestureDrag;
 use gtk4::Label;
@@ -29,7 +32,6 @@ use gtk4::Scale;
 use gtk4::Switch;
 use gtk4::glib::closure_local;
 use gtk4::prelude::*;
-use gtk4::{Align, CheckButton};
 use smearor_commons_color::Color;
 use smearor_commons_geometry::Fraction;
 use smearor_commons_geometry::Pixels;
@@ -44,9 +46,16 @@ use smearor_commons_layout::TableSide;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
-use table::{
-    DemoUser, MARKER_RADIUS, USERS, build_table_face, free_edge_offset, least_crowded_side, marker_position, next_user, seat_badge_markup, seat_for_point,
-};
+use table::DemoUser;
+use table::MARKER_RADIUS;
+use table::USERS;
+use table::build_table_face;
+use table::free_edge_offset;
+use table::least_crowded_side;
+use table::marker_position;
+use table::next_user;
+use table::seat_badge_markup;
+use table::seat_for_point;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 

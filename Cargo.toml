@@ -46,14 +46,3 @@ opt-level = 0
 opt-level = 3
 lto = true
 strip = "symbols"
-
-[patch."https://github.com/smearor/smearor-commons.git"]
-smearor-commons-animation = { path = "../smearor-commons/crates/animation" }
-smearor-commons-buffer = { path = "../smearor-commons/crates/buffer" }
-smearor-commons-color = { path = "../smearor-commons/crates/color" }
-smearor-commons-drawing = { path = "../smearor-commons/crates/drawing" }
-smearor-commons-font = { path = "../smearor-commons/crates/font" }
-smearor-commons-fx = { path = "../smearor-commons/crates/fx" }
-smearor-commons-geometry = { path = "../smearor-commons/crates/geometry" }
-smearor-commons-layer = { path = "../smearor-commons/crates/layer" }
-smearor-commons-layout = { path = "../smearor-commons/crates/layout" }

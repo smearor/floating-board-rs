@@ -1,7 +1,8 @@
 //! The `gauge` face's level satellite.
 
+use gtk4::Button;
+use gtk4::DrawingArea;
 use gtk4::prelude::*;
-use gtk4::{Button, DrawingArea};
 use smearor_commons_geometry::Fraction;
 use std::cell::Cell;
 use std::rc::Rc;

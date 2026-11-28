@@ -17,7 +17,10 @@ mod clock;
 mod dots;
 
 use clock::build_clock;
-use dots::{DOT_SPECS, INK, dot_button, wire_color_dot};
+use dots::DOT_SPECS;
+use dots::INK;
+use dots::dot_button;
+use dots::wire_color_dot;
 use floating_board::CardAnchor;
 use floating_board::CardColor;
 use floating_board::CardConfig;

@@ -2,7 +2,9 @@
 
 use super::color::ClockColor;
 use super::color::clock_color;
-use glib::{ControlFlow, DateTime, timeout_add_local};
+use glib::ControlFlow;
+use glib::DateTime;
+use glib::timeout_add_local;
 use gtk4::DrawingArea;
 use gtk4::prelude::*;
 use smearor_commons_drawing::Cap;

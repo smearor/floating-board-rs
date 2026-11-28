@@ -33,7 +33,14 @@ use floating_board::ChromeElement;
 use floating_board::DragHandle;
 use floating_board::FloatingBoard;
 use floating_board::RadialConfig;
-use menu::{HOLE_RATIO, ITEMS, MenuColor, MenuState, build_menu_face, menu_color, wedge_at, wedge_color};
+use menu::HOLE_RATIO;
+use menu::ITEMS;
+use menu::MenuColor;
+use menu::MenuState;
+use menu::build_menu_face;
+use menu::menu_color;
+use menu::wedge_at;
+use menu::wedge_color;
 
 use floating_board::SatelliteConfig;
 use floating_board::SatelliteDistribution;
