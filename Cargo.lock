@@ -909,7 +909,7 @@ checksum = "3244542535d5de959d90ec55d1b5ff0fd2bb7b1310223907d5f11932847f7b59"
 [[package]]
 name = "smearor-commons-animation"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#95c1f4d5f99c15146ccbbae8fefd3aefeaa9cd51"
+source = "git+https://github.com/smearor/smearor-commons.git#68a7f1229f4c8c2a38c66321a4ac9fbc49fa9624"
 dependencies = [
  "gtk4",
  "serde",
@@ -919,7 +919,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-buffer"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#95c1f4d5f99c15146ccbbae8fefd3aefeaa9cd51"
+source = "git+https://github.com/smearor/smearor-commons.git#68a7f1229f4c8c2a38c66321a4ac9fbc49fa9624"
 dependencies = [
  "gtk4",
  "serde",
@@ -931,7 +931,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-color"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#95c1f4d5f99c15146ccbbae8fefd3aefeaa9cd51"
+source = "git+https://github.com/smearor/smearor-commons.git#68a7f1229f4c8c2a38c66321a4ac9fbc49fa9624"
 dependencies = [
  "cairo-rs",
  "gtk4",
@@ -942,7 +942,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-drawing"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#95c1f4d5f99c15146ccbbae8fefd3aefeaa9cd51"
+source = "git+https://github.com/smearor/smearor-commons.git#68a7f1229f4c8c2a38c66321a4ac9fbc49fa9624"
 dependencies = [
  "ab_glyph",
  "ahash",
@@ -960,7 +960,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-font"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#95c1f4d5f99c15146ccbbae8fefd3aefeaa9cd51"
+source = "git+https://github.com/smearor/smearor-commons.git#68a7f1229f4c8c2a38c66321a4ac9fbc49fa9624"
 dependencies = [
  "ab_glyph",
  "serde",
@@ -971,7 +971,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-fx"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#95c1f4d5f99c15146ccbbae8fefd3aefeaa9cd51"
+source = "git+https://github.com/smearor/smearor-commons.git#68a7f1229f4c8c2a38c66321a4ac9fbc49fa9624"
 dependencies = [
  "cairo-rs",
  "gtk4",
@@ -988,7 +988,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-geometry"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#95c1f4d5f99c15146ccbbae8fefd3aefeaa9cd51"
+source = "git+https://github.com/smearor/smearor-commons.git#68a7f1229f4c8c2a38c66321a4ac9fbc49fa9624"
 dependencies = [
  "ab_glyph",
  "cairo-rs",
@@ -1000,7 +1000,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-layer"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#95c1f4d5f99c15146ccbbae8fefd3aefeaa9cd51"
+source = "git+https://github.com/smearor/smearor-commons.git#68a7f1229f4c8c2a38c66321a4ac9fbc49fa9624"
 dependencies = [
  "gtk4-layer-shell",
  "serde",
@@ -1011,7 +1011,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-layout"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#95c1f4d5f99c15146ccbbae8fefd3aefeaa9cd51"
+source = "git+https://github.com/smearor/smearor-commons.git#68a7f1229f4c8c2a38c66321a4ac9fbc49fa9624"
 dependencies = [
  "serde",
  "smearor-commons-animation",
@@ -1022,7 +1022,7 @@ dependencies = [
 [[package]]
 name = "smearor-commons-noise"
 version = "0.1.0"
-source = "git+https://github.com/smearor/smearor-commons.git#95c1f4d5f99c15146ccbbae8fefd3aefeaa9cd51"
+source = "git+https://github.com/smearor/smearor-commons.git#68a7f1229f4c8c2a38c66321a4ac9fbc49fa9624"
 dependencies = [
  "serde",
  "smearor-commons-geometry",
