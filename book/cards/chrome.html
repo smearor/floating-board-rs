@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "coal";
             const default_dark_theme = "coal";
-            window.path_to_searchindex_js = "../searchindex-8d23d73f.js";
+            window.path_to_searchindex_js = "../searchindex-1ad76052.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-2eaac78a.js"></script>
+        <script src="../toc-53faa62a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -217,6 +217,43 @@ open and close the same panels repeatedly.</li>
 </ul>
 <p><code>board.close_card(&amp;id)</code> runs the configured action programmatically;
 <code>is_card_visible</code> reports the state.</p>
+<h2 id="chrome-slots-and-placements"><a class="header" href="#chrome-slots-and-placements">Chrome slots and placements</a></h2>
+<p>The <code>foldable</code>/<code>closable</code> convenience flags are sugar over the real
+model: <code>chrome</code> takes an explicit <code>Vec&lt;ChromeSlot&gt;</code> — a <code>ChromeElement</code>
+plus a <code>ChromePlacement</code> that says <em>where</em> it mounts.</p>
+<pre><code class="language-rust ignore">chrome: Some(vec![
+    ChromeSlot::inline(ChromeElement::DragHandle),
+    ChromeSlot::inline(ChromeElement::Title),
+    ChromeSlot::inline_end(ChromeElement::Minimize),
+    ChromeSlot::bar(ChromeElement::RotateCounterClockwise),
+    ChromeSlot::bar(ChromeElement::RotateClockwise),
+    ChromeSlot::satellite(ChromeElement::Close),
+]),</code></pre>
+<p>Elements: <code>DragHandle</code>, <code>Title</code>, <code>Minimize</code>, <code>Close</code>,
+<code>RotateClockwise</code>/<code>RotateCounterClockwise</code> (snap-step buttons),
+<code>NextSeat</code>/<code>PreviousSeat</code> (pass around the table), <code>ResizeGrip</code> and
+<code>RotateGrip</code> (the bottom-corner drags). Placements: <code>Inline*</code>
+(header strip on <code>Rectangle</code>, top arc band on curved shapes),
+<code>ArcTop*</code> (explicit top-arc zones), <code>Bar*</code> (bottom band — arc on
+<code>Circle</code>/<code>Annulus</code>, straight strip on <code>Semicircle</code>/<code>Hexagon</code>/<code>Octagon</code>)
+and <code>Satellite</code>. See <a href="shapes.html#chrome-on-shaped-cards">Shapes</a> for the
+band layout and mirroring rules.</p>
+<p>Two subtleties:</p>
+<ul>
+<li><code>chrome: None</code> does <strong>not</strong> mean “no chrome” — it falls back to the
+legacy slot list derived from the flags (always <code>Title</code>, plus
+<code>Minimize</code>/<code>Close</code> when <code>foldable</code>/<code>closable</code>). A truly chrome-free
+card is <code>chrome: Some(vec![])</code>; pair it with <code>drag_handle: WholeCard</code>.</li>
+<li><code>chrome_style</code> selects the renderer: <code>ChromeStyle::Builtin</code> (stock
+GTK4/CSS) or <code>ChromeStyle::Adwaita</code> (<code>adw::HeaderBar</code>, behind the
+<code>adwaita</code> feature).</li>
+</ul>
+<h2 id="satellites"><a class="header" href="#satellites">Satellites</a></h2>
+<p><code>satellites: Option&lt;CardSatellites&gt;</code> mounts small floating buttons
+around the card — the same <code>ChromeElement</code>s, freed from the strip,
+plus consumer widgets of any kind. Layouts (<code>Radial</code> orbit, <code>Sidebar</code>
+strip), rotation and collision modes, and the open/close menu pattern
+have their own page: <a href="satellites.html">Satellites</a>.</p>
 <h2 id="per-card-colors"><a class="header" href="#per-card-colors">Per-card colors</a></h2>
 <p><code>palette</code> accepts a <code>CardPalette</code> — a <code>Palette&lt;CardColor, f64&gt;</code> from
 <code>smearor-commons-color</code> — and turns it into a scoped CSS provider at
@@ -241,7 +278,11 @@ idiomatic use: each player’s cards carry their marker color.</p>
 </thead>
 <tbody>
 <tr><td><code>headerless</code></td><td>collapses the header to a slim grip</td></tr>
-<tr><td><code>content_padding</code></td><td>inset between card border and content (default 10 px)</td></tr>
+<tr><td><code>shape</code></td><td><code>CardShape</code> — <code>Rectangle</code> (default), <code>Circle</code>, <code>Semicircle</code>, <code>Hexagon</code>, <code>Octagon</code>, <code>Annulus</code>; see <a href="shapes.html">Shapes</a></td></tr>
+<tr><td><code>content</code></td><td><code>CardContent</code> allocation mode — <code>Inscribed</code> (default), <code>Fill</code>, <code>Clipped</code>, <code>Cover</code></td></tr>
+<tr><td><code>hole_ratio</code></td><td><code>Annulus</code> only: inner radius as a fraction of the outer (default 0.5)</td></tr>
+<tr><td><code>arc_span</code> / <code>arc_bottom_span</code></td><td>angular width of the top/bottom arc bands on curved cards (default a quarter turn)</td></tr>
+<tr><td><code>content_padding</code></td><td>inset between card border and content (default 10 px; <code>Inscribed</code> only — immersive modes allocate to the silhouette)</td></tr>
 <tr><td><code>max_width</code> / <code>max_height</code></td><td>hard cap on measured card size</td></tr>
 <tr><td><code>z_index</code></td><td>initial stacking order; <code>None</code> appends on top</td></tr>
 <tr><td><code>animation_speed_ms</code></td><td>duration of rotation, glide and camera animations on this card (default 500 ms)</td></tr>
@@ -260,7 +301,7 @@ is opt-in.</p>
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../geometry.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../cards/shapes.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -274,7 +315,7 @@ is opt-in.</p>
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../geometry.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../cards/shapes.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

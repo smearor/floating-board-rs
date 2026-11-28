@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "coal";
             const default_dark_theme = "coal";
-            window.path_to_searchindex_js = "searchindex-8d23d73f.js";
+            window.path_to_searchindex_js = "searchindex-1ad76052.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-2eaac78a.js"></script>
+        <script src="toc-53faa62a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -211,6 +211,17 @@ resize and rotate grips, and the folded states.</li>
 <code>DragHandle</code> variants, <code>headerless</code>, fold modes including
 <code>folded_content</code>, <code>CardCloseAction</code>, per-card <code>CardPalette</code>,
 <code>content_padding</code>, size caps and <code>z_index</code>.</li>
+<li><strong><a href="cards/shapes.html">Shapes</a></strong>: non-rectangular cards — the six
+<code>CardShape</code> silhouettes (including the click-through <code>Annulus</code>
+ring), the four <code>CardContent</code> allocation modes, <code>ShapeClip</code>, and
+the arc/bar bands that chrome rides on curved and polygon cards.</li>
+<li><strong><a href="cards/satellites.html">Satellites</a></strong>: chrome elements and custom
+widgets floating outside the card — radial orbits and sidebar
+strips, anchor angles, rotation and collision modes, and the
+open/close menu pattern.</li>
+<li><strong><a href="cards/animations.html">Animations</a></strong>: the shared <code>animation_speed_ms</code>
+budget — fold/unfold morphs (<code>Instant</code>/<code>Crossfade</code>/<code>Shrink</code>/<code>Spin</code>),
+<code>CardFoldTiming</code> against satellite transitions, and one-shot FX.</li>
 </ul>
 <h2 id="the-card-api-at-a-glance"><a class="header" href="#the-card-api-at-a-glance">The card API at a glance</a></h2>
 <div class="table-wrapper">

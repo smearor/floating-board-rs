@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "coal";
             const default_dark_theme = "coal";
-            window.path_to_searchindex_js = "searchindex-8d23d73f.js";
+            window.path_to_searchindex_js = "searchindex-1ad76052.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-2eaac78a.js"></script>
+        <script src="toc-53faa62a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -242,6 +242,13 @@ let controls_id = board.add_card_with_id(
 <tr><td><code>closable</code></td><td><code>bool</code></td><td><code>false</code></td><td>Show a close button; removes the card (<code>card-removed</code>)</td></tr>
 <tr><td><code>headerless</code></td><td><code>bool</code></td><td><code>false</code></td><td>Collapse the header to a slim grip</td></tr>
 <tr><td><code>drag_handle</code></td><td><code>DragHandle</code></td><td><code>Header</code></td><td><code>Header</code>, <code>WholeCard</code> or <code>Handle</code> (grip icon)</td></tr>
+<tr><td><code>shape</code></td><td><code>CardShape</code></td><td><code>Rectangle</code></td><td><code>Rectangle</code>, <code>Circle</code>, <code>Semicircle</code>, <code>Hexagon</code>, <code>Octagon</code>, <code>Annulus</code> — see <a href="cards/shapes.html">Shapes</a></td></tr>
+<tr><td><code>content</code></td><td><code>CardContent</code></td><td><code>Inscribed</code></td><td><code>Inscribed</code>, <code>Fill</code>, <code>Clipped</code>, <code>Cover</code> — how content fills the shape</td></tr>
+<tr><td><code>hole_ratio</code></td><td><code>Option&lt;Fraction&gt;</code></td><td><code>0.5</code></td><td><code>Annulus</code> inner radius as a fraction of the outer radius</td></tr>
+<tr><td><code>arc_span</code> / <code>arc_bottom_span</code></td><td><code>Option&lt;Degrees&gt;</code></td><td><code>90°</code></td><td>Width of the top/bottom arc bands on curved cards</td></tr>
+<tr><td><code>chrome</code></td><td><code>Option&lt;Vec&lt;ChromeSlot&gt;&gt;</code></td><td>legacy</td><td>Explicit <code>ChromeElement</code> + <code>ChromePlacement</code> list; <code>Some(vec![])</code> = chrome-free</td></tr>
+<tr><td><code>chrome_style</code></td><td><code>ChromeStyle</code></td><td><code>Builtin</code></td><td><code>Builtin</code> or <code>Adwaita</code> (feature <code>adwaita</code>)</td></tr>
+<tr><td><code>satellites</code></td><td><code>Option&lt;CardSatellites&gt;</code></td><td><code>None</code></td><td>Floating chrome buttons around the card (<code>Radial</code>/<code>Anchored</code>)</td></tr>
 <tr><td><code>scale_limits</code></td><td><code>ScaleBounds</code></td><td><code>0.5 – 2.0</code></td><td>Inclusive pinch zoom limits</td></tr>
 <tr><td><code>min_visible</code></td><td><code>MinVisible</code></td><td><code>40.0</code></td><td>Pixels that must stay inside the bounds (<code>Loose</code> mode)</td></tr>
 <tr><td><code>bounds_mode</code></td><td><code>BoundsMode</code></td><td><code>Loose</code></td><td><code>Loose</code> clamps on drag end; <code>Contained</code> keeps the whole footprint inside, live</td></tr>
@@ -519,6 +526,7 @@ card.connect_closure("card-moved", false,
 <tr><td><code>card-folded</code></td><td><code>Card</code></td><td>fold state toggles</td></tr>
 <tr><td><code>card-seat-changed</code></td><td><code>Card</code></td><td>seat assignment changes (<code>set_seat</code>, pass to user)</td></tr>
 <tr><td><code>card-added</code> / <code>card-removed</code></td><td><code>FloatingBoard</code></td><td>card lifecycle (carries the <code>Card</code>)</td></tr>
+<tr><td><code>card-visibility-changed</code></td><td><code>FloatingBoard</code></td><td><code>set_card_visible</code> toggles or <code>CardCloseAction::Hide</code> hides the card (carries the <code>Card</code>)</td></tr>
 <tr><td><code>geometry-changed</code></td><td><code>FloatingBoard</code></td><td>aggregate: any geometry mutation</td></tr>
 </tbody>
 </table>

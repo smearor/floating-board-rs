@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "coal";
             const default_dark_theme = "coal";
-            window.path_to_searchindex_js = "../searchindex-8d23d73f.js";
+            window.path_to_searchindex_js = "../searchindex-1ad76052.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-2eaac78a.js"></script>
+        <script src="../toc-53faa62a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -184,6 +184,11 @@
 and the <strong>content area</strong> (an arbitrary consumer widget). Optional
 grips sit on the bottom corners. Everything outside the flags a
 <code>CardConfig</code> enables is never built.</p>
+<p>This page describes the default <code>Rectangle</code> silhouette. <code>CardConfig::shape</code>
+swaps it for <code>Circle</code>, <code>Semicircle</code>, <code>Hexagon</code>, <code>Octagon</code> or <code>Annulus</code> —
+chrome then rides on arc or bar bands instead of a header, the content
+area is governed by <code>CardContent</code>, and the card is clipped and
+hit-tested along the shape. See <a href="shapes.html">Shapes</a>.</p>
 <figure class="diagram">
   <img src="img/anatomy.svg" alt="Card with header strip containing handle, title, fold and close buttons, a content area, and resize and rotate grips on the bottom corners">
   <figcaption>the anatomy of a fully chromed card — every element is opt-in</figcaption>
@@ -206,6 +211,10 @@ controls:</p>
 </div>
 <p><code>headerless</code> collapses the whole strip to a slim grip — for cards that
 still need a fold/close path but no title bar.</p>
+<p>Non-rectangular shapes have no header strip at all: <code>Circle</code> and
+<code>Annulus</code> mount inline chrome on arc bands, <code>Semicircle</code> on a top arc
+plus a bottom bar, <code>Hexagon</code>/<code>Octagon</code> on straight top/bottom edge bars
+(see <a href="shapes.html#chrome-on-shaped-cards">Shapes</a>).</p>
 <h2 id="the-content-area"><a class="header" href="#the-content-area">The content area</a></h2>
 <p><code>.floating-card-content</code> holds one consumer widget — the card imposes
 no structure on it. <code>content_padding</code> (default 10 px) insets it from
@@ -217,6 +226,11 @@ rotation and scale during picking, and the quad tracker never claims
 touch sequences (see <a href="../gestures/quad.html">Quad Transform</a>). Buttons,
 entries and canvases on a card behave exactly as if they were not
 floating.</p>
+<p>On non-rectangular shapes the content area is additionally clipped by
+the card silhouette and — in the immersive <code>CardContent</code> modes
+(<code>Fill</code>, <code>Clipped</code>, <code>Cover</code>) — made display-only so picks in the cut
+corners or an <code>Annulus</code>’ hole fall through to the cards below. The
+details live in <a href="shapes.html#cardcontent--how-content-fills-a-shape">Shapes</a>.</p>
 <h2 id="the-grips"><a class="header" href="#the-grips">The grips</a></h2>
 <div class="table-wrapper">
 <table>

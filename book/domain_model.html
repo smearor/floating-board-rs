@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "coal";
             const default_dark_theme = "coal";
-            window.path_to_searchindex_js = "searchindex-8d23d73f.js";
+            window.path_to_searchindex_js = "searchindex-1ad76052.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-2eaac78a.js"></script>
+        <script src="toc-53faa62a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -243,6 +243,11 @@ live behind the <code>serde</code> cargo feature (enabled by default). Building 
 <tr><td><code>GotoTransition</code></td><td><code>Snap</code> | <code>Glide</code> (default) | <code>Transit</code> — how <code>goto_card</code> moves the camera.</td></tr>
 <tr><td><code>GotoRotation</code></td><td><code>Keep</code> | <code>Upright</code> — the destination rotation of a <code>goto_card</code> flight.</td></tr>
 <tr><td><code>CardPalette</code> / <code>CardColor</code></td><td>Semantic color set per card (<code>Background</code>, <code>Foreground</code>, <code>Header</code>), turned into a scoped CSS provider.</td></tr>
+<tr><td><code>CardShape</code></td><td>Card silhouette: <code>Rectangle</code>, <code>Circle</code>, <code>Semicircle</code>, <code>Hexagon</code>, <code>Octagon</code>, <code>Annulus</code> — drives the clip path, <code>contains</code> and the band-based chrome layout.</td></tr>
+<tr><td><code>CardContent</code></td><td>Content allocation on shaped cards: <code>Inscribed</code>, <code>Fill</code>, <code>Clipped</code>, <code>Cover</code>.</td></tr>
+<tr><td><code>ChromeElement</code> / <code>ChromePlacement</code> / <code>ChromeSlot</code></td><td>Declarative chrome: an element (<code>Title</code>, <code>Minimize</code>, <code>Close</code>, rotate/pass steps, grips, <code>DragHandle</code>) plus where it mounts (<code>Inline*</code>, <code>ArcTop*</code>, <code>Bar*</code>, <code>Satellite</code>).</td></tr>
+<tr><td><code>ChromeStyle</code></td><td>Chrome renderer: <code>Builtin</code> or <code>Adwaita</code>.</td></tr>
+<tr><td><code>CardSatellites</code> / <code>SatelliteConfig</code> / <code>SatelliteDistribution</code></td><td>Floating chrome buttons orbiting the card — <code>Radial</code> or <code>Anchored</code> at <code>QuarterTurn</code> angles, with <code>SatelliteRotationMode</code>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -250,7 +255,10 @@ live behind the <code>serde</code> cargo feature (enabled by default). Building 
 <p><code>CardConfig</code> technically lives in the widget layer but uses only domain
 types: <code>title</code>, <code>position: CardAnchor</code>, <code>draggable</code>, <code>rotatable</code>, <code>scalable</code>,
 <code>foldable</code>, <code>closable</code>, <code>headerless</code>, <code>drag_handle</code>,
-<code>scale_limits: ScaleBounds</code>, <code>min_visible: MinVisible</code>, <code>z_index</code>.</p>
+<code>shape: CardShape</code>, <code>content: CardContent</code>, <code>hole_ratio</code>,
+<code>arc_span</code>/<code>arc_bottom_span</code>, <code>chrome</code>, <code>chrome_style: ChromeStyle</code>,
+<code>satellites</code>, <code>scale_limits: ScaleBounds</code>, <code>min_visible: MinVisible</code>,
+<code>bounds_mode: BoundsMode</code>, <code>palette</code>, <code>z_index</code>.</p>
 <h2 id="pure-geometry-functions"><a class="header" href="#pure-geometry-functions">Pure Geometry Functions</a></h2>
 <p>All board math is implemented as pure functions over the domain types — no
 GTK, no display server, directly unit-testable.</p>

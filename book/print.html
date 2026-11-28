@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "coal";
             const default_dark_theme = "coal";
-            window.path_to_searchindex_js = "searchindex-8d23d73f.js";
+            window.path_to_searchindex_js = "searchindex-1ad76052.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-2eaac78a.js"></script>
+        <script src="toc-53faa62a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -315,6 +315,13 @@ let controls_id = board.add_card_with_id(
 <tr><td><code>closable</code></td><td><code>bool</code></td><td><code>false</code></td><td>Show a close button; removes the card (<code>card-removed</code>)</td></tr>
 <tr><td><code>headerless</code></td><td><code>bool</code></td><td><code>false</code></td><td>Collapse the header to a slim grip</td></tr>
 <tr><td><code>drag_handle</code></td><td><code>DragHandle</code></td><td><code>Header</code></td><td><code>Header</code>, <code>WholeCard</code> or <code>Handle</code> (grip icon)</td></tr>
+<tr><td><code>shape</code></td><td><code>CardShape</code></td><td><code>Rectangle</code></td><td><code>Rectangle</code>, <code>Circle</code>, <code>Semicircle</code>, <code>Hexagon</code>, <code>Octagon</code>, <code>Annulus</code> — see <a href="#shapes">Shapes</a></td></tr>
+<tr><td><code>content</code></td><td><code>CardContent</code></td><td><code>Inscribed</code></td><td><code>Inscribed</code>, <code>Fill</code>, <code>Clipped</code>, <code>Cover</code> — how content fills the shape</td></tr>
+<tr><td><code>hole_ratio</code></td><td><code>Option&lt;Fraction&gt;</code></td><td><code>0.5</code></td><td><code>Annulus</code> inner radius as a fraction of the outer radius</td></tr>
+<tr><td><code>arc_span</code> / <code>arc_bottom_span</code></td><td><code>Option&lt;Degrees&gt;</code></td><td><code>90°</code></td><td>Width of the top/bottom arc bands on curved cards</td></tr>
+<tr><td><code>chrome</code></td><td><code>Option&lt;Vec&lt;ChromeSlot&gt;&gt;</code></td><td>legacy</td><td>Explicit <code>ChromeElement</code> + <code>ChromePlacement</code> list; <code>Some(vec![])</code> = chrome-free</td></tr>
+<tr><td><code>chrome_style</code></td><td><code>ChromeStyle</code></td><td><code>Builtin</code></td><td><code>Builtin</code> or <code>Adwaita</code> (feature <code>adwaita</code>)</td></tr>
+<tr><td><code>satellites</code></td><td><code>Option&lt;CardSatellites&gt;</code></td><td><code>None</code></td><td>Floating chrome buttons around the card (<code>Radial</code>/<code>Anchored</code>)</td></tr>
 <tr><td><code>scale_limits</code></td><td><code>ScaleBounds</code></td><td><code>0.5 – 2.0</code></td><td>Inclusive pinch zoom limits</td></tr>
 <tr><td><code>min_visible</code></td><td><code>MinVisible</code></td><td><code>40.0</code></td><td>Pixels that must stay inside the bounds (<code>Loose</code> mode)</td></tr>
 <tr><td><code>bounds_mode</code></td><td><code>BoundsMode</code></td><td><code>Loose</code></td><td><code>Loose</code> clamps on drag end; <code>Contained</code> keeps the whole footprint inside, live</td></tr>
@@ -592,6 +599,7 @@ card.connect_closure("card-moved", false,
 <tr><td><code>card-folded</code></td><td><code>Card</code></td><td>fold state toggles</td></tr>
 <tr><td><code>card-seat-changed</code></td><td><code>Card</code></td><td>seat assignment changes (<code>set_seat</code>, pass to user)</td></tr>
 <tr><td><code>card-added</code> / <code>card-removed</code></td><td><code>FloatingBoard</code></td><td>card lifecycle (carries the <code>Card</code>)</td></tr>
+<tr><td><code>card-visibility-changed</code></td><td><code>FloatingBoard</code></td><td><code>set_card_visible</code> toggles or <code>CardCloseAction::Hide</code> hides the card (carries the <code>Card</code>)</td></tr>
 <tr><td><code>geometry-changed</code></td><td><code>FloatingBoard</code></td><td>aggregate: any geometry mutation</td></tr>
 </tbody>
 </table>
@@ -676,6 +684,17 @@ resize and rotate grips, and the folded states.</li>
 <code>DragHandle</code> variants, <code>headerless</code>, fold modes including
 <code>folded_content</code>, <code>CardCloseAction</code>, per-card <code>CardPalette</code>,
 <code>content_padding</code>, size caps and <code>z_index</code>.</li>
+<li><strong><a href="#shapes">Shapes</a></strong>: non-rectangular cards — the six
+<code>CardShape</code> silhouettes (including the click-through <code>Annulus</code>
+ring), the four <code>CardContent</code> allocation modes, <code>ShapeClip</code>, and
+the arc/bar bands that chrome rides on curved and polygon cards.</li>
+<li><strong><a href="#satellites-1">Satellites</a></strong>: chrome elements and custom
+widgets floating outside the card — radial orbits and sidebar
+strips, anchor angles, rotation and collision modes, and the
+open/close menu pattern.</li>
+<li><strong><a href="#animations">Animations</a></strong>: the shared <code>animation_speed_ms</code>
+budget — fold/unfold morphs (<code>Instant</code>/<code>Crossfade</code>/<code>Shrink</code>/<code>Spin</code>),
+<code>CardFoldTiming</code> against satellite transitions, and one-shot FX.</li>
 </ul>
 <h2 id="the-card-api-at-a-glance"><a class="header" href="#the-card-api-at-a-glance">The card API at a glance</a></h2>
 <div class="table-wrapper">
@@ -704,6 +723,11 @@ into geometry.</p>
 and the <strong>content area</strong> (an arbitrary consumer widget). Optional
 grips sit on the bottom corners. Everything outside the flags a
 <code>CardConfig</code> enables is never built.</p>
+<p>This page describes the default <code>Rectangle</code> silhouette. <code>CardConfig::shape</code>
+swaps it for <code>Circle</code>, <code>Semicircle</code>, <code>Hexagon</code>, <code>Octagon</code> or <code>Annulus</code> —
+chrome then rides on arc or bar bands instead of a header, the content
+area is governed by <code>CardContent</code>, and the card is clipped and
+hit-tested along the shape. See <a href="#shapes">Shapes</a>.</p>
 <figure class="diagram">
   <img src="cards/img/anatomy.svg" alt="Card with header strip containing handle, title, fold and close buttons, a content area, and resize and rotate grips on the bottom corners">
   <figcaption>the anatomy of a fully chromed card — every element is opt-in</figcaption>
@@ -726,6 +750,10 @@ controls:</p>
 </div>
 <p><code>headerless</code> collapses the whole strip to a slim grip — for cards that
 still need a fold/close path but no title bar.</p>
+<p>Non-rectangular shapes have no header strip at all: <code>Circle</code> and
+<code>Annulus</code> mount inline chrome on arc bands, <code>Semicircle</code> on a top arc
+plus a bottom bar, <code>Hexagon</code>/<code>Octagon</code> on straight top/bottom edge bars
+(see <a href="#chrome-on-shaped-cards">Shapes</a>).</p>
 <h2 id="the-content-area"><a class="header" href="#the-content-area">The content area</a></h2>
 <p><code>.floating-card-content</code> holds one consumer widget — the card imposes
 no structure on it. <code>content_padding</code> (default 10 px) insets it from
@@ -737,6 +765,11 @@ rotation and scale during picking, and the quad tracker never claims
 touch sequences (see <a href="#quad-transform">Quad Transform</a>). Buttons,
 entries and canvases on a card behave exactly as if they were not
 floating.</p>
+<p>On non-rectangular shapes the content area is additionally clipped by
+the card silhouette and — in the immersive <code>CardContent</code> modes
+(<code>Fill</code>, <code>Clipped</code>, <code>Cover</code>) — made display-only so picks in the cut
+corners or an <code>Annulus</code>’ hole fall through to the cards below. The
+details live in <a href="#cardcontent--how-content-fills-a-shape">Shapes</a>.</p>
 <h2 id="the-grips"><a class="header" href="#the-grips">The grips</a></h2>
 <div class="table-wrapper">
 <table>
@@ -812,6 +845,43 @@ open and close the same panels repeatedly.</li>
 </ul>
 <p><code>board.close_card(&amp;id)</code> runs the configured action programmatically;
 <code>is_card_visible</code> reports the state.</p>
+<h2 id="chrome-slots-and-placements"><a class="header" href="#chrome-slots-and-placements">Chrome slots and placements</a></h2>
+<p>The <code>foldable</code>/<code>closable</code> convenience flags are sugar over the real
+model: <code>chrome</code> takes an explicit <code>Vec&lt;ChromeSlot&gt;</code> — a <code>ChromeElement</code>
+plus a <code>ChromePlacement</code> that says <em>where</em> it mounts.</p>
+<pre><code class="language-rust ignore">chrome: Some(vec![
+    ChromeSlot::inline(ChromeElement::DragHandle),
+    ChromeSlot::inline(ChromeElement::Title),
+    ChromeSlot::inline_end(ChromeElement::Minimize),
+    ChromeSlot::bar(ChromeElement::RotateCounterClockwise),
+    ChromeSlot::bar(ChromeElement::RotateClockwise),
+    ChromeSlot::satellite(ChromeElement::Close),
+]),</code></pre>
+<p>Elements: <code>DragHandle</code>, <code>Title</code>, <code>Minimize</code>, <code>Close</code>,
+<code>RotateClockwise</code>/<code>RotateCounterClockwise</code> (snap-step buttons),
+<code>NextSeat</code>/<code>PreviousSeat</code> (pass around the table), <code>ResizeGrip</code> and
+<code>RotateGrip</code> (the bottom-corner drags). Placements: <code>Inline*</code>
+(header strip on <code>Rectangle</code>, top arc band on curved shapes),
+<code>ArcTop*</code> (explicit top-arc zones), <code>Bar*</code> (bottom band — arc on
+<code>Circle</code>/<code>Annulus</code>, straight strip on <code>Semicircle</code>/<code>Hexagon</code>/<code>Octagon</code>)
+and <code>Satellite</code>. See <a href="#chrome-on-shaped-cards">Shapes</a> for the
+band layout and mirroring rules.</p>
+<p>Two subtleties:</p>
+<ul>
+<li><code>chrome: None</code> does <strong>not</strong> mean “no chrome” — it falls back to the
+legacy slot list derived from the flags (always <code>Title</code>, plus
+<code>Minimize</code>/<code>Close</code> when <code>foldable</code>/<code>closable</code>). A truly chrome-free
+card is <code>chrome: Some(vec![])</code>; pair it with <code>drag_handle: WholeCard</code>.</li>
+<li><code>chrome_style</code> selects the renderer: <code>ChromeStyle::Builtin</code> (stock
+GTK4/CSS) or <code>ChromeStyle::Adwaita</code> (<code>adw::HeaderBar</code>, behind the
+<code>adwaita</code> feature).</li>
+</ul>
+<h2 id="satellites"><a class="header" href="#satellites">Satellites</a></h2>
+<p><code>satellites: Option&lt;CardSatellites&gt;</code> mounts small floating buttons
+around the card — the same <code>ChromeElement</code>s, freed from the strip,
+plus consumer widgets of any kind. Layouts (<code>Radial</code> orbit, <code>Sidebar</code>
+strip), rotation and collision modes, and the open/close menu pattern
+have their own page: <a href="#satellites-1">Satellites</a>.</p>
 <h2 id="per-card-colors"><a class="header" href="#per-card-colors">Per-card colors</a></h2>
 <p><code>palette</code> accepts a <code>CardPalette</code> — a <code>Palette&lt;CardColor, f64&gt;</code> from
 <code>smearor-commons-color</code> — and turns it into a scoped CSS provider at
@@ -836,7 +906,11 @@ idiomatic use: each player’s cards carry their marker color.</p>
 </thead>
 <tbody>
 <tr><td><code>headerless</code></td><td>collapses the header to a slim grip</td></tr>
-<tr><td><code>content_padding</code></td><td>inset between card border and content (default 10 px)</td></tr>
+<tr><td><code>shape</code></td><td><code>CardShape</code> — <code>Rectangle</code> (default), <code>Circle</code>, <code>Semicircle</code>, <code>Hexagon</code>, <code>Octagon</code>, <code>Annulus</code>; see <a href="#shapes">Shapes</a></td></tr>
+<tr><td><code>content</code></td><td><code>CardContent</code> allocation mode — <code>Inscribed</code> (default), <code>Fill</code>, <code>Clipped</code>, <code>Cover</code></td></tr>
+<tr><td><code>hole_ratio</code></td><td><code>Annulus</code> only: inner radius as a fraction of the outer (default 0.5)</td></tr>
+<tr><td><code>arc_span</code> / <code>arc_bottom_span</code></td><td>angular width of the top/bottom arc bands on curved cards (default a quarter turn)</td></tr>
+<tr><td><code>content_padding</code></td><td>inset between card border and content (default 10 px; <code>Inscribed</code> only — immersive modes allocate to the silhouette)</td></tr>
 <tr><td><code>max_width</code> / <code>max_height</code></td><td>hard cap on measured card size</td></tr>
 <tr><td><code>z_index</code></td><td>initial stacking order; <code>None</code> appends on top</td></tr>
 <tr><td><code>animation_speed_ms</code></td><td>duration of rotation, glide and camera animations on this card (default 500 ms)</td></tr>
@@ -846,6 +920,336 @@ idiomatic use: each player’s cards carry their marker color.</p>
 <p><code>CardConfig::default()</code> yields a fully interactive card: draggable,
 rotatable, scalable, header shown, <code>Center</code> anchored. Everything else
 is opt-in.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="shapes"><a class="header" href="#shapes">Shapes</a></h1>
+<p>A card does not have to be a rectangle. <code>CardConfig::shape</code> picks one of
+six silhouettes and the card clips everything to it — face, content,
+chrome and shadow. Outside the silhouette the card is transparent <em>and</em>
+click-through: picks in the cut corners (and inside an <code>Annulus</code>’ hole)
+fall through to the cards below as if the card were not there.</p>
+<figure class="diagram">
+  <img src="cards/img/shapes.svg" alt="Six card silhouettes: Rectangle, Circle, Semicircle, Hexagon, Octagon and Annulus">
+  <figcaption>the six `CardShape` silhouettes — every card still measures a rectangular bounding box</figcaption>
+</figure>
+<h2 id="cardshape"><a class="header" href="#cardshape"><code>CardShape</code></a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Silhouette</th><th>Footprint</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Rectangle</code> (default)</td><td>rounded rect</td><td>the allocation itself</td></tr>
+<tr><td><code>Circle</code></td><td>disc</td><td><code>2r × 2r</code></td></tr>
+<tr><td><code>Semicircle</code></td><td>dome, flat edge down</td><td><code>2r × r</code></td></tr>
+<tr><td><code>Hexagon</code></td><td>flat-top hexagon</td><td><code>2R × √3R</code>, cut corners</td></tr>
+<tr><td><code>Octagon</code></td><td>flat-top octagon</td><td><code>2R × 2R</code>, cut corners</td></tr>
+<tr><td><code>Annulus</code></td><td>ring with a center hole</td><td><code>2r × 2r</code>, hole is see- and pick-through</td></tr>
+</tbody>
+</table>
+</div>
+<p>All geometry works unchanged: the board still allocates a rectangle per
+card (the silhouette’s bounding box), rotation and scale apply to the
+whole shape, and footprints/<code>contains</code> are silhouette-accurate rather
+than bbox-accurate.</p>
+<p><code>Annulus</code> is the one shape with an extra parameter: <code>hole_ratio</code>
+(default <code>0.5</code>, clamped to <code>0.05 – 0.95</code>) is the inner radius as a
+fraction of the outer radius — <code>0.4</code> gives a broad band, <code>0.8</code> a thin
+rim. The hole shows whatever is below the card and delivers picks
+straight to it.</p>
+<h2 id="cardcontent--how-content-fills-a-shape"><a class="header" href="#cardcontent--how-content-fills-a-shape"><code>CardContent</code> — how content fills a shape</a></h2>
+<p>A rectangular consumer widget inside a non-rectangular card needs an
+allocation contract. <code>CardConfig::content</code> selects one of four:</p>
+<figure class="diagram">
+  <img src="cards/img/card-content.svg" alt="Four panels on a hexagon: Inscribed shows a centered square inside the shape, Fill shows a square painting into the rim corners, Clipped shows the same square cut at the inner silhouette, Cover shows content filling the whole silhouette">
+  <figcaption>`CardContent` on a `Hexagon` — allocation rect vs. clip boundary per mode</figcaption>
+</figure>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Allocation</th><th>Clip</th><th>Content is</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Inscribed</code> (default)</td><td>largest shape-inscribed rectangle</td><td>none — never reaches the rim</td><td><strong>interactive</strong></td></tr>
+<tr><td><code>Fill</code></td><td>rectangle reaching into the rim</td><td>none — paints over the ring corners</td><td>display-only</td></tr>
+<tr><td><code>Clipped</code></td><td>same allocation as <code>Fill</code></td><td><code>ShapeClip</code> at the <em>inner</em> silhouette</td><td>display-only</td></tr>
+<tr><td><code>Cover</code></td><td>the full silhouette bbox</td><td>the card silhouette itself — edge-to-edge</td><td>display-only</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>Inscribed</code> keeps the content rectangle away from the silhouette, so the
+rim around it stays card surface (the drag affordance) and child widgets
+work unchanged. <code>Fill</code> lets the paint bleed into the rim — the corners
+show through as card-colored only where the silhouette ends. <code>Clipped</code>
+adds the <code>ShapeClip</code> boundary so the rim always reads as a clean ring.
+<code>Cover</code> is for faces that <em>are</em> the shape — dials, gears, pie menus —
+painting to the silhouette edge.</p>
+<p><strong>Why immersive content is display-only.</strong> GTK4 has no non-rectangular
+pick masks: a rectangular content allocation covering the cut corners
+would leaf-claim picks outside the silhouette and block the fall-through
+that makes shapes stackable. On non-rectangular cards the content holder
+in <code>Fill</code>, <code>Clipped</code> and <code>Cover</code> is therefore <code>can_target(false)</code> —
+picks inside the silhouette still reach the card’s own gestures via the
+silhouette containers, and picks in the corners or the hole pass through.
+(Rectangle cards keep interactive content in every mode.)</p>
+<p>Content clicks still work when needed — attach a <code>GestureClick</code> <em>to the
+card</em> and map the point with <code>widget.compute_point(&amp;content_widget, …)</code>;
+the click is only delivered when the silhouette claimed it. The
+protractor in <code>examples/semicircle.rs</code> and the wedges in
+<code>examples/pie_menu.rs</code> both react this way.</p>
+<h2 id="shapeclip"><a class="header" href="#shapeclip"><code>ShapeClip</code></a></h2>
+<p><code>ShapeClip</code> is the clip widget <code>Clipped</code> mounts between the content
+overlay and the content holder. It owns two bounds:</p>
+<ul>
+<li>an <strong>inner silhouette</strong> — the outer silhouette shrunk by the chrome
+rim — which is the paint and pick boundary for its child;</li>
+<li>the <strong>annulus band</strong> between inner and outer silhouette (and, on
+<code>Annulus</code>, between the band and the hole), which stays claimable card
+surface.</li>
+</ul>
+<figure class="diagram">
+  <img src="cards/img/shape_clip.svg" alt="Hexagon card whose content is clipped at the inner silhouette; annotations show the ShapeClip boundary, the ring staying card surface, and the pick semantics inside vs outside the silhouette">
+  <figcaption>`ShapeClip` cuts `Clipped` content at the inner silhouette — the ring stays drag surface, cut regions pass picks through</figcaption>
+</figure>
+<p>Inside the silhouette the clip claims the pick and it propagates to the
+card (drag, raise, gesture controllers). Outside — the corners, and the
+hole on <code>Annulus</code> — no leaf claims it and the pick falls through to
+whatever is below.</p>
+<h2 id="chrome-on-shaped-cards"><a class="header" href="#chrome-on-shaped-cards">Chrome on shaped cards</a></h2>
+<p>Shaped cards have no header strip — chrome elements ride on <em>bands</em>
+instead (<code>examples/arc_chrome.rs</code> shows all variants):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Shape</th><th>Top band</th><th>Bottom band (<code>Bar*</code> placements)</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Circle</code></td><td>arc, <code>arc_span</code> wide</td><td>arc, <code>arc_bottom_span</code> wide</td></tr>
+<tr><td><code>Annulus</code></td><td>arc on the band’s mid-radius</td><td>arc on the band’s mid-radius</td></tr>
+<tr><td><code>Semicircle</code></td><td>arc along the dome</td><td>straight bar on the flat edge</td></tr>
+<tr><td><code>Hexagon</code> / <code>Octagon</code></td><td>straight bar on the top edge</td><td>straight bar on the bottom edge</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>arc_span</code> and <code>arc_bottom_span</code> (default a quarter turn each) widen or
+narrow the arc bands. <code>ChromePlacement::Inline*</code>, <code>ArcTop*</code> placements
+mount on the top band; <code>Bar</code>, <code>BarStart</code>, <code>BarEnd</code> mount on the bottom
+band — which is <em>mirrored</em>: <code>BarStart</code> sits on the screen’s right so a
+user facing the card’s bottom edge reads the strip left-to-right.
+<code>Satellite</code> placements <a href="#satellites-1">orbit the card</a> independent of shape.</p>
+<p>A completely chrome-free shaped card is <code>chrome: Some(vec![])</code> — bare
+<code>chrome: None</code> falls back to the legacy default slots (title plus the
+fold/close buttons the flags imply). With no chrome at all, wire
+<code>drag_handle: WholeCard</code> and prefer <code>unfold_on_click</code> or satellite
+buttons for the fold/close paths; on curved shapes a folded card hides
+its bands, so a <code>Minimize</code> <em>satellite</em> stays visible as the unfold
+affordance.</p>
+<p>Try them: <code>cargo run --example annulus</code> (four <code>CardContent</code> modes × bar
+variants on rings), <code>cargo run --example pie_menu</code> (an <code>Annulus</code> pie
+menu with hover, click-through hole and rotation satellites),
+<code>cargo run --example arc_chrome</code> (arc bands and <code>Cover</code> on <code>Circle</code>),
+<code>cargo run --example semicircle</code> (dome cards including a <code>Cover</code>
+protractor).</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="satellites-1"><a class="header" href="#satellites-1">Satellites</a></h1>
+<p>A <strong>satellite</strong> is a small widget the board places <em>outside</em> a card’s
+silhouette — orbiting it or docked to an edge. Satellites carry chrome
+elements (<code>Minimize</code>, <code>Close</code>, the rotate and pass steps) or any
+consumer widget (color pickers, <code>+</code>/<code>−</code> steppers, toggles). They are
+<code>CardLayer</code> siblings of the card, never children: the board owns
+placement and lifetime, the card’s gestures keep working beneath them.</p>
+<figure class="diagram">
+  <img src="cards/img/satellites.svg" alt="Left: a circle card with a dashed orbit ring, four chrome satellites pinned at the quarter turns and flexible custom dots in the gaps. Right: a rectangular card with a docked strip of four buttons below it. Bottom: three mini-panels showing CoRotate, KeepCardAngle and CounterRotate on a card turned 45 degrees.">
+  <figcaption>the two `SatelliteLayout`s — `Radial` (anchored orbit) and `Sidebar` (docked strip) — plus the three `SatelliteRotationMode`s</figcaption>
+</figure>
+<pre><code class="language-rust ignore">satellites: Some(CardSatellites {
+    layout: SatelliteLayout::Radial(RadialConfig {
+        distribution: SatelliteDistribution::Anchored,
+        ..Default::default()
+    }),
+    rotation_mode: SatelliteRotationMode::CounterRotate,
+    satellites: vec![
+        SatelliteConfig::chrome("ccw", ChromeElement::RotateCounterClockwise)
+            .with_anchor(Rotation::QuarterTurn(QuarterTurn::Deg180)),
+        SatelliteConfig::chrome("cw", ChromeElement::RotateClockwise)
+            .with_anchor(Rotation::QuarterTurn(QuarterTurn::Deg0)),
+        SatelliteConfig::custom("picker", color_picker_button),
+    ],
+    ..Default::default()
+}),</code></pre>
+<h2 id="building-the-set"><a class="header" href="#building-the-set">Building the set</a></h2>
+<p><code>CardConfig::satellites: Option&lt;CardSatellites&gt;</code> carries the shared
+semantics plus the <code>satellites</code> list:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>layout</code></td><td><code>Sidebar { sides }</code> (default: bottom strip) or <code>Radial(RadialConfig)</code></td></tr>
+<tr><td><code>rotation_mode</code></td><td><code>CoRotate</code> / <code>KeepCardAngle</code> / <code>CounterRotate</code> — see below</td></tr>
+<tr><td><code>collision</code></td><td><code>Ignore</code> (default) or <code>Avoid</code> — opt-in overlap handling vs. foreign cards and satellites</td></tr>
+<tr><td><code>open</code></td><td>whether the set starts visible (default <code>true</code>); a radial menu typically starts closed and opens via <code>board.set_satellites_open(&amp;id, true)</code></td></tr>
+<tr><td><code>satellites</code></td><td>the ordered <code>SatelliteConfig</code> list</td></tr>
+</tbody>
+</table>
+</div>
+<p>Two kinds mix freely:</p>
+<ul>
+<li><strong><code>SatelliteKind::Chrome(element)</code></strong> via <code>SatelliteConfig::chrome(id, element)</code>
+— the board builds and wires the widget (<code>Minimize</code>, <code>Close</code>,
+<code>RotateClockwise</code>, <code>RotateCounterClockwise</code>, <code>NextSeat</code>,
+<code>PreviousSeat</code>). <code>ChromeElement::supports_satellite()</code> gates this:
+<code>DragHandle</code>, <code>Title</code> and the grips are place-bound and get filtered
+with a warning.</li>
+<li><strong><code>SatelliteKind::Custom</code></strong> via <code>SatelliteConfig::custom(id, widget)</code> —
+the consumer’s own widget; the consumer wires its signals, the board
+only places it.</li>
+</ul>
+<p><code>ChromeSlot::satellite(element)</code> in the <code>chrome</code> slot list joins the
+same set — chrome-declared and <code>CardSatellites</code>-declared satellites are
+resolved together, in one orbit order.</p>
+<h2 id="layouts"><a class="header" href="#layouts">Layouts</a></h2>
+<p><strong><code>Radial(RadialConfig)</code></strong> puts satellites on an orbit around the card:</p>
+<ul>
+<li><code>radius</code> — distance outward from the card’s <em>outline</em> (default 48 px),
+so the orbit hugs the silhouette on every shape.</li>
+<li><code>span</code> — the covered <code>Arc</code>: <code>Arc::FULL</code> or a partial arc
+(start direction + angular width), card-local.</li>
+<li><code>distribution</code> — <code>Even</code> spreads satellites uniformly over the span;
+<code>Anchored</code> pins <code>with_anchor(...)</code> satellites to fixed angles
+(<code>QuarterTurn</code> or free <code>Rotation</code>) and lets unanchored ones fill the
+remaining gaps — the pie-menu example’s <code>⟲</code>/<code>⟳</code> pair is anchored
+<code>Deg180</code>/<code>Deg0</code> so the controls stay left and right on screen.</li>
+</ul>
+<p><strong><code>Sidebar { sides }</code></strong> docks a strip of buttons along one to four card
+edges (<code>SideSet</code> — bottom, left, top, right), card-local: the strip
+follows the card’s rotation like a toolbar attached to it.</p>
+<h2 id="rotation-modes"><a class="header" href="#rotation-modes">Rotation modes</a></h2>
+<p><code>rotation_mode</code> answers two questions at once — where a satellite sits
+and which way its widget faces:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Orbit positions</th><th>Satellite widget</th></tr>
+</thead>
+<tbody>
+<tr><td><code>CoRotate</code> (default)</td><td>turn rigidly with the card</td><td>rotates with the card</td></tr>
+<tr><td><code>KeepCardAngle</code></td><td>follow the card’s rotation</td><td>stays screen-upright</td></tr>
+<tr><td><code>CounterRotate</code></td><td>stay fixed on screen</td><td>stays screen-upright</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>CounterRotate</code> suits screen-anchored controls (the <code>⟲</code>/<code>⟳</code> pair in
+<code>examples/pie_menu.rs</code> keeps left/right meaning while the menu spins);
+<code>Sidebar</code> placements are always card-local, so the mode only affects
+widget orientation there.</p>
+<h2 id="opening-closing-and-folding"><a class="header" href="#opening-closing-and-folding">Opening, closing and folding</a></h2>
+<p><code>CardSatellites::open</code> + <code>board.set_satellites_open(&amp;id, bool)</code> /
+<code>satellites_open(&amp;id)</code> animate the set in and out — the radial-menu
+pattern: trigger opens, satellites fan out, trigger closes. The
+transition mechanics (staggered starts, seed positions, fold
+choreography) live in <a href="#animations">Animations</a>.</p>
+<p>Fold interaction matters on shaped cards: a folded curved card hides
+its bands, leaving no visible unfold control — a <code>Minimize</code> <em>satellite</em>
+stays mounted while folded precisely for that reason (see
+<a href="#chrome-on-shaped-cards">Shapes</a>). The alternative is
+<code>unfold_on_click</code> on <code>folded_content</code>, as the clock in
+<code>examples/satellites.rs</code> does.</p>
+<p>Try it: <code>cargo run --example satellites</code> — a <code>Radial·Anchored</code> memo
+card (pinned chrome + flexible color dots), a <code>Circle</code> clock with
+custom satellites and fold animation, and an open/close toggle.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="animations"><a class="header" href="#animations">Animations</a></h1>
+<p>Almost everything a card does can animate — rotation steps, glides,
+folding, satellites opening and closing, plus one-shot effects. One
+budget rules them all: <code>animation_speed_ms</code> (default 500 ms) is the
+per-card duration for rotation, glide and camera moves <em>and</em> for the
+fold choreography and satellite transitions below. When
+<code>gtk-enable-animations</code> is off (reduced motion), every transition lands
+atomically — same states, no tween.</p>
+<h2 id="folding-and-unfolding"><a class="header" href="#folding-and-unfolding">Folding and unfolding</a></h2>
+<p><code>fold_animation</code> picks the morph between the unfolded card and its
+folded presentation:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>CardFoldAnimation</code></th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Instant</code> (default)</td><td>atomic swap — no transition</td></tr>
+<tr><td><code>Crossfade</code></td><td>outgoing content fades out, folded content fades in, footprint tweens linearly</td></tr>
+<tr><td><code>Shrink</code></td><td>footprint tween plus a mid-transition zoom dip (−0.45) and crossfade — a big card morphing into its miniature</td></tr>
+<tr><td><code>Spin</code></td><td>like <code>Shrink</code> plus a full revolution swept through the dip — starts and ends at the card’s own rotation</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>unfold_animation</code> is optional: unset, the unfold replays
+<code>fold_animation</code>’s variant. Asymmetric pairs are idiomatic — the clock
+in <code>examples/satellites.rs</code> folds with <code>Spin</code> and unfolds with a quiet
+<code>Shrink</code>.</p>
+<p><code>unfold_on_click</code> makes a folded card’s <code>folded_content</code> its own unfold
+button — the gesture claims only taps, drags still move the card.</p>
+<h2 id="timing-against-the-satellite-set"><a class="header" href="#timing-against-the-satellite-set">Timing against the satellite set</a></h2>
+<p><code>fold_timing</code> / <code>unfold_timing</code> (<code>CardFoldTiming</code>) decide when the morph
+plays relative to the satellites closing and reopening:</p>
+<figure class="diagram">
+  <img src="cards/img/animations.svg" alt="Two timelines: Sequential plays the satellite sink then the fold morph; Overlap(0.35) starts the morph once the satellite close reaches 35 percent. Below, a zoom dip curve for Shrink and Spin and a full-turn rotation sweep for Spin.">
+  <figcaption>`Sequential` reads as cause and effect; `Overlap(fraction)` blends the morph into the set's close — plus the `FoldAxis` excursion curves</figcaption>
+</figure>
+<ul>
+<li><strong><code>Sequential</code></strong> (default for folding): satellites sink into the card
+first; the morph starts when the last close transition lands — first
+the contents, then the container.</li>
+<li><strong><code>Overlap(Fraction)</code></strong>: the morph starts once the leading
+satellite’s close progress reaches the fraction — <code>0.0</code> runs fully
+parallel, <code>1.0</code> converges on <code>Sequential</code>. Unset <code>unfold_timing</code>
+defaults to <code>Overlap(0.0)</code>: on the way back the card morphs while the
+set is still re-emerging.</li>
+</ul>
+<p>Under the hood each animated pose is a <code>FoldPose</code> — footprint, zoom,
+rotation and both opacities — produced by <code>FoldAxis</code>, a lerp plus a
+sinusoidal excursion that peaks mid-transition (the zoom dip, the full
+turn). Being pure domain math, the curves are unit-testable and
+independent of the widget layer.</p>
+<h2 id="satellite-transitions"><a class="header" href="#satellite-transitions">Satellite transitions</a></h2>
+<p>Opening and closing a satellite set is itself animated: satellites
+emerge from (and collapse back into) a seed position on the card with
+staggered <code>start_at</code> offsets, so the set fans out rather than popping
+in. Retargeted placements tween too — a card resize or layout change
+moves the orbit smoothly instead of snapping. While a satellite is in
+flight its resolved placement keeps tracking card gestures, so a card
+dragged mid-transition carries its opening set along.</p>
+<p>Two interactions to know:</p>
+<ul>
+<li><code>CardSatellites::open</code> and <code>board.set_satellites_open(&amp;id, …)</code>
+trigger these transitions — see <a href="#satellites-1">Satellites</a>.</li>
+<li>The fold choreography above is timed against exactly these close
+transitions; the <code>Minimize</code> satellite exempt from hiding on a folded
+curved card also stays through the choreography.</li>
+</ul>
+<h2 id="one-shot-effects"><a class="header" href="#one-shot-effects">One-shot effects</a></h2>
+<p><code>board.play_card_fx(id, spec, options)</code> and
+<code>board.play_satellite_fx(id, satellite, spec, options)</code> render a
+<code>smearor-commons-fx</code> <code>EffectSpec</code> over a card or satellite: the
+widget’s transform stack is snapshotted to a texture, an <code>FxPlayer</code>
+plays the effect over it, and the live widget swaps back on
+<code>animation-ended</code>. <code>FxPlayOptions::duration == ZERO</code> defaults to the
+card’s <code>animation_speed_ms</code> budget. The snapshot is static — geometry
+changes during playback don’t track until the widget returns.</p>
+<h2 id="what-animates-elsewhere"><a class="header" href="#what-animates-elsewhere">What animates elsewhere</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Surface</th><th>Where</th></tr>
+</thead>
+<tbody>
+<tr><td><code>set_rotation_with_animation</code>, <code>glide_to</code></td><td><a href="#drag--raise">Gestures</a> — the same <code>animation_speed_ms</code> budget</td></tr>
+<tr><td><code>goto_card</code> camera moves (<code>Snap</code>/<code>Glide</code>/<code>Transit</code>)</td><td><a href="#goto_card-1">Workspace &amp; View</a></td></tr>
+<tr><td>Pass-to-seat flight</td><td><a href="#passing-cards">Tabletop</a></td></tr>
+<tr><td>Quad gesture inertia</td><td><a href="#quad-transform">Quad Transform</a></td></tr>
+</tbody>
+</table>
+</div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="geometry"><a class="header" href="#geometry">Geometry</a></h1>
 <p><code>floating-board</code> separates <em>where a card is</em> from <em>where it appears</em>.
@@ -1639,6 +2043,11 @@ live behind the <code>serde</code> cargo feature (enabled by default). Building 
 <tr><td><code>GotoTransition</code></td><td><code>Snap</code> | <code>Glide</code> (default) | <code>Transit</code> — how <code>goto_card</code> moves the camera.</td></tr>
 <tr><td><code>GotoRotation</code></td><td><code>Keep</code> | <code>Upright</code> — the destination rotation of a <code>goto_card</code> flight.</td></tr>
 <tr><td><code>CardPalette</code> / <code>CardColor</code></td><td>Semantic color set per card (<code>Background</code>, <code>Foreground</code>, <code>Header</code>), turned into a scoped CSS provider.</td></tr>
+<tr><td><code>CardShape</code></td><td>Card silhouette: <code>Rectangle</code>, <code>Circle</code>, <code>Semicircle</code>, <code>Hexagon</code>, <code>Octagon</code>, <code>Annulus</code> — drives the clip path, <code>contains</code> and the band-based chrome layout.</td></tr>
+<tr><td><code>CardContent</code></td><td>Content allocation on shaped cards: <code>Inscribed</code>, <code>Fill</code>, <code>Clipped</code>, <code>Cover</code>.</td></tr>
+<tr><td><code>ChromeElement</code> / <code>ChromePlacement</code> / <code>ChromeSlot</code></td><td>Declarative chrome: an element (<code>Title</code>, <code>Minimize</code>, <code>Close</code>, rotate/pass steps, grips, <code>DragHandle</code>) plus where it mounts (<code>Inline*</code>, <code>ArcTop*</code>, <code>Bar*</code>, <code>Satellite</code>).</td></tr>
+<tr><td><code>ChromeStyle</code></td><td>Chrome renderer: <code>Builtin</code> or <code>Adwaita</code>.</td></tr>
+<tr><td><code>CardSatellites</code> / <code>SatelliteConfig</code> / <code>SatelliteDistribution</code></td><td>Floating chrome buttons orbiting the card — <code>Radial</code> or <code>Anchored</code> at <code>QuarterTurn</code> angles, with <code>SatelliteRotationMode</code>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -1646,7 +2055,10 @@ live behind the <code>serde</code> cargo feature (enabled by default). Building 
 <p><code>CardConfig</code> technically lives in the widget layer but uses only domain
 types: <code>title</code>, <code>position: CardAnchor</code>, <code>draggable</code>, <code>rotatable</code>, <code>scalable</code>,
 <code>foldable</code>, <code>closable</code>, <code>headerless</code>, <code>drag_handle</code>,
-<code>scale_limits: ScaleBounds</code>, <code>min_visible: MinVisible</code>, <code>z_index</code>.</p>
+<code>shape: CardShape</code>, <code>content: CardContent</code>, <code>hole_ratio</code>,
+<code>arc_span</code>/<code>arc_bottom_span</code>, <code>chrome</code>, <code>chrome_style: ChromeStyle</code>,
+<code>satellites</code>, <code>scale_limits: ScaleBounds</code>, <code>min_visible: MinVisible</code>,
+<code>bounds_mode: BoundsMode</code>, <code>palette</code>, <code>z_index</code>.</p>
 <h2 id="pure-geometry-functions"><a class="header" href="#pure-geometry-functions">Pure Geometry Functions</a></h2>
 <p>All board math is implemented as pure functions over the domain types — no
 GTK, no display server, directly unit-testable.</p>
